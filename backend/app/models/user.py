@@ -24,5 +24,8 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[Role] = mapped_column(Enum(Role, name="user_role"), nullable=False)
+    role: Mapped[Role] = mapped_column(
+        Enum(Role, name="user_role", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+    )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)

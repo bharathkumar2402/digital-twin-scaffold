@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = ""
 
+    jwt_secret_key: str = "dev-only-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
+    # Secure-by-default (HTTPS-only refresh cookie). Set to false only for local
+    # dev/docker-compose environments served over plain HTTP.
+    cookie_secure: bool = True
+
     @property
     def database_url(self) -> str:
         return (
