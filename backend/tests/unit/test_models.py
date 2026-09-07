@@ -1,8 +1,13 @@
-from app.models import Base, Facility, Role, Tenant, User
+from app.models import Base, Facility, Role, SensorReading, Tenant, User
 
 
-def test_metadata_has_exactly_the_three_core_tables():
-    assert set(Base.metadata.tables) == {"tenants", "users", "facilities"}
+def test_metadata_has_exactly_the_expected_tables():
+    assert set(Base.metadata.tables) == {
+        "tenants",
+        "users",
+        "facilities",
+        "sensor_readings",
+    }
 
 
 def test_role_enum_values():
@@ -57,3 +62,25 @@ def test_facility_columns_and_fk():
     assert cols["bounds_geojson"].nullable
     fk_targets = {fk.column.table.name for fk in cols["tenant_id"].foreign_keys}
     assert fk_targets == {"tenants"}
+
+
+def test_sensor_reading_columns_and_fk():
+    cols = SensorReading.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "timestamp",
+        "tenant_id",
+        "asset_id",
+        "sensor_type",
+        "value",
+        "unit",
+        "created_at",
+    }
+    assert cols["id"].primary_key
+    assert cols["timestamp"].primary_key
+    assert not cols["tenant_id"].nullable
+    assert not cols["asset_id"].nullable
+    fk_targets = {fk.column.table.name for fk in cols["tenant_id"].foreign_keys}
+    assert fk_targets == {"tenants"}
+    # No FK on asset_id yet: `assets` doesn't exist until Phase 2 task 6.
+    assert not cols["asset_id"].foreign_keys

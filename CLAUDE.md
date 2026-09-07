@@ -162,9 +162,29 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation) in progress — tasks 1 "Schema & migrations" (issue 1.1),
 2 "Auth core" (issue 1.2), 3 "Tenant context middleware" (issue 1.3), 4 "RBAC"
-(issue 1.4), and 5 "Tenant management CRUD" (issue 1.5) done. Next: task 6 "TimescaleDB
-ingest endpoint" (issue 1.6) — `POST /telemetry`, Pydantic-validated payload, async bulk
-insert into a hypertable. See `docs/PHASE_PLAN.md`.
+(issue 1.4), 5 "Tenant management CRUD" (issue 1.5), and 6 "TimescaleDB ingest endpoint"
+(issue 1.6) done. Next: task 7 "Simulated IoT data generator" (issue 1.7) — standalone
+script producing realistic normal + anomalous sensor patterns, configurable rate, posts
+to `POST /telemetry`. See `docs/PHASE_PLAN.md`.
+
+Note on 1.6: `PROJECT_PLAN.md` §5 sketches `sensor_readings` without a `tenant_id`
+column, but that conflicts with repo rule 2 (every tenant_id-bearing table needs RLS +
+a cross-tenant test) and the "never accept tenant_id as a raw request parameter"
+convention — flagged and resolved with the user before building: `sensor_readings` does
+have `tenant_id`, with the same fail-closed RLS policy pattern as migration 0001, plus
+`tests/cross_tenant/test_telemetry_isolation.py`. Also: `assets` doesn't exist yet (it's
+Phase 2 task 6), so `asset_id` is a bare indexed UUID with no FK for now — Phase 2 adds
+the FK once `assets` lands. Migration 0004 also adds the `timescaledb` extension and
+calls `create_hypertable`, which meant every existing cross-tenant/integration test's
+`PostgresContainer("postgres:16-alpine")` had to move to
+`timescale/timescaledb:latest-pg16` (that plain image lacks the extension, so `alembic
+upgrade head` would otherwise break every one of those tests, not just the new one).
+Dropped an HTTP-level "reject NaN" test: standards-compliant JSON can't encode `NaN` at
+all, and forcing it through hand-crafted bytes just hits a Starlette quirk
+(`allow_nan=False` on error responses) rather than app logic — the validator itself is
+covered directly in `tests/unit/test_telemetry_schemas.py`. Phase 1 DoD's "sensor data
+generator running, rows visibly landing in TimescaleDB" stays open until task 1.7 adds
+the generator.
 
 Note on 1.5: `POST/GET/PATCH /tenants` (superadmin-only) plus two user-creation paths —
 `POST /tenants/{tenant_id}/users` (superadmin, arbitrary tenant, for bootstrapping a new

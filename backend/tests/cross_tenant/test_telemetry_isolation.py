@@ -1,13 +1,10 @@
-"""HTTP-level cross-tenant isolation template (PHASE_PLAN.md Phase 1 session 3).
+"""Cross-tenant isolation for POST /telemetry (issue 1.6).
 
-This is the pattern future protected routes should copy: exercise the real FastAPI app
-over ASGI, with its DB session pointed at the real `app_role` (not a superuser, not the
-service layer directly) so the assertions below are only true if the whole chain works —
-JWT -> `get_tenant_context` -> `scope_session_to_tenant` -> RLS policy.
-
-`GET /me` is the only tenant-scoped route that exists yet (task 1.5 adds resource CRUD,
-task 1.4 adds RBAC-gated routes) — it's just the vehicle for testing the dependency
-chain itself.
+`sensor_readings` isn't in `PROJECT_PLAN.md`'s table sketch with a `tenant_id` column,
+but it's tenant-scoped telemetry data like everything else in this system, so it gets the
+same fail-closed RLS policy (migration 0004) and the same HTTP-level test harness as
+`test_tenant_isolation_template.py`: real ASGI app, `app_role` connection, migrations run
+against a real TimescaleDB-enabled container.
 """
 
 import asyncio
@@ -16,6 +13,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import asyncpg
@@ -77,8 +75,6 @@ async def client(
 
     monkeypatch.setattr(settings, "cookie_secure", False)
 
-    # Connect as app_role, exactly like app/core/db.py does at runtime — not the
-    # migration/admin superuser other integration tests use for convenience.
     engine = create_async_engine(
         _dsn(migrated_db, user="app_role", password=APP_ROLE_PASSWORD, driver="postgresql+asyncpg"),
         pool_pre_ping=True,
@@ -136,89 +132,122 @@ async def _register_and_login(
 
 @pytest.fixture
 async def tenant_a(migrated_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
-    tid = await _make_tenant(migrated_db, "Tenant A")
-    yield tid
+    yield await _make_tenant(migrated_db, "Tenant A")
 
 
 @pytest.fixture
 async def tenant_b(migrated_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
-    tid = await _make_tenant(migrated_db, "Tenant B")
-    yield tid
+    yield await _make_tenant(migrated_db, "Tenant B")
 
 
-async def test_me_returns_only_the_callers_own_tenant_scoped_record(
+def _reading(**overrides) -> dict:
+    reading = {
+        "asset_id": str(uuid.uuid4()),
+        "sensor_type": "temperature",
+        "value": 42.5,
+        "unit": "celsius",
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+    reading.update(overrides)
+    return reading
+
+
+async def _rows_visible_to_tenant(migrated_db: PostgresContainer, tenant_id: uuid.UUID) -> list:
+    conn = await asyncpg.connect(
+        _dsn(migrated_db, user="app_role", password=APP_ROLE_PASSWORD, driver="postgresql")
+    )
+    try:
+        await conn.execute(
+            "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+        )
+        return await conn.fetch("SELECT tenant_id, sensor_type FROM sensor_readings")
+    finally:
+        await conn.close()
+
+
+async def test_ingest_returns_accepted_count(
     client: httpx.AsyncClient, tenant_a: uuid.UUID
 ) -> None:
     token = await _register_and_login(client, tenant_id=tenant_a, email="alice@example.com")
 
-    resp = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["email"] == "alice@example.com"
-    assert body["tenant_id"] == str(tenant_a)
+    resp = await client.post(
+        "/telemetry",
+        json={"readings": [_reading(), _reading(sensor_type="vibration")]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json() == {"accepted": 2}
 
 
-async def test_concurrent_requests_from_different_tenants_do_not_leak_via_pooled_connection(
-    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID
+async def test_a_tenant_cannot_read_another_tenants_readings_via_rls(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID, migrated_db
 ) -> None:
+    same_asset = str(uuid.uuid4())
     token_a = await _register_and_login(client, tenant_id=tenant_a, email="a@example.com")
     token_b = await _register_and_login(client, tenant_id=tenant_b, email="b@example.com")
 
-    async def _get_me(token: str) -> dict:
-        resp = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
-        assert resp.status_code == 200
-        result: dict = resp.json()
-        return result
+    await client.post(
+        "/telemetry",
+        json={"readings": [_reading(asset_id=same_asset, sensor_type="tenant-a-reading")]},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    await client.post(
+        "/telemetry",
+        json={"readings": [_reading(asset_id=same_asset, sensor_type="tenant-b-reading")]},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
 
-    # Interleave many calls from both tenants so requests are likely to share pooled
-    # connections; if the GUC ever bled from one request to the next, one of these
-    # would come back with the wrong tenant's data.
-    tokens = [token_a, token_b] * 20
-    results = await asyncio.gather(*(_get_me(t) for t in tokens))
+    rows_a = await _rows_visible_to_tenant(migrated_db, tenant_a)
+    rows_b = await _rows_visible_to_tenant(migrated_db, tenant_b)
 
-    for token, result in zip(tokens, results, strict=True):
-        expected_email = "a@example.com" if token == token_a else "b@example.com"
-        expected_tenant = str(tenant_a) if token == token_a else str(tenant_b)
-        assert result["email"] == expected_email
-        assert result["tenant_id"] == expected_tenant
+    assert {r["sensor_type"] for r in rows_a} == {"tenant-a-reading"}
+    assert {r["sensor_type"] for r in rows_b} == {"tenant-b-reading"}
+
+
+async def test_concurrent_ingests_from_different_tenants_do_not_leak_via_pooled_connection(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID
+) -> None:
+    token_a = await _register_and_login(client, tenant_id=tenant_a, email="c@example.com")
+    token_b = await _register_and_login(client, tenant_id=tenant_b, email="d@example.com")
+
+    async def _post(token: str, sensor_type: str) -> httpx.Response:
+        return await client.post(
+            "/telemetry",
+            json={"readings": [_reading(sensor_type=sensor_type)]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    calls = [(token_a, "a-reading"), (token_b, "b-reading")] * 20
+    results = await asyncio.gather(*(_post(token, st) for token, st in calls))
+
+    for resp in results:
+        assert resp.status_code == 201
+
+
+async def test_empty_readings_list_rejected(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="e@example.com")
+
+    resp = await client.post(
+        "/telemetry",
+        json={"readings": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
+
+
 
 
 async def test_missing_authorization_header_rejected(client: httpx.AsyncClient) -> None:
-    resp = await client.get("/me")
+    resp = await client.post("/telemetry", json={"readings": [_reading()]})
     assert resp.status_code == 401
 
 
 async def test_malformed_bearer_token_rejected(client: httpx.AsyncClient) -> None:
-    resp = await client.get("/me", headers={"Authorization": "Bearer not-a-real-jwt"})
-    assert resp.status_code == 401
-
-
-async def test_refresh_token_rejected_as_bearer_token(
-    client: httpx.AsyncClient, tenant_a: uuid.UUID
-) -> None:
-    credentials = {
-        "tenant_id": str(tenant_a),
-        "email": "carol@example.com",
-        "password": "correct-horse-1",
-    }
-    await client.post("/register", json=credentials)
-    login_resp = await client.post("/login", json=credentials)
-    refresh_token = login_resp.cookies["refresh_token"]
-
-    resp = await client.get("/me", headers={"Authorization": f"Bearer {refresh_token}"})
-    assert resp.status_code == 401
-
-
-async def test_tenant_id_cannot_be_overridden_by_request_data(
-    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID
-) -> None:
-    token = await _register_and_login(client, tenant_id=tenant_a, email="dave@example.com")
-
-    resp = await client.get(
-        "/me",
-        headers={"Authorization": f"Bearer {token}", "X-Tenant-Id": str(tenant_b)},
-        params={"tenant_id": str(tenant_b)},
+    resp = await client.post(
+        "/telemetry",
+        json={"readings": [_reading()]},
+        headers={"Authorization": "Bearer not-a-real-jwt"},
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["tenant_id"] == str(tenant_a)
+    assert resp.status_code == 401

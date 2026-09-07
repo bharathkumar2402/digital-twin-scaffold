@@ -43,7 +43,7 @@ def _run_migrations(env: dict) -> None:
 
 @pytest.fixture(scope="module")
 def pg_container():
-    with PostgresContainer("postgres:16-alpine") as pg:
+    with PostgresContainer("timescale/timescaledb:latest-pg16") as pg:
         yield pg
 
 

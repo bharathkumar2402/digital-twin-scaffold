@@ -18,7 +18,7 @@ from tests.integration.test_auth_routes import _dsn, _run_migrations
 
 @pytest.fixture(scope="module")
 def pg_container():
-    with PostgresContainer("postgres:16-alpine") as pg:
+    with PostgresContainer("timescale/timescaledb:latest-pg16") as pg:
         yield pg
 
 
