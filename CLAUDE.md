@@ -160,8 +160,10 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) in progress — task 1 "Schema & migrations" (issue 1.1) done.
-Next: task 2 "Auth core". See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) in progress — task 1 "Schema & migrations" (issue 1.1) and
+task 2 "Auth core" (issue 1.2) done. Next: task 3 "Tenant context middleware" (write the
+cross-tenant test template at `backend/tests/cross_tenant/test_tenant_isolation_template.py`).
+See `docs/PHASE_PLAN.md`.
 
 Note: Phase 0's Definition of Done is not fully checked off yet (per project memory:
 `docker compose up`, `.env` credentials, and team split are still open) — flagging this
