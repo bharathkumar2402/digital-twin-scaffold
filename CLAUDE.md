@@ -104,16 +104,54 @@ docs/
 
 ---
 
-## Working conventions
+## Standard task workflow — follow this automatically for every task, every time
 
-- Before starting a new phase, read the matching section of `docs/PROJECT_PLAN.md` §11 and
-  propose a file/module breakdown before writing code (use plan mode for this).
-- Keep sessions scoped to one deliverable at a time — one phase sub-task, not a whole phase.
-- Commit at natural checkpoints, not just at the end of a session.
-- Python: `ruff` + `mypy` clean before committing. TypeScript: `eslint` clean.
-- Every new agent or API endpoint needs at least one test before the PR is considered done.
-- If you (Claude) are unsure whether something is in scope for this repo vs. Appendix A,
-  ask rather than building it — the scope boundary is deliberate and documented.
+This repo's work is tracked as GitHub issues numbered `<phase>.<task>` (e.g. `1.3`), each
+mapping to one numbered task in `docs/PHASE_PLAN.md`. Whenever the user asks you to start,
+continue, or move to a task — even with a short instruction like "next task" or "let's do
+1.4" — run this exact sequence without being asked for each step individually:
+
+1. **Resume check** (skip only if you just finished another task in this same session).
+   Read `CLAUDE.md`'s "Current phase" line, check `git log` and `git status`, and report
+   whether anything looks uncommitted or half-finished before proceeding.
+
+2. **Plan first.** State which phase/task/issue you're doing and its name from
+   `PHASE_PLAN.md`, then propose a file/module structure and approach. Do not write code
+   yet — wait for explicit approval or a correction.
+
+3. **Extra scrutiny check.** Before building, check whether this task is one of:
+   - anything touching RLS policies or cross-tenant tests
+   - Phase 4 tasks 1–2 (agent output validation layer, LangGraph skeleton)
+   - Phase 2 tasks 1–2 (upload sandbox, file sanitization)
+   - anything in Phase 5
+
+   If so, explicitly explain your approach choice and list the adversarial/failure-case
+   tests you'll write — not just the happy path — before building, and after building,
+   walk through what each adversarial test actually checks rather than just reporting
+   pass/fail.
+
+4. **Build**, including tests as part of the same task, not a follow-up. Python: `ruff`
+   + `mypy` clean. TypeScript: `eslint` clean.
+
+5. **Verify before commit.** Run the tests and confirm they pass. Check the work against
+   the "Non-negotiable engineering rules" above — flag anything that conflicts. Check it
+   against the relevant phase's Definition of Done in `PHASE_PLAN.md` and say whether this
+   task fully satisfies the relevant checklist items or only partially does.
+
+6. **Commit and update tracker.** Commit referencing `Closes #<issue>` in the message.
+   Update the "Current phase" line below to point at the next task, named exactly as it
+   appears in `PHASE_PLAN.md`.
+
+7. **Periodic check-in.** Every 5th task closed, or when a phase ends (whichever comes
+   first), proactively run a full Definition of Done audit for the current phase against
+   actual repo state — not against which issues are marked closed — and flag any gaps,
+   even if the user didn't ask for this check.
+
+Keep every session scoped to one task. If a request would span multiple tasks or phases,
+say so and propose splitting it rather than doing it all in one pass. If you're unsure
+whether something is in scope for this repo vs. `infra/appendix-a-future-prod/`, ask
+rather than building it — that scope boundary is deliberate and documented in
+`PROJECT_PLAN.md`.
 
 ---
 
@@ -122,4 +160,10 @@ docs/
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Not started — Phase 0 (Team & Repo Setup) is next. See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) in progress — task 1 "Schema & migrations" (issue 1.1) done.
+Next: task 2 "Auth core". See `docs/PHASE_PLAN.md`.
+
+Note: Phase 0's Definition of Done is not fully checked off yet (per project memory:
+`docker compose up`, `.env` credentials, and team split are still open) — flagging this
+per the resume-check step, not blocking on it since the user explicitly directed starting
+Phase 1 task 1.
