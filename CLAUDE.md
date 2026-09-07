@@ -161,9 +161,15 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) in progress — tasks 1 "Schema & migrations" (issue 1.1),
-2 "Auth core" (issue 1.2), and 3 "Tenant context middleware" (issue 1.3) done. Next: task 4
-"RBAC" (issue 1.4) — role enum, permission-check dependency, applied to at least one
-protected route. See `docs/PHASE_PLAN.md`.
+2 "Auth core" (issue 1.2), 3 "Tenant context middleware" (issue 1.3), and 4 "RBAC"
+(issue 1.4) done. Next: task 5 "Tenant management CRUD" (issue 1.5) — create/list/update
+tenants (superadmin-only), create/list users within a tenant. See `docs/PHASE_PLAN.md`.
+
+Note on 1.4: the `Role` enum already existed on `User` from task 1.1, so this task added
+`app/core/rbac.py` (`require_roles(*roles)` dependency factory reading `TenantContext.role`)
+and a new `GET /users` route (list users in the caller's tenant, restricted to
+`tenant_admin`/`superadmin`) as the working example. Full tenant/user CRUD is task 1.5, not
+built here.
 
 Note on 1.3: it also had to fix a real gap found while building it — the app's DB
 connection was a superuser (Supabase's `postgres` role, which carries BYPASSRLS), so RLS
