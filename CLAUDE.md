@@ -161,9 +161,22 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) in progress — tasks 1 "Schema & migrations" (issue 1.1),
-2 "Auth core" (issue 1.2), 3 "Tenant context middleware" (issue 1.3), and 4 "RBAC"
-(issue 1.4) done. Next: task 5 "Tenant management CRUD" (issue 1.5) — create/list/update
-tenants (superadmin-only), create/list users within a tenant. See `docs/PHASE_PLAN.md`.
+2 "Auth core" (issue 1.2), 3 "Tenant context middleware" (issue 1.3), 4 "RBAC"
+(issue 1.4), and 5 "Tenant management CRUD" (issue 1.5) done. Next: task 6 "TimescaleDB
+ingest endpoint" (issue 1.6) — `POST /telemetry`, Pydantic-validated payload, async bulk
+insert into a hypertable. See `docs/PHASE_PLAN.md`.
+
+Note on 1.5: `POST/GET/PATCH /tenants` (superadmin-only) plus two user-creation paths —
+`POST /tenants/{tenant_id}/users` (superadmin, arbitrary tenant, for bootstrapping a new
+tenant's first admin) and `POST /users` (tenant_admin/superadmin, caller's own tenant).
+Found and fixed a real RLS-adjacent gap: the `users` table's `WITH CHECK` policy means a
+superadmin's normal tenant-scoped session can't insert into a tenant that isn't their
+own, so admin-initiated user creation explicitly re-scopes the session to the *target*
+tenant per operation (same pattern `register_user` already used), authorized off the JWT
+role claim rather than a DB read. Also found `app_role` only had `SELECT` on `tenants`
+(migration 0002) — added migration 0003 granting `INSERT, UPDATE`, since without it the
+new tenant-create/update routes would 500 under the app's real runtime role despite
+passing integration tests that connect with admin credentials.
 
 Note on 1.4: the `Role` enum already existed on `User` from task 1.1, so this task added
 `app/core/rbac.py` (`require_roles(*roles)` dependency factory reading `TenantContext.role`)

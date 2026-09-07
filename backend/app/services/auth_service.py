@@ -43,6 +43,43 @@ async def register_user(
     return user
 
 
+async def create_user_as_admin(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    email: str,
+    password: str,
+    role: Role,
+) -> User:
+    """Admin-initiated user creation (superadmin bootstrapping a tenant, or a
+    tenant_admin inviting a teammate) — as opposed to self-service `register_user`.
+
+    Explicitly re-scopes the session to `tenant_id` rather than relying on whatever
+    tenant the caller's own session was already scoped to: a superadmin creating the
+    first user for a brand-new tenant is inherently operating outside their own
+    tenant_id, and the RLS WITH CHECK on `users` would reject the insert otherwise.
+    Safe because the caller's authorization (superadmin, or tenant_admin restricted to
+    their own tenant_id by the route) is already verified from the JWT role claim
+    before this is called.
+    """
+    await scope_session_to_tenant(session, tenant_id)
+
+    user = User(
+        tenant_id=tenant_id,
+        email=email,
+        role=role,
+        hashed_password=hash_password(password),
+    )
+    session.add(user)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise EmailAlreadyRegisteredError from exc
+
+    return user
+
+
 async def authenticate_user(
     session: AsyncSession, *, tenant_id: uuid.UUID, email: str, password: str
 ) -> User:
