@@ -160,10 +160,19 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) in progress — task 1 "Schema & migrations" (issue 1.1) and
-task 2 "Auth core" (issue 1.2) done. Next: task 3 "Tenant context middleware" (write the
-cross-tenant test template at `backend/tests/cross_tenant/test_tenant_isolation_template.py`).
-See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) in progress — tasks 1 "Schema & migrations" (issue 1.1),
+2 "Auth core" (issue 1.2), and 3 "Tenant context middleware" (issue 1.3) done. Next: task 4
+"RBAC" (issue 1.4) — role enum, permission-check dependency, applied to at least one
+protected route. See `docs/PHASE_PLAN.md`.
+
+Note on 1.3: it also had to fix a real gap found while building it — the app's DB
+connection was a superuser (Supabase's `postgres` role, which carries BYPASSRLS), so RLS
+was never actually enforced for the app's own queries, only for the isolated test role
+from 1.1. Migration 0002 adds a non-bypass `app_role` that `app/core/db.py` now connects
+as; `infra/docker/.env` needs `APP_DB_USER`/`APP_DB_PASSWORD` set (see `.env.example`).
+Phase 1's "second tenant's user cannot read the first tenant's data" DoD item is only
+partially closed by this — proven for `users` via `GET /me`, not yet for a real
+asset/facility-scoped route (that lands in tasks 1.5+).
 
 Note: Phase 0's Definition of Done is not fully checked off yet (per project memory:
 `docker compose up`, `.env` credentials, and team split are still open) — flagging this

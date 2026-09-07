@@ -1,10 +1,11 @@
 import uuid
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
+from app.core.tenant_context import scope_session_to_tenant
 from app.models.user import Role, User
 
 
@@ -16,22 +17,10 @@ class InvalidCredentialsError(Exception):
     pass
 
 
-async def _scope_session_to_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> None:
-    """Sets the RLS session GUC for this transaction (SET LOCAL semantics).
-
-    Required so the `tenant_isolation_users` RLS policy (see migration 0001)
-    permits the query — every users-table access here goes through this.
-    """
-    await session.execute(
-        text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
-        {"tenant_id": str(tenant_id)},
-    )
-
-
 async def register_user(
     session: AsyncSession, *, tenant_id: uuid.UUID, email: str, password: str
 ) -> User:
-    await _scope_session_to_tenant(session, tenant_id)
+    await scope_session_to_tenant(session, tenant_id)
 
     user = User(
         tenant_id=tenant_id,
@@ -46,14 +35,18 @@ async def register_user(
         await session.rollback()
         raise EmailAlreadyRegisteredError from exc
 
-    await session.refresh(user)
+    # No session.refresh() here: id/created_at are server_default columns, populated via
+    # RETURNING on flush, and expire_on_commit=False keeps them on `user` after commit.
+    # A refresh would run a second SELECT in a new transaction, after the transaction-
+    # local `app.current_tenant_id` GUC from scope_session_to_tenant above has already
+    # expired at commit — which the RLS policy then rejects.
     return user
 
 
 async def authenticate_user(
     session: AsyncSession, *, tenant_id: uuid.UUID, email: str, password: str
 ) -> User:
-    await _scope_session_to_tenant(session, tenant_id)
+    await scope_session_to_tenant(session, tenant_id)
 
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
@@ -67,7 +60,7 @@ async def authenticate_user(
 async def get_user_by_id(
     session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID
 ) -> User | None:
-    await _scope_session_to_tenant(session, tenant_id)
+    await scope_session_to_tenant(session, tenant_id)
 
     result = await session.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()

@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = ""
 
+    # Non-superuser role the app itself connects as at runtime (NOBYPASSRLS — see
+    # migration 0002). `postgres_user` above stays reserved for migrations, which need
+    # DDL and role-creation privileges that this role deliberately does not have.
+    app_db_user: str = "app_role"
+    app_db_password: str = "dev-only-app-role-password-change-me"
+
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
@@ -29,6 +35,13 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def app_database_url(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.app_db_user}:{self.app_db_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
