@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend deps
+        run: pip install -r backend/requirements.txt --break-system-packages
+      - name: Ruff
+        run: ruff check backend/
+      - name: Mypy
+        run: mypy backend/
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+      - name: ESLint
+        run: npm run lint --prefix frontend
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (backend)
+        run: pytest backend/tests/unit
+      - name: Integration tests (testcontainers)
+        run: pytest backend/tests/integration
+      - name: Cross-tenant RLS tests
+        run: pytest backend/tests/cross_tenant
+      - name: Frontend tests
+        run: npm test --prefix frontend
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t digital-twin-api ./backend
+      - name: Build frontend image
+        run: docker build -t digital-twin-frontend ./frontend
+
+  # Deploy job (staging → manual approval → k3s partial deployment) added in Phase 5.
+  # See docs/PROJECT_PLAN.md §10 — only API, one Celery worker, and frontend are deployed
+  # to k3s. Do not add deploy steps for stateful services here.

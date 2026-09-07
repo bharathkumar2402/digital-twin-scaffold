@@ -1,0 +1,103 @@
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../backend:/app
+    depends_on:
+      - redis
+
+  ws-server:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: ["uvicorn", "app.ws:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+    env_file: .env
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+
+  celery-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
+    env_file: .env
+    depends_on:
+      - redis
+
+  agent-runner:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.agents.runner"]
+    env_file: .env
+    depends_on:
+      - redis
+
+  upload-sandbox:
+    # Isolated worker for floor-plan file processing. No shared volume/network access
+    # to the main API beyond a narrow queue — see docs/PROJECT_PLAN.md §6.
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.sandbox
+    env_file: .env
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: ../../frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../../frontend:/app
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  tile-server:
+    image: maplibre/martin
+    ports:
+      - "3001:3000"
+    depends_on:
+      - minio
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+
+# NOTE: PostgreSQL, TimescaleDB, and (in production) Redis are managed services in this
+# project (see docs/PROJECT_PLAN.md §3.2) and are connected via .env, not run here.
+# A local Postgres/Timescale container can be added for offline dev if needed, but is
+# not part of the default demo stack.
+
+volumes:
+  minio-data:
