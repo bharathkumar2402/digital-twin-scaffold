@@ -80,7 +80,9 @@ def test_sensor_reading_columns_and_fk():
     assert cols["timestamp"].primary_key
     assert not cols["tenant_id"].nullable
     assert not cols["asset_id"].nullable
-    fk_targets = {fk.column.table.name for fk in cols["tenant_id"].foreign_keys}
-    assert fk_targets == {"tenants"}
+    # No FK on tenant_id: sensor_readings lives on a separate physical TimescaleDB
+    # instance from tenants (see migrations_timescale/), and Postgres has no
+    # cross-database foreign keys. Tenancy is enforced by RLS alone.
+    assert not cols["tenant_id"].foreign_keys
     # No FK on asset_id yet: `assets` doesn't exist until Phase 2 task 6.
     assert not cols["asset_id"].foreign_keys

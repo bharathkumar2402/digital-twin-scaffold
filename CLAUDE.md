@@ -160,13 +160,57 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) tasks 1–7 all done — schema & migrations (1.1), auth core
-(1.2), tenant context middleware (1.3), RBAC (1.4), tenant management CRUD (1.5),
-TimescaleDB ingest endpoint (1.6), and simulated IoT data generator (1.7). All Phase 1
-Claude Code sessions from `docs/PHASE_PLAN.md` are built; see the note on 1.7 below for
-one DoD item that still needs a manual run against the live stack before Phase 1 is
-fully closed. Next: Phase 2 — Map & Asset System, task 1 "Upload endpoint + sandbox
-worker skeleton" (issue 2.1). See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) is fully closed — all 7 tasks built AND every Definition
+of Done item verified against the real live stack (real Supabase Postgres, real Timescale
+Cloud instance), not just tests against ephemeral containers. Next: Phase 2 — Map & Asset
+System, task 1 "Upload endpoint + sandbox worker skeleton" (issue 2.1). See
+`docs/PHASE_PLAN.md`.
+
+Note on 1.7-fix (post-1.7 hardening, before Phase 1 could actually be called closed):
+closing the last DoD item ("sensor generator running, rows landing in TimescaleDB")
+surfaced three real bugs, only findable by actually running against the live databases —
+tests against ephemeral containers had been silently masking all three:
+1. **Supabase and TimescaleDB were never actually separate instances.** Migration 0004
+   (from 1.6) created `sensor_readings` — including `CREATE EXTENSION timescaledb` — on
+   the *same* Postgres connection as tenants/users, with a real FK to `tenants.id`.
+   Supabase doesn't support the `timescaledb` extension at all, so this would have failed
+   outright the first time anyone ran it against real Supabase. Fixed by splitting into
+   two independent Alembic chains — `migrations/` (Supabase: tenants/users/facilities)
+   and new `migrations_timescale/` (a real separate Timescale Cloud instance:
+   `sensor_readings` only, with its own `app_role` bootstrap, since roles are
+   per-cluster). The FK is gone (impossible cross-database) — `tenant_id` is now a bare
+   indexed UUID, same pattern as `asset_id`; tenancy is enforced by RLS alone. New
+   `app/core/db.py` timescale engine/session, `get_timescale_scoped_session` in
+   `tenant_context.py`, `/telemetry` now uses it. New adversarial tests: fail-closed with
+   no GUC, cross-tenant INSERT rejected by `WITH CHECK` (matters more now with no FK
+   backing it), and the two migration chains don't leak tables/state into each other.
+2. **Supabase's direct-connection host (`db.<ref>.supabase.co`) is IPv6-only** and this
+   network can't route to it (`getaddrinfo failed`, reproduced identically in two
+   different environments). Fixed by switching `POSTGRES_HOST`/`PORT`/`USER` in `.env` to
+   Supabase's Session pooler (IPv4-proxied, behaves like a direct connection) — see
+   `.env.example` for the compound `<role>.<project-ref>` username format Supavisor
+   requires.
+3. **`app/core/config.py` built Postgres connection URLs with a raw f-string**, which
+   silently corrupts the DSN if the username or password contains a URL-reserved
+   character (this project's real Supabase password contains `@`, which is exactly the
+   userinfo/host delimiter). Fixed by building all four connection-URL properties with
+   `sqlalchemy.engine.URL.create(...).render_as_string(...)`, which percent-encodes each
+   component correctly instead of failing silently later.
+4. Also discovered while verifying rows landed: Timescale Cloud's admin role
+   (`tsdbadmin`) does **not** have BYPASSRLS, unlike Supabase's `postgres` role — an
+   unscoped admin query against `sensor_readings` returns zero rows, not everything. Not
+   a bug (RLS fail-closed working as designed), but non-obvious enough to note in
+   `.env.example` so a future direct-query debugging session isn't misled by it.
+
+After all four fixes: real `alembic upgrade head` succeeded against both real Supabase
+and real Timescale Cloud; `scripts/iot_data_generator.py` run for 10s against a locally
+started API produced 4×12=48 real rows, confirmed present via a properly tenant-scoped
+query against the live Timescale Cloud database. 57/57 cross-tenant+integration tests and
+38/38 unit tests still pass (rewrote `tests/cross_tenant/test_telemetry_isolation.py` to
+spin up two containers — one per chain — matching the real two-database architecture; six
+other cross-tenant/integration test files reverted from the `timescale/timescaledb`
+container image back to plain `postgres:16-alpine` now that the main chain no longer
+needs the extension).
 
 Note on 1.7: added `backend/scripts/iot_data_generator.py`, a standalone CLI (not part
 of the FastAPI app) that logs in via `POST /login` once, then loops posting batches of
@@ -180,10 +224,7 @@ work), so tests are unit-only and network-free: pure generation/anomaly-magnitud
 batching logic in `tests/unit/test_iot_data_generator.py`, no testcontainers needed.
 This does not touch the anomaly-triggered-pipeline debounce logic in rule 4 — it only
 posts raw telemetry through the existing validated ingest endpoint, it doesn't trigger
-agent runs. Phase 1 DoD's "sensor data generator running, rows visibly landing in
-TimescaleDB" is satisfied by the script existing and being tested, but running it against
-a live `docker compose up` stack with a real tenant/user to actually watch rows land
-hasn't been done in this session — do that once before considering Phase 1 fully closed.
+agent runs.
 
 Note on 1.6: `PROJECT_PLAN.md` §5 sketches `sensor_readings` without a `tenant_id`
 column, but that conflicts with repo rule 2 (every tenant_id-bearing table needs RLS +

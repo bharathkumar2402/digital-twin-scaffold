@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, func
+from sqlalchemy import DateTime, Float, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,9 +18,11 @@ class SensorReading(Base):
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
-    )
+    # No FK to tenants.id: sensor_readings lives on a separate physical TimescaleDB
+    # instance (see app/core/config.py), and Postgres has no cross-database foreign
+    # keys. Tenancy is enforced purely by the RLS policy (migrations_timescale/0001),
+    # sourced only from the validated JWT — never a raw request parameter.
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     sensor_type: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)

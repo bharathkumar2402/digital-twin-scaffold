@@ -1,10 +1,14 @@
-"""Cross-tenant isolation for POST /telemetry (issue 1.6).
+"""Cross-tenant isolation for POST /telemetry (issues 1.6 / 1.7-fix).
 
-`sensor_readings` isn't in `PROJECT_PLAN.md`'s table sketch with a `tenant_id` column,
-but it's tenant-scoped telemetry data like everything else in this system, so it gets the
-same fail-closed RLS policy (migration 0004) and the same HTTP-level test harness as
-`test_tenant_isolation_template.py`: real ASGI app, `app_role` connection, migrations run
-against a real TimescaleDB-enabled container.
+`sensor_readings` lives on a physically separate TimescaleDB instance from
+tenants/users/facilities (Supabase doesn't support the `timescaledb` extension, and
+Postgres has no cross-database foreign keys — see `migrations_timescale/versions/0001`
+and `app/core/config.py`). This test spins up two containers standing in for those two
+real managed instances: one migrated with the main `alembic.ini` chain (tenants/users,
+for register/login), one migrated with `alembic_timescale.ini` (sensor_readings only).
+Tenancy on sensor_readings is enforced purely by RLS, with no FK to back it up, so the
+adversarial cases here (fail-closed with no GUC, cross-tenant read, cross-tenant WRITE)
+matter more than they would with a foreign-key safety net.
 """
 
 import asyncio
@@ -24,11 +28,12 @@ from testcontainers.postgres import PostgresContainer
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 APP_ROLE_PASSWORD = "test-app-role-password"
+APP_TIMESCALE_ROLE_PASSWORD = "test-app-timescale-role-password"
 
 
-def _run_migrations(env: dict) -> None:
+def _run_migrations(config_file: str, env: dict) -> None:
     subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "-c", config_file, "upgrade", "head"],
         cwd=BACKEND_DIR,
         env=env,
         check=True,
@@ -45,62 +50,107 @@ def _dsn(pg: PostgresContainer, *, user: str, password: str, driver: str) -> str
 
 
 @pytest.fixture(scope="module")
-def pg_container():
+def main_pg_container():
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="module")
+def timescale_pg_container():
     with PostgresContainer("timescale/timescaledb:latest-pg16") as pg:
         yield pg
 
 
 @pytest.fixture(scope="module")
-def migrated_db(pg_container: PostgresContainer):
+def migrated_main_db(main_pg_container: PostgresContainer):
     env = os.environ.copy()
     env.update(
-        POSTGRES_HOST=pg_container.get_container_host_ip(),
-        POSTGRES_PORT=str(pg_container.get_exposed_port(5432)),
-        POSTGRES_DB=pg_container.dbname,
-        POSTGRES_USER=pg_container.username,
-        POSTGRES_PASSWORD=pg_container.password,
+        POSTGRES_HOST=main_pg_container.get_container_host_ip(),
+        POSTGRES_PORT=str(main_pg_container.get_exposed_port(5432)),
+        POSTGRES_DB=main_pg_container.dbname,
+        POSTGRES_USER=main_pg_container.username,
+        POSTGRES_PASSWORD=main_pg_container.password,
         APP_DB_PASSWORD=APP_ROLE_PASSWORD,
     )
-    _run_migrations(env)
-    return pg_container
+    _run_migrations("alembic.ini", env)
+    return main_pg_container
+
+
+@pytest.fixture(scope="module")
+def migrated_timescale_db(timescale_pg_container: PostgresContainer):
+    env = os.environ.copy()
+    env.update(
+        TIMESCALE_HOST=timescale_pg_container.get_container_host_ip(),
+        TIMESCALE_PORT=str(timescale_pg_container.get_exposed_port(5432)),
+        TIMESCALE_DB=timescale_pg_container.dbname,
+        TIMESCALE_USER=timescale_pg_container.username,
+        TIMESCALE_PASSWORD=timescale_pg_container.password,
+        APP_TIMESCALE_PASSWORD=APP_TIMESCALE_ROLE_PASSWORD,
+    )
+    _run_migrations("alembic_timescale.ini", env)
+    return timescale_pg_container
 
 
 @pytest.fixture
 async def client(
-    migrated_db: PostgresContainer, monkeypatch: pytest.MonkeyPatch
+    migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
     from app.core.config import settings
-    from app.core.db import get_session
+    from app.core.db import get_session, get_timescale_session
     from app.main import app
 
     monkeypatch.setattr(settings, "cookie_secure", False)
 
-    engine = create_async_engine(
-        _dsn(migrated_db, user="app_role", password=APP_ROLE_PASSWORD, driver="postgresql+asyncpg"),
+    main_engine = create_async_engine(
+        _dsn(
+            migrated_main_db,
+            user="app_role",
+            password=APP_ROLE_PASSWORD,
+            driver="postgresql+asyncpg",
+        ),
         pool_pre_ping=True,
     )
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    main_session_factory = async_sessionmaker(main_engine, expire_on_commit=False)
+
+    timescale_engine = create_async_engine(
+        _dsn(
+            migrated_timescale_db,
+            user="app_role",
+            password=APP_TIMESCALE_ROLE_PASSWORD,
+            driver="postgresql+asyncpg",
+        ),
+        pool_pre_ping=True,
+    )
+    timescale_session_factory = async_sessionmaker(timescale_engine, expire_on_commit=False)
 
     async def _get_session() -> AsyncGenerator:
-        async with session_factory() as session:
+        async with main_session_factory() as session:
+            yield session
+
+    async def _get_timescale_session() -> AsyncGenerator:
+        async with timescale_session_factory() as session:
             yield session
 
     app.dependency_overrides[get_session] = _get_session
+    app.dependency_overrides[get_timescale_session] = _get_timescale_session
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
     finally:
         app.dependency_overrides.clear()
-        await engine.dispose()
+        await main_engine.dispose()
+        await timescale_engine.dispose()
 
 
-async def _make_tenant(migrated_db: PostgresContainer, name: str) -> uuid.UUID:
+async def _make_tenant(migrated_main_db: PostgresContainer, name: str) -> uuid.UUID:
     conn = await asyncpg.connect(
         _dsn(
-            migrated_db,
-            user=migrated_db.username,
-            password=migrated_db.password,
+            migrated_main_db,
+            user=migrated_main_db.username,
+            password=migrated_main_db.password,
             driver="postgresql",
         )
     )
@@ -131,13 +181,13 @@ async def _register_and_login(
 
 
 @pytest.fixture
-async def tenant_a(migrated_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
-    yield await _make_tenant(migrated_db, "Tenant A")
+async def tenant_a(migrated_main_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
+    yield await _make_tenant(migrated_main_db, "Tenant A")
 
 
 @pytest.fixture
-async def tenant_b(migrated_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
-    yield await _make_tenant(migrated_db, "Tenant B")
+async def tenant_b(migrated_main_db: PostgresContainer) -> AsyncGenerator[uuid.UUID, None]:
+    yield await _make_tenant(migrated_main_db, "Tenant B")
 
 
 def _reading(**overrides) -> dict:
@@ -152,9 +202,16 @@ def _reading(**overrides) -> dict:
     return reading
 
 
-async def _rows_visible_to_tenant(migrated_db: PostgresContainer, tenant_id: uuid.UUID) -> list:
+async def _rows_visible_to_tenant(
+    migrated_timescale_db: PostgresContainer, tenant_id: uuid.UUID
+) -> list:
     conn = await asyncpg.connect(
-        _dsn(migrated_db, user="app_role", password=APP_ROLE_PASSWORD, driver="postgresql")
+        _dsn(
+            migrated_timescale_db,
+            user="app_role",
+            password=APP_TIMESCALE_ROLE_PASSWORD,
+            driver="postgresql",
+        )
     )
     try:
         await conn.execute(
@@ -180,7 +237,10 @@ async def test_ingest_returns_accepted_count(
 
 
 async def test_a_tenant_cannot_read_another_tenants_readings_via_rls(
-    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID, migrated_db
+    client: httpx.AsyncClient,
+    tenant_a: uuid.UUID,
+    tenant_b: uuid.UUID,
+    migrated_timescale_db: PostgresContainer,
 ) -> None:
     same_asset = str(uuid.uuid4())
     token_a = await _register_and_login(client, tenant_id=tenant_a, email="a@example.com")
@@ -197,11 +257,70 @@ async def test_a_tenant_cannot_read_another_tenants_readings_via_rls(
         headers={"Authorization": f"Bearer {token_b}"},
     )
 
-    rows_a = await _rows_visible_to_tenant(migrated_db, tenant_a)
-    rows_b = await _rows_visible_to_tenant(migrated_db, tenant_b)
+    rows_a = await _rows_visible_to_tenant(migrated_timescale_db, tenant_a)
+    rows_b = await _rows_visible_to_tenant(migrated_timescale_db, tenant_b)
 
     assert {r["sensor_type"] for r in rows_a} == {"tenant-a-reading"}
     assert {r["sensor_type"] for r in rows_b} == {"tenant-b-reading"}
+
+
+async def test_app_role_with_no_guc_sees_zero_rows_on_sensor_readings(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, migrated_timescale_db: PostgresContainer
+) -> None:
+    """Fail-closed check: with no FK to `tenants` backing this table, RLS is the *only*
+    thing standing between a misconfigured connection and every tenant's readings."""
+    token = await _register_and_login(client, tenant_id=tenant_a, email="noguc@example.com")
+    await client.post(
+        "/telemetry",
+        json={"readings": [_reading()]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    conn = await asyncpg.connect(
+        _dsn(
+            migrated_timescale_db,
+            user="app_role",
+            password=APP_TIMESCALE_ROLE_PASSWORD,
+            driver="postgresql",
+        )
+    )
+    try:
+        rows = await conn.fetch("SELECT * FROM sensor_readings")
+        assert rows == []
+    finally:
+        await conn.close()
+
+
+async def test_app_role_cannot_insert_reading_for_a_different_tenant(
+    migrated_timescale_db: PostgresContainer, tenant_a: uuid.UUID, tenant_b: uuid.UUID
+) -> None:
+    """WITH CHECK enforcement: a session scoped to tenant A cannot write a row stamped
+    with tenant B's id. Without the (impossible, cross-database) FK to `tenants`, this
+    is the only thing preventing a bug from mislabeling a write's tenant_id."""
+    conn = await asyncpg.connect(
+        _dsn(
+            migrated_timescale_db,
+            user="app_role",
+            password=APP_TIMESCALE_ROLE_PASSWORD,
+            driver="postgresql",
+        )
+    )
+    try:
+        await conn.execute(
+            "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_a)
+        )
+        with pytest.raises(asyncpg.exceptions.PostgresError):
+            await conn.execute(
+                "INSERT INTO sensor_readings (tenant_id, asset_id, sensor_type, value, "
+                "unit, timestamp) VALUES ($1, $2, $3, $4, $5, now())",
+                tenant_b,
+                uuid.uuid4(),
+                "sneaky",
+                1.0,
+                "celsius",
+            )
+    finally:
+        await conn.close()
 
 
 async def test_concurrent_ingests_from_different_tenants_do_not_leak_via_pooled_connection(
@@ -237,8 +356,6 @@ async def test_empty_readings_list_rejected(
     assert resp.status_code == 422
 
 
-
-
 async def test_missing_authorization_header_rejected(client: httpx.AsyncClient) -> None:
     resp = await client.post("/telemetry", json={"readings": [_reading()]})
     assert resp.status_code == 401
@@ -251,3 +368,52 @@ async def test_malformed_bearer_token_rejected(client: httpx.AsyncClient) -> Non
         headers={"Authorization": "Bearer not-a-real-jwt"},
     )
     assert resp.status_code == 401
+
+
+async def test_main_and_timescale_migration_chains_are_independent(
+    migrated_main_db: PostgresContainer, migrated_timescale_db: PostgresContainer
+) -> None:
+    """The two chains must not share alembic_version state or tables: the main chain
+    should never see sensor_readings, and the timescale chain should never see
+    tenants/users/facilities."""
+    main_conn = await asyncpg.connect(
+        _dsn(
+            migrated_main_db,
+            user=migrated_main_db.username,
+            password=migrated_main_db.password,
+            driver="postgresql",
+        )
+    )
+    timescale_conn = await asyncpg.connect(
+        _dsn(
+            migrated_timescale_db,
+            user=migrated_timescale_db.username,
+            password=migrated_timescale_db.password,
+            driver="postgresql",
+        )
+    )
+    try:
+        main_tables = {
+            r["tablename"]
+            for r in await main_conn.fetch(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            )
+        }
+        timescale_tables = {
+            r["tablename"]
+            for r in await timescale_conn.fetch(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            )
+        }
+        assert "sensor_readings" not in main_tables
+        assert {"tenants", "users", "facilities"}.isdisjoint(timescale_tables)
+
+        main_version = await main_conn.fetchval("SELECT version_num FROM alembic_version")
+        timescale_version = await timescale_conn.fetchval(
+            "SELECT version_num FROM alembic_version"
+        )
+        assert main_version == "0003"
+        assert timescale_version == "0001"
+    finally:
+        await main_conn.close()
+        await timescale_conn.close()

@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import get_session, get_timescale_session
 from app.core.security import InvalidTokenError, TokenType, decode_token
 
 BEARER_PREFIX = "Bearer "
@@ -59,5 +59,19 @@ async def get_tenant_scoped_session(
     session: AsyncSession = Depends(get_session),
     context: TenantContext = Depends(get_tenant_context),
 ) -> AsyncGenerator[AsyncSession, None]:
+    await scope_session_to_tenant(session, context.tenant_id)
+    yield session
+
+
+async def get_timescale_scoped_session(
+    session: AsyncSession = Depends(get_timescale_session),
+    context: TenantContext = Depends(get_tenant_context),
+) -> AsyncGenerator[AsyncSession, None]:
+    """Same GUC-scoping as `get_tenant_scoped_session`, on the TimescaleDB connection.
+
+    sensor_readings lives in a separate physical database (see app/core/config.py), so
+    it needs its own session/engine — but the RLS policy shape and the fail-closed GUC
+    convention are identical.
+    """
     await scope_session_to_tenant(session, context.tenant_id)
     yield session

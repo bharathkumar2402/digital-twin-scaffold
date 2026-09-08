@@ -48,7 +48,7 @@ def _dsn(pg: PostgresContainer, *, user: str, password: str, driver: str) -> str
 
 @pytest.fixture(scope="module")
 def pg_container():
-    with PostgresContainer("timescale/timescaledb:latest-pg16") as pg:
+    with PostgresContainer("postgres:16-alpine") as pg:
         yield pg
 
 

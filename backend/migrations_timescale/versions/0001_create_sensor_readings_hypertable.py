@@ -1,19 +1,27 @@
-"""create sensor_readings TimescaleDB hypertable
+"""create sensor_readings TimescaleDB hypertable, on its own instance
 
-Revision ID: 0004
-Revises: 0003
-Create Date: 2026-09-07
+Revision ID: 0001
+Revises:
+Create Date: 2026-09-08
 
-Task 1.6. `PROJECT_PLAN.md` §5 sketches `sensor_readings` without a `tenant_id` column,
-but repo rule 2 requires an RLS policy + cross-tenant test on every tenant-scoped table,
-so `tenant_id` is added here and enforced with the same fail-closed policy pattern as
-migration 0001. `asset_id` is a bare indexed UUID with no FK yet — the `assets` table is
-Phase 2 task 6; a follow-up migration adds the FK once it exists.
+Originally this table (and its RLS policy) lived as migration 0004 in the main
+`migrations/` chain, on the same Postgres instance as tenants/users/facilities. That
+was wrong: `PROJECT_PLAN.md` §3.2 and this file's own `.env.example` always called for
+TimescaleDB to be a separate managed instance, and Supabase (the main instance) doesn't
+support the `timescaledb` extension at all — the original migration would have failed
+outright against a real Supabase database, even though it passed in tests (which ran
+against a `timescale/timescaledb:latest-pg16` container standing in for the main DB).
+
+Moving it here means `sensor_readings` can no longer have a foreign key to `tenants.id`
+(no cross-database FKs in Postgres) — `tenant_id` is a bare indexed UUID instead, same
+as `asset_id` already was. Tenancy is enforced purely by the RLS policy below, sourced
+only from the JWT via the tenant-context dependency — never a raw request parameter.
+
+`app_role` also has to be created fresh here: roles are per-cluster, so the app_role
+migration 0002 created on the main instance does not exist on this one.
 
 Primary key is `(id, timestamp)`, not just `id`: TimescaleDB requires every unique/
 primary-key index on a hypertable to include the partitioning column.
-
-Per migration 0002's reminder, `app_role` needs an explicit grant on this new table.
 """
 from collections.abc import Sequence
 
@@ -21,9 +29,11 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.core.config import settings
+
 # revision identifiers, used by Alembic.
-revision: str = "0004"
-down_revision: str | None = "0003"
+revision: str = "0001"
+down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -31,6 +41,23 @@ APP_ROLE = "app_role"
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+
+    conn.exec_driver_sql(
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
+                CREATE ROLE {APP_ROLE} LOGIN NOBYPASSRLS;
+            END IF;
+        END
+        $$;
+        """
+    )
+    conn.exec_driver_sql(
+        f"ALTER ROLE {APP_ROLE} WITH PASSWORD '{settings.app_timescale_password}'"
+    )
+
     op.execute('CREATE EXTENSION IF NOT EXISTS "timescaledb" CASCADE')
 
     op.create_table(
@@ -53,7 +80,6 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id", "timestamp", name="pk_sensor_readings"),
     )
     op.create_index("ix_sensor_readings_tenant_id", "sensor_readings", ["tenant_id"])
@@ -73,7 +99,6 @@ def upgrade() -> None:
         """
     )
 
-    conn = op.get_bind()
     conn.exec_driver_sql(f"GRANT SELECT, INSERT ON sensor_readings TO {APP_ROLE}")
 
 
@@ -85,3 +110,4 @@ def downgrade() -> None:
     op.drop_index("ix_sensor_readings_asset_time", table_name="sensor_readings")
     op.drop_index("ix_sensor_readings_tenant_id", table_name="sensor_readings")
     op.drop_table("sensor_readings")
+    conn.exec_driver_sql(f"DROP ROLE IF EXISTS {APP_ROLE}")
