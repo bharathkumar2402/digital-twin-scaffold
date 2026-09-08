@@ -17,6 +17,7 @@ dependencies = [
     "celery[redis]>=5.4",
     "minio>=7.2",
     "python-multipart>=0.0.18",
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]

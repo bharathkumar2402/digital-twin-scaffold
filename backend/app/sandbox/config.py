@@ -24,6 +24,7 @@ class SandboxSettings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_secure: bool = False
     minio_raw_uploads_bucket: str = "facility-map-raw-uploads"
+    minio_sanitized_bucket: str = "facility-map-sanitized"
 
     @property
     def redis_url(self) -> str:

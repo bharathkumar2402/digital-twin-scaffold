@@ -1,7 +1,8 @@
 # Isolated image for the upload-sandbox worker (issue 2.1 — see PROJECT_PLAN.md §6).
 #
 # Deliberately does NOT reuse `Dockerfile`/`pyproject.toml`'s full dependency set: this
-# image installs only what app/sandbox/** needs (Celery + the MinIO client) and copies
+# image installs only what app/sandbox/** needs (Celery, the MinIO client, and
+# defusedxml for issue 2.2's SVG sanitization — pure-Python, no C deps) and copies
 # only `app/__init__.py` + `app/sandbox/`. It has no SQLAlchemy, no asyncpg, no FastAPI,
 # and the rest of `app/` (core/db.py, models/, services/, api/) is not present on this
 # filesystem at all — a bug that tried to import them would fail with ImportError/
@@ -11,7 +12,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "celery[redis]>=5.4" "minio>=7.2"
+RUN pip install --no-cache-dir "celery[redis]>=5.4" "minio>=7.2" "defusedxml>=0.7"
 
 COPY app/__init__.py ./app/__init__.py
 COPY app/sandbox ./app/sandbox

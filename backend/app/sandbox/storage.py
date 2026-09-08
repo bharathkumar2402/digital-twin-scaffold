@@ -1,3 +1,5 @@
+import io
+
 from minio import Minio
 
 from app.sandbox.config import sandbox_settings
@@ -25,3 +27,14 @@ def fetch_raw_upload(storage_key: str) -> bytes:
     finally:
         response.close()
         response.release_conn()
+
+
+def put_sanitized_upload(storage_key: str, content: bytes) -> None:
+    """Writes sanitized bytes to a separate bucket from the raw upload — task 2.3's
+    GDAL conversion pipeline reads from here, never from the raw-uploads bucket, so a
+    file that skipped sanitization can never reach GDAL by accident."""
+    client = get_minio_client()
+    bucket = sandbox_settings.minio_sanitized_bucket
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+    client.put_object(bucket, storage_key, io.BytesIO(content), length=len(content))
