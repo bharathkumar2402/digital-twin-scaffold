@@ -1,4 +1,14 @@
-from app.models import Base, Facility, FacilityMapUpload, Role, SensorReading, Tenant, User
+from app.models import (
+    Asset,
+    AssetStatus,
+    Base,
+    Facility,
+    FacilityMapUpload,
+    Role,
+    SensorReading,
+    Tenant,
+    User,
+)
 
 
 def test_metadata_has_exactly_the_expected_tables():
@@ -8,6 +18,7 @@ def test_metadata_has_exactly_the_expected_tables():
         "facilities",
         "sensor_readings",
         "facility_map_uploads",
+        "assets",
     }
 
 
@@ -85,7 +96,10 @@ def test_sensor_reading_columns_and_fk():
     # instance from tenants (see migrations_timescale/), and Postgres has no
     # cross-database foreign keys. Tenancy is enforced by RLS alone.
     assert not cols["tenant_id"].foreign_keys
-    # No FK on asset_id yet: `assets` doesn't exist until Phase 2 task 6.
+    # No FK on asset_id either, even though `assets` exists now (issue 2.6): assets
+    # lives in the main Supabase database, sensor_readings in the separate physical
+    # TimescaleDB instance — still no cross-database FK possible, same reasoning as
+    # tenant_id above.
     assert not cols["asset_id"].foreign_keys
 
 
@@ -107,5 +121,37 @@ def test_facility_map_upload_columns_and_fks():
     assert not cols["facility_id"].nullable
     assert not cols["storage_key"].nullable
     assert cols["status_detail"].nullable
+    assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
+    assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
+
+
+def test_asset_status_enum_values():
+    assert {s.value for s in AssetStatus} == {"operational", "maintenance", "offline"}
+
+
+def test_asset_columns_and_fks():
+    cols = Asset.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "tenant_id",
+        "facility_id",
+        "name",
+        "type",
+        "x",
+        "y",
+        "status",
+        "installed_date",
+        "manufacturer",
+        "model",
+        "created_at",
+    }
+    assert not cols["tenant_id"].nullable
+    assert not cols["facility_id"].nullable
+    assert not cols["name"].nullable
+    assert not cols["x"].nullable
+    assert not cols["y"].nullable
+    assert cols["installed_date"].nullable
+    assert cols["manufacturer"].nullable
+    assert cols["model"].nullable
     assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
     assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}

@@ -14,14 +14,22 @@ import { useEffect, useRef } from "react";
 //     rather than a value read off the API - reopening that merged 2.4 contract for a
 //     zoom-level int didn't seem worth it for this task, but if DEFAULT_MAX_ZOOM ever
 //     changes on the backend, update this too.
-const RASTER_PROFILE_MAX_ZOOM = 4;
+// Exported for src/lib/mapCoords.ts (issue 2.6's asset pixel<->lnglat conversion) so
+// that math stays pinned to the exact same zoom level this layer renders at, instead
+// of a second hand-copied "4".
+export const RASTER_PROFILE_MAX_ZOOM = 4;
 const RASTER_SOURCE_ID = "facility-floor-plan";
 
 interface FacilityMapProps {
   tileUrlTemplate: string;
+  // Fired once the map + floor-plan raster layer are ready, handing back the raw
+  // maplibregl.Map instance so a caller (AssetLayer, task 2.6) can attach its own
+  // GeoJSON source/layers on top without this component needing to know about
+  // assets at all.
+  onMapLoad?: (map: maplibregl.Map) => void;
 }
 
-export function FacilityMap({ tileUrlTemplate }: FacilityMapProps): React.JSX.Element {
+export function FacilityMap({ tileUrlTemplate, onMapLoad }: FacilityMapProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
@@ -60,13 +68,14 @@ export function FacilityMap({ tileUrlTemplate }: FacilityMapProps): React.JSX.El
         type: "raster",
         source: RASTER_SOURCE_ID,
       });
+      onMapLoad?.(map);
     });
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, [tileUrlTemplate]);
+  }, [tileUrlTemplate, onMapLoad]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} data-testid="maplibre-container" />;
 }

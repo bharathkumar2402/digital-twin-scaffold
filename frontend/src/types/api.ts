@@ -27,3 +27,35 @@ export interface FacilityMapUploadStatusResponse {
   tile_prefix: string | null;
   tile_url_template: string | null;
 }
+
+// Mirrors backend/app/models/asset.py's AssetStatus enum.
+export type AssetStatus = "operational" | "maintenance" | "offline";
+
+// Mirrors backend/app/schemas/requests/assets.py's AssetResponse. `x`/`y` are in the
+// same local-pixel coordinate space as the facility's tile pyramid (see
+// FacilityMap.tsx and backend/app/models/asset.py), not lat/lon.
+export interface Asset {
+  id: string;
+  facility_id: string;
+  name: string;
+  type: string;
+  x: number;
+  y: number;
+  status: AssetStatus;
+  installed_date: string | null;
+  manufacturer: string | null;
+  model: string | null;
+}
+
+export interface AssetCreateRequest {
+  name: string;
+  type: string;
+  x: number;
+  y: number;
+  status?: AssetStatus;
+  installed_date?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+}
+
+export type AssetUpdateRequest = Partial<AssetCreateRequest>;

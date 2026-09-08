@@ -160,12 +160,85 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–5 ("Upload endpoint +
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–6 ("Upload endpoint +
 sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, "GDAL conversion
-pipeline" / issue 2.3, "Tile server wiring" / issue 2.4, and "Frontend map integration" /
-issue 2.5) are built and merged. Next: Phase 2 task 6 "Asset CRUD + map placement"
-(issue 2.6) — create/edit assets with `(x, y)` coordinates, drag-and-drop placement on
-the map. See `docs/PHASE_PLAN.md`.
+pipeline" / issue 2.3, "Tile server wiring" / issue 2.4, "Frontend map integration" /
+issue 2.5, and "Asset CRUD + map placement" / issue 2.6) are built and merged. Next:
+Phase 2 task 7 "Asset dependency graph editor" (issue 2.7) — UI + backend for linking
+`asset_dependencies` (parent/child). See `docs/PHASE_PLAN.md`.
+
+Note on 2.6: new `assets` table (migration 0006) — `tenant_id, facility_id, name, type,
+x, y, status (enum: operational/maintenance/offline), installed_date, manufacturer,
+model`, matching `PROJECT_PLAN.md` §5's sketch plus a `tenant_id` column that sketch
+omitted (same gap-and-fix pattern as `sensor_readings` in 1.6 — every tenant_id-bearing
+table needs RLS + a cross-tenant test per repo rule 2). `(x, y)` are local-pixel
+coordinates in the *same* space the facility's raster tile pyramid uses (documented in
+`app/models/asset.py`'s docstring) — not a new coordinate convention. `assets` is the
+first table in this repo that's both updatable and end-user-deletable, so
+`tests/cross_tenant/test_assets_rls.py` extends the usual read/insert-isolation
+coverage (`test_facility_map_uploads_rls.py`'s pattern) with two new adversarial cases:
+a cross-tenant `UPDATE` and a cross-tenant `DELETE` against a real, known row id must
+both affect zero rows (RLS's `USING` clause blocks them, not just `WITH CHECK` on
+writes), not merely error or silently 404 at the API layer alone. Backend:
+`app/services/asset_service.py` (create/list/get/update/delete, same
+explicit-tenant_id-filter-plus-RLS defense-in-depth as `facility_map_service.py`, plus
+a facility-ownership check on create) and `app/api/assets.py`
+(`POST/GET /facilities/{id}/assets`, `GET/PATCH/DELETE .../{asset_id}`) — writes
+restricted to `tenant_admin`/`facility_manager`/`superadmin`, reads open to any
+authenticated tenant member, mirroring `facility_maps.py`'s role split.
+
+Frontend: `useAssets.ts` (React Query list/create/update/delete via the existing
+`apiFetch` wrapper), `AssetLayer.tsx` (a GeoJSON circle layer, not a DOM marker — per
+`frontend/CLAUDE.md`'s "assets are GeoJSON point layers, never hand-drawn SVG shapes
+positioned with CSS" — with click-to-select and mousedown/mousemove/mouseup-driven
+drag-to-place), and `mapCoords.ts` (`pixelToLngLat`/`lngLatToPixel`, converting an
+asset's local-pixel `(x, y)` to/from the `[lng, lat]` MapLibre needs, routed through
+`maplibregl.MercatorCoordinate` rather than hand-deriving the Mercator projection
+formula, so it stays self-consistent with how `FacilityMap.tsx`'s raster layer is
+actually drawn). `FacilityMapPage.tsx` gained an "Add asset" mode, a new-asset form,
+and an asset detail/edit/delete side panel, role-gated the same way as the map-upload
+route (`superadmin`/`tenant_admin`/`facility_manager` only; `technician`/`viewer`
+stay read-only).
+
+Verified for real, not just unit-tested (per the extra-scrutiny workflow step, since
+this touches RLS/cross-tenant tests): brought up a real Postgres container and ran
+`test_assets_rls.py`'s adversarial cases directly — confirmed a cross-tenant `UPDATE`
+and `DELETE` against a real row id both return `"UPDATE 0"`/`"DELETE 0"` and leave the
+row untouched, not just that the API 404s. Separately, since MapLibre marker placement
+math can't be verified by Vitest's mocked-`maplibre-gl` unit tests (jsdom has no WebGL,
+and the mock doesn't implement real Mercator projection), drove `AssetLayer` in a real
+Chrome tab via a temporary harness route (removed before committing) with three fake
+assets: confirmed markers render at correct *relative* screen positions and are
+color-coded correctly by status (green/orange/red for
+operational/maintenance/offline), using `map.fitBounds` to navigate there (at
+`RASTER_PROFILE_MAX_ZOOM`/zoom 0, an asset's local-pixel coordinates map to a point so
+close to the world's Mercator corner that it isn't visible without zooming in — true
+of the floor-plan raster layer itself too, an existing default-view characteristic
+from 2.5, not something 2.6 introduced). This live pass caught two real bugs unit
+tests with synthetic events didn't: (1) a plain click-and-release on an asset (no real
+drag) was still committing a no-op "move" PATCH to the same coordinates — fixed by
+gating the move commit on actual screen-pixel displacement past `DRAG_THRESHOLD_PX`
+(3px) rather than "any mousemove event fired", since a real click's mousedown/mouseup
+can sandwich a sub-pixel jitter mousemove with zero intent to drag; (2) the asset
+label's `symbol`/`text-field` layer required a style-level `glyphs` (font) URL that
+`FacilityMap.tsx`'s style never sets — MapLibre logged an error and silently dropped
+the layer rather than throwing. Since this project's map is deliberately private and
+self-hosted with no external services (`PROJECT_PLAN.md` §6) and this repo has no
+font/glyphs server to point at, the label layer was dropped rather than pointed at a
+public glyphs CDN — asset name/type is still available via the sidebar list and detail
+panel, just not as an on-map label; a real icon-by-type sprite sheet (`PROJECT_PLAN.md`
+§6's eventual design) is a separate, not-yet-scoped follow-up. Both fixes are covered
+by new regression tests in `AssetLayer.test.tsx`, not just fixed ad hoc.
+
+21/21 new backend tests pass (5 cross-tenant RLS incl. the two adversarial
+update/delete cases, 16 integration/unit), 190/190 backend tests total, ruff + mypy
+clean. 13 new frontend tests pass (`mapCoords.test.ts`'s real-`MercatorCoordinate`
+round-trip math, `useAssets.test.tsx`, and `AssetLayer.test.tsx` incl. both live-found
+regressions), 32/32 frontend tests total, ESLint + `tsc -b` clean, production
+`vite build` succeeds. This closes task 2.6's scope (asset CRUD + click/drag map
+placement); Phase 2's overall DoD item "assets can be placed... and clicked for
+detail" is satisfied by this task, but "linked" stays open until task 2.7's asset
+dependency graph editor.
 
 Note on 2.5: `frontend/` was completely empty before this task (only `CLAUDE.md` and
 empty `src/` subfolders) — no `package.json`, no build tooling at all — so this session
