@@ -76,6 +76,14 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # MapLibre (task 2.5) uploads raster tiles into WebGL textures, which requires
+      # the tile images to clear CORS - otherwise the browser throws a SecurityError
+      # on texture upload and nothing renders. The self-hosted "minio/minio" image
+      # used here doesn't support the S3 PutBucketCors API at all (that's an
+      # AIStor/paid-tier-only feature - see minio/minio#15874), so this uses MinIO's
+      # server-wide CORS env var instead, scoped to just the frontend's dev origin
+      # rather than "*".
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN}
     ports:
       - "9000:9000"
       - "9001:9001"

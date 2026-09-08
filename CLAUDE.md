@@ -160,12 +160,84 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–4 ("Upload endpoint +
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–5 ("Upload endpoint +
 sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, "GDAL conversion
-pipeline" / issue 2.3, and "Tile server wiring" / issue 2.4) are built and merged. Next:
-Phase 2 task 5 "Frontend map integration" (issue 2.5) — MapLibre GL JS canvas consuming
-the tile URL 2.4 now returns, rendering an uploaded facility floor plan. See
-`docs/PHASE_PLAN.md`.
+pipeline" / issue 2.3, "Tile server wiring" / issue 2.4, and "Frontend map integration" /
+issue 2.5) are built and merged. Next: Phase 2 task 6 "Asset CRUD + map placement"
+(issue 2.6) — create/edit assets with `(x, y)` coordinates, drag-and-drop placement on
+the map. See `docs/PHASE_PLAN.md`.
+
+Note on 2.5: `frontend/` was completely empty before this task (only `CLAUDE.md` and
+empty `src/` subfolders) — no `package.json`, no build tooling at all — so this session
+bootstraps the whole app: Vite + React 18 + TS, React Query, react-router-dom, a typed
+`fetch` wrapper (`src/lib/apiClient.ts`) that keeps the access token in module-scope
+memory only (never localStorage, per `frontend/CLAUDE.md`) and does one 401 →
+`POST /refresh` → retry using the existing HttpOnly cookie, and a minimal
+`AuthProvider`/`useAuth` (`src/hooks/useAuth.tsx`) plus bare `LoginPage` — deliberately
+unstyled, since this task's job is proving the map-rendering pipeline works end to end,
+not the real login UX. `useFacilityMapUpload` (`src/hooks/useFacilityMapUpload.ts`)
+polls `GET /facilities/{id}/map/{uploadId}` (issue 2.4) every 2s while `status` is
+pending/processing/sanitized, stopping at tiled/failed/conversion_failed.
+`FacilityMap` (`src/components/FacilityMap.tsx`) is the actual MapLibre GL JS canvas:
+a raster source off `tile_url_template`, `scheme: "tms"` (gdal2tiles' default y-axis,
+not MapLibre's default `"xyz"`), center `[0, 0]`/zoom `0` (gdal2tiles' raster profile
+has no real-world CRS — see `app/sandbox/convert.py` — so it centers the tiled image at
+a synthetic `[0,0]` origin the same way a normal Mercator pyramid would), and
+`maxzoom: 4` hand-kept to match `DEFAULT_MAX_ZOOM` in `app/sandbox/convert.py` (not
+exposed via the `FacilityMapUploadStatusResponse` schema — reopening that merged 2.4
+contract for one int didn't seem worth it here, but the two need to be kept in sync by
+hand if `DEFAULT_MAX_ZOOM` ever changes). Reached at
+`/facilities/:facilityId/map/:uploadId` by direct URL, not a facility picker — there's
+no facilities-list endpoint on the backend yet (facility CRUD isn't a task anywhere in
+`PHASE_PLAN.md`'s Phase 2 list), matching how 2.4 itself was verified, by a direct URL
+hit rather than a UI flow. `frontend/Dockerfile` (dev-mode Vite, `npm run dev --host`)
+fills in docker-compose's `frontend` service, which already expected a build context and
+port 5173 with no Dockerfile present.
+
+A real blocker surfaced building this: MapLibre uploads raster tiles into WebGL
+textures, which requires the tile images to clear CORS, or the browser throws a
+`SecurityError` on texture upload and nothing renders. The self-hosted `minio/minio`
+image this repo uses has no per-bucket S3 CORS API at all — that's an AIStor
+(paid-tier)-only feature (confirmed against `minio/minio` upstream issues) — so the
+"CORS configured on the bucket separately" follow-up flagged at the end of 2.4's note was
+slightly wrong about the mechanism. Fixed with MinIO's server-wide
+`MINIO_API_CORS_ALLOW_ORIGIN` env var instead (`docker-compose.yml`'s `minio` service),
+scoped to the frontend's dev origin, not `*`. Separately, the FastAPI app had no CORS
+middleware configured at all, which would have blocked every browser fetch from the
+frontend's origin to the API regardless of the MinIO fix — added `CORSMiddleware` in
+`app/main.py` with a new `Settings.frontend_origin` (`http://localhost:5173` default),
+`allow_credentials=True` (needed for the refresh cookie) forcing an explicit origin list
+rather than `"*"` (browsers reject wildcard-origin + credentials). New
+`infra/docker/.env`/`.env.example` entries: `FRONTEND_ORIGIN`,
+`MINIO_API_CORS_ALLOW_ORIGIN`.
+
+Verified for real, not just unit-tested: brought up real `minio`+`redis` containers,
+uploaded a synthetic tile pyramid (a real, valid small PNG at z0/z1, same
+`put_tile_pyramid` code path 2.3/2.4's real verification used) through the anonymous-read
++ now-CORS-enabled bucket, confirmed an anonymous browser `OPTIONS` preflight against a
+tile URL returns `Access-Control-Allow-Origin: http://localhost:5173`, then loaded the
+real `FacilityMap` component in a real Chrome tab (via a temporary route, removed before
+committing) pointed at that tile URL — it rendered the tile with zero console errors (an
+earlier pass with a hand-rolled, invalid PNG did correctly reproduce the "image could not
+be decoded" failure mode, confirming the test would actually catch a real problem, not
+just pass trivially). Separately ran the real FastAPI app (`uvicorn`, real Supabase
+credentials from `.env`, no docker build since `backend/Dockerfile` doesn't exist yet —
+a pre-existing gap, out of scope here, same as prior sessions running the API directly)
+and drove a real login attempt from the browser through `LoginPage` with wrong
+credentials: got a clean `"Invalid email or password"` rendered in the UI with no CORS
+errors in the console, confirming the full browser → CORS → FastAPI → Supabase → error
+response → UI round trip actually works, not just that the pieces type-check. All
+containers/dev servers torn down after.
+
+16/16 new frontend tests pass (Vitest + RTL: the API client's 401→refresh→retry logic
+including the non-retry cases for `/login`/`/refresh` themselves and a failed refresh;
+the polling hook's stop-condition as a pure exported function rather than driving React
+Query's timers; the `FacilityMap` component's MapLibre source/layer config with
+`maplibre-gl` mocked, since jsdom has no WebGL), ESLint + `tsc -b` clean, production
+`vite build` succeeds. 2 new backend tests (`tests/unit/test_cors.py`) cover the new
+CORS middleware — allowed origin gets the preflight headers, an unlisted origin doesn't —
+167/167 backend tests still pass, ruff + mypy clean. This closes task 2.5's scope; Phase
+2's overall DoD ("assets can be placed, linked, and clicked") stays open until task 6+.
 
 Note on 2.4: PHASE_PLAN.md's "wire martin/TiTiler" phrasing turned out not to fit —
 flagged and resolved with the user before building (per the workflow's plan-first step):

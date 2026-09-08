@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     # dev/docker-compose environments served over plain HTTP.
     cookie_secure: bool = True
 
+    # Browser origin the frontend (task 2.5) is served from - the sole entry in
+    # CORSMiddleware's allow_origins (app/main.py). Kept to a single explicit origin
+    # rather than "*" because allow_credentials=True is required for the refresh
+    # cookie, and browsers refuse to combine a wildcard origin with credentials.
+    frontend_origin: str = "http://localhost:5173"
+
     # Built with sqlalchemy.engine.URL.create rather than an f-string: usernames and
     # passwords from managed providers routinely contain "@", ":", "/" or other
     # URL-reserved characters (e.g. Supavisor's "role.project-ref" usernames, or a
