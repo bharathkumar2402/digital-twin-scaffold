@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.facility_maps import router as facility_maps_router
 from app.api.telemetry import router as telemetry_router
 from app.api.tenants import router as tenants_router
 from app.api.users import router as users_router
@@ -11,3 +12,4 @@ app.include_router(auth_router)
 app.include_router(tenants_router)
 app.include_router(users_router)
 app.include_router(telemetry_router)
+app.include_router(facility_maps_router)

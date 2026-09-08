@@ -39,6 +39,23 @@ class Settings(BaseSettings):
     app_timescale_user: str = "app_role"
     app_timescale_password: str = "dev-only-app-role-password-change-me"
 
+    # Redis is the Celery broker for both the main app's task queue and the
+    # `upload-sandbox` handoff queue (app/sandbox/**) — see PROJECT_PLAN.md §6.
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str = ""
+
+    # Raw floor-plan bytes go straight to object storage, never to the API container's
+    # local disk — the sandbox worker (network-only access) fetches them from here.
+    # This bucket holds only untrusted, unsanitized uploads.
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_secure: bool = False
+    minio_raw_uploads_bucket: str = "facility-map-raw-uploads"
+
+    max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
+
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
@@ -95,6 +112,15 @@ class Settings(BaseSettings):
             host=self.timescale_host,
             port=self.timescale_port,
             database=self.timescale_db,
+        ).render_as_string(hide_password=False)
+
+    @property
+    def redis_url(self) -> str:
+        return URL.create(
+            "redis",
+            password=self.redis_password or None,
+            host=self.redis_host,
+            port=self.redis_port,
         ).render_as_string(hide_password=False)
 
 

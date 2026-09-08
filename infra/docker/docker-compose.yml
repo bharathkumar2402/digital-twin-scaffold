@@ -26,7 +26,7 @@ services:
     build:
       context: ../../backend
       dockerfile: Dockerfile
-    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "-Q", "celery,sandbox-results"]
     env_file: .env
     depends_on:
       - redis
@@ -41,14 +41,19 @@ services:
       - redis
 
   upload-sandbox:
-    # Isolated worker for floor-plan file processing. No shared volume/network access
-    # to the main API beyond a narrow queue — see docs/PROJECT_PLAN.md §6.
+    # Isolated worker for floor-plan file processing. No shared volume/filesystem with
+    # the main API, and — unlike every other backend service here — NOT `env_file:
+    # .env`: it gets its own `.env.sandbox`, which holds only Redis/MinIO variables, so
+    # Postgres/Timescale credentials never enter this container's environment at all
+    # even if it were compromised. See app/sandbox/** and docs/PROJECT_PLAN.md §6.
     build:
       context: ../../backend
       dockerfile: Dockerfile.sandbox
-    env_file: .env
+    command: ["celery", "-A", "app.sandbox.celery_app.sandbox_celery_app", "worker", "--loglevel=info", "-Q", "upload-sandbox"]
+    env_file: .env.sandbox
     depends_on:
       - redis
+      - minio
 
   frontend:
     build:

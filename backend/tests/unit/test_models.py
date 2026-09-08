@@ -1,4 +1,4 @@
-from app.models import Base, Facility, Role, SensorReading, Tenant, User
+from app.models import Base, Facility, FacilityMapUpload, Role, SensorReading, Tenant, User
 
 
 def test_metadata_has_exactly_the_expected_tables():
@@ -7,6 +7,7 @@ def test_metadata_has_exactly_the_expected_tables():
         "users",
         "facilities",
         "sensor_readings",
+        "facility_map_uploads",
     }
 
 
@@ -86,3 +87,24 @@ def test_sensor_reading_columns_and_fk():
     assert not cols["tenant_id"].foreign_keys
     # No FK on asset_id yet: `assets` doesn't exist until Phase 2 task 6.
     assert not cols["asset_id"].foreign_keys
+
+
+def test_facility_map_upload_columns_and_fks():
+    cols = FacilityMapUpload.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "tenant_id",
+        "facility_id",
+        "original_filename",
+        "storage_key",
+        "format",
+        "status",
+        "status_detail",
+        "created_at",
+    }
+    assert not cols["tenant_id"].nullable
+    assert not cols["facility_id"].nullable
+    assert not cols["storage_key"].nullable
+    assert cols["status_detail"].nullable
+    assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
+    assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}

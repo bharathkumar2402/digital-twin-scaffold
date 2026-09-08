@@ -160,11 +160,45 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed — all 7 tasks built AND every Definition
-of Done item verified against the real live stack (real Supabase Postgres, real Timescale
-Cloud instance), not just tests against ephemeral containers. Next: Phase 2 — Map & Asset
-System, task 1 "Upload endpoint + sandbox worker skeleton" (issue 2.1). See
-`docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 task 1 "Upload endpoint +
+sandbox worker skeleton" (issue 2.1) is built and merged. Next: Phase 2 task 2 "File
+sanitization" (issue 2.2) — strip SVG active content, enforce size limits, reject
+malformed input before GDAL ever touches the file; also an extra-scrutiny task per the
+rules above. See `docs/PHASE_PLAN.md`.
+
+Note on 2.1: `POST /facilities/{facility_id}/map` (tenant_admin/superadmin only) does the
+minimum needed to prove the sandbox isolation boundary, deliberately no GDAL/sanitization
+logic yet (that's 2.2/2.3): validates the caller's facility ownership (explicit
+`tenant_id` filter, not just RLS — see below), a `.svg/.dxf/.pdf` extension allowlist, and
+a 25 MiB size cap, then writes the raw bytes straight to a MinIO bucket and hands off a
+narrow `{upload_id, tenant_id, storage_key}` payload by Celery task name onto a dedicated
+`upload-sandbox` queue. New `facility_map_uploads` table (tenant_id-scoped, RLS +
+`tests/cross_tenant/test_facility_map_uploads_rls.py`, migration 0004) tracks status;
+`app/workers/callback_tasks.py` (runs in the main `celery-worker`, has DB creds) is the
+only thing that writes a sandbox result back into Postgres via `record_sandbox_result` on
+a separate `sandbox-results` queue. `app/sandbox/**` is a self-contained package with its
+own Celery app, its own minimal `SandboxSettings` (Redis+MinIO only), and its own
+`Dockerfile.sandbox` that `COPY`s nothing but `app/__init__.py` + `app/sandbox/` and
+installs only `celery[redis]`+`minio` — no SQLAlchemy/asyncpg/FastAPI, no DB credentials
+in its env (`infra/docker/.env.sandbox`, not the shared `.env`), no bind-mounted source.
+Isolation is verified structurally, not assumed:
+`tests/unit/test_sandbox_isolation.py` statically asserts `app/sandbox/**` never imports
+`app.core.db`/`app.models`/`app.services`/`app.api`/SQLAlchemy, asserts
+`Dockerfile.sandbox` never references those paths, asserts the compose service loads
+`.env.sandbox` (not `.env`) with no `volumes:`, and asserts the sandbox/main Celery apps'
+default queues are disjoint. Two real bugs surfaced by writing these tests before the
+happy path (see the extra-scrutiny workflow step): (1) the ownership check originally
+used `session.get(Facility, facility_id)`, relying entirely on RLS — under an
+admin/BYPASSRLS DB connection (which every integration test here uses, matching the
+existing harness pattern) another tenant's facility was silently visible and the upload
+succeeded instead of 404ing; fixed with an explicit `WHERE tenant_id = :tenant_id` filter
+as defense-in-depth. (2) `app/sandbox/config.py` initially imported
+`sqlalchemy.engine.URL` to build the Redis DSN — which would have been an `ImportError`
+at container runtime since `Dockerfile.sandbox` never installs SQLAlchemy; fixed by
+hand-building the URL with `urllib.parse.quote` instead. Added dependencies:
+`celery[redis]`, `minio`, `python-multipart` (FastAPI's `UploadFile` needs it). New
+`infra/docker/.env.sandbox.example`. 117/117 tests pass (ruff + mypy clean); this task
+only partially closes Phase 2's DoD (floor plan doesn't render yet — that needs 2.2–2.5).
 
 Note on 1.7-fix (post-1.7 hardening, before Phase 1 could actually be called closed):
 closing the last DoD item ("sensor generator running, rows landing in TimescaleDB")
