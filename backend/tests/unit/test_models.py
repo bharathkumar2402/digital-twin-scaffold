@@ -1,5 +1,6 @@
 from app.models import (
     Asset,
+    AssetDependency,
     AssetStatus,
     Base,
     Facility,
@@ -19,6 +20,7 @@ def test_metadata_has_exactly_the_expected_tables():
         "sensor_readings",
         "facility_map_uploads",
         "assets",
+        "asset_dependencies",
     }
 
 
@@ -155,3 +157,27 @@ def test_asset_columns_and_fks():
     assert cols["model"].nullable
     assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
     assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
+
+
+def test_asset_dependency_columns_and_fks():
+    cols = AssetDependency.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "tenant_id",
+        "facility_id",
+        "parent_asset_id",
+        "child_asset_id",
+        "created_at",
+    }
+    assert not cols["tenant_id"].nullable
+    assert not cols["facility_id"].nullable
+    assert not cols["parent_asset_id"].nullable
+    assert not cols["child_asset_id"].nullable
+    assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
+    assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
+    assert {fk.column.table.name for fk in cols["parent_asset_id"].foreign_keys} == {"assets"}
+    assert {fk.column.table.name for fk in cols["child_asset_id"].foreign_keys} == {"assets"}
+
+    constraint_names = {c.name for c in AssetDependency.__table__.constraints}
+    assert "uq_asset_dependencies_edge" in constraint_names
+    assert "ck_asset_dependencies_no_self_loop" in constraint_names

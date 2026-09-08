@@ -160,12 +160,88 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–6 ("Upload endpoint +
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–7 ("Upload endpoint +
 sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, "GDAL conversion
 pipeline" / issue 2.3, "Tile server wiring" / issue 2.4, "Frontend map integration" /
-issue 2.5, and "Asset CRUD + map placement" / issue 2.6) are built and merged. Next:
-Phase 2 task 7 "Asset dependency graph editor" (issue 2.7) — UI + backend for linking
-`asset_dependencies` (parent/child). See `docs/PHASE_PLAN.md`.
+issue 2.5, "Asset CRUD + map placement" / issue 2.6, and "Asset dependency graph editor"
+/ issue 2.7) are built and merged. Next: Phase 2 task 8 "Asset detail panel" (issue 2.8)
+— click an asset → telemetry chart (from Phase 1's ingest data) + maintenance history
+stub. See `docs/PHASE_PLAN.md`.
+
+Note on 2.7: new `asset_dependencies` table (migration 0007) — directed edges,
+`parent_asset_id` DEPENDS ON `child_asset_id` (child is upstream; this direction is what
+Phase 4's cascade simulation will walk to find downstream-impacted assets from a failed
+asset, per PHASE_PLAN.md's Phase 4 DoD — documented in `app/models/asset_dependency.py`'s
+docstring since getting the direction backwards would be easy and hard to notice later).
+Same fail-closed RLS pattern as `assets`/`facility_map_uploads`. Backend:
+`app/services/asset_dependency_service.py` (create/list/delete, same
+explicit-tenant_id-filter-plus-RLS defense-in-depth as `asset_service.py`) rejects
+self-loops (400), duplicate edges (409), and — the one deliberate addition beyond "link
+two rows" — cycles (409, via a BFS over existing edges before insert), since an
+unconstrained graph would silently break Phase 4's cascade walk later. `app/api/asset_dependencies.py`
+(`POST/GET /facilities/{id}/asset-dependencies`, `DELETE .../{dependency_id}`) mirrors
+`assets.py`'s role split. Frontend: `useAssetDependencies.ts` (React Query, mirrors
+`useAssets.ts`), `DependencyLayer.tsx` (a GeoJSON line layer between parent/child asset
+positions — per `frontend/CLAUDE.md`'s "GeoJSON layers, never hand-drawn SVG/CSS shapes"
+rule, extended from points to edges), and `FacilityMapPage.tsx` gained a "Link
+dependency" mode (click one asset then another to create an edge) plus a
+depends-on/depended-on-by list with per-edge "Unlink" in the asset detail panel.
+
+Live-verifying this task (real Postgres, real uvicorn, real Chrome — required since this
+touches RLS, per the extra-scrutiny workflow step) surfaced a real, previously-undiscovered
+production bug, not introduced by this task but affecting every tenant-scoped table since
+Phase 1: Postgres's custom-GUC placeholder mechanism means `current_setting('app.current_tenant_id',
+true)` returns `''` (not NULL) on a session/connection that has ever used `SET LOCAL
+app.current_tenant_id` once that transaction commits — confirmed directly against a real
+Postgres instance (see migration 0008's docstring for the full repro). Every RLS policy's
+bare `current_setting(...)::uuid` cast then raises a hard `InvalidTextRepresentationError`
+(500) instead of the intended fail-closed "0 rows" — and `session.refresh()` immediately
+after `session.commit()` (the pattern `asset_service.create_asset`, `facility_map_service`'s
+upload creation, and this task's own `create_dependency` all used) hits exactly this, in a
+fresh transaction right after the commit that scoped the GUC. `auth_service.py`'s
+`register_user` had already independently discovered and correctly avoided this pattern
+(see its comment) but it was never applied consistently. Fixed two ways, together: (1)
+migration 0008 (main chain) and a matching migration 0002 (the separate `migrations_timescale/`
+chain, `sensor_readings` carries the identical bug) guard every existing policy with
+`NULLIF(current_setting(...), '')::uuid` — migration 0007 was written with the guard from
+the start; (2) removed the unnecessary `session.refresh()` calls from `asset_service.py`
+(`create_asset`, `update_asset`), `facility_map_service.py`, and this task's own
+`asset_dependency_service.py` — all redundant anyway, since `app/core/db.py`'s session
+factory already sets `expire_on_commit=False`, so server-generated defaults (`id`,
+`created_at`) are already correct on the object after commit via Postgres's implicit
+RETURNING. New regression test `tests/cross_tenant/test_rls_guc_empty_string_regression.py`
+pins the exact same-connection SET-LOCAL-then-commit-then-query sequence against `assets`,
+`users`, and `facilities`, asserting 0 rows rather than a crash. This means `create_asset`
+(issue 2.6) had likely been silently broken against any real, non-bypass-RLS role since it
+was merged — the integration test suite never caught it because its `client` fixture
+connects the app as the container's admin/BYPASSRLS role, not `app_role`, so RLS was never
+actually evaluated on that path; only the `cross_tenant/` tests use `app_role`, and none of
+those exercised a create-then-refresh sequence.
+
+Verified for real, not just unit-tested (per the extra-scrutiny workflow step, since this
+touches RLS/cross-tenant tests): brought up a real (non-testcontainer) Postgres container,
+ran real `alembic upgrade head` through migration 0008, ran the real FastAPI app via
+`uvicorn` connected as `app_role` (not admin) against it, and drove a real login + the
+full link-dependency flow in a real Chrome tab (temporary seed data, removed after) —
+created two real assets via the "Add asset" map-click flow (confirming the POST 503 → 201
+fix), entered "Link dependency" mode and clicked one marker then another (confirming the
+two-click state machine and the prompt text), confirmed the dashed line rendered between
+them, opened the asset detail panel and confirmed "Depends on: Tank 2" with an "Unlink"
+button, clicked it, and confirmed both the line and the list entry disappeared. This
+first pass is also what surfaced the RLS bug above — the first attempt 503'd on both
+asset creation and dependency creation before the fix, and reproducible with a minimal
+SQLAlchemy+asyncpg script isolated from the FastAPI app entirely, ruling out a frontend or
+routing cause before touching the RLS policies.
+
+23/23 new backend tests pass (5 cross-tenant RLS for asset_dependencies, 15
+integration/RBAC/adversarial — self-loop, duplicate edge, cycle, cross-facility pairing —
+for the new routes, 3 for the RLS-GUC regression), 210/210 backend tests total, ruff +
+mypy clean. 9 new frontend tests pass (`useAssetDependencies.test.tsx`,
+`DependencyLayer.test.tsx` incl. a dangling-edge-dropped case), 41/41 frontend tests
+total, ESLint + `tsc -b` clean, production `vite build` succeeds. This closes task 2.7's
+scope; Phase 2's overall DoD item "assets can be placed, linked, and clicked for detail"
+is now satisfied for placement and linking — full click-for-detail (telemetry chart) is
+task 2.8.
 
 Note on 2.6: new `assets` table (migration 0006) — `tenant_id, facility_id, name, type,
 x, y, status (enum: operational/maintenance/offline), installed_date, manufacturer,

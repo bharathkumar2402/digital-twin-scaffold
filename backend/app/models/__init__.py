@@ -1,4 +1,5 @@
 from app.models.asset import Asset, AssetStatus
+from app.models.asset_dependency import AssetDependency
 from app.models.base import Base
 from app.models.facility import Facility
 from app.models.facility_map_upload import FacilityMapUpload, UploadStatus
@@ -17,4 +18,5 @@ __all__ = [
     "UploadStatus",
     "Asset",
     "AssetStatus",
+    "AssetDependency",
 ]

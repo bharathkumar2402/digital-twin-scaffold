@@ -3,11 +3,17 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { AssetLayer } from "../components/AssetLayer";
+import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
+import {
+  useAssetDependencies,
+  useCreateAssetDependency,
+  useDeleteAssetDependency,
+} from "../hooks/useAssetDependencies";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
-import type { Asset, AssetStatus } from "../types/api";
+import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 
 // Mirrors backend/app/core/rbac.py's WRITE_ROLES in app/api/assets.py - technician and
 // viewer stay read-only on the map, same restriction as facility map uploads.
@@ -34,6 +40,8 @@ export function FacilityMapPage(): React.JSX.Element {
 
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const [addMode, setAddMode] = useState(false);
+  const [linkMode, setLinkMode] = useState(false);
+  const [pendingParentId, setPendingParentId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [newAssetDraft, setNewAssetDraft] = useState<NewAssetDraft | null>(null);
 
@@ -42,8 +50,14 @@ export function FacilityMapPage(): React.JSX.Element {
   const updateAsset = useUpdateAsset(facilityId ?? "");
   const deleteAsset = useDeleteAsset(facilityId ?? "");
 
+  const dependenciesQuery = useAssetDependencies(facilityId ?? "");
+  const createDependency = useCreateAssetDependency(facilityId ?? "");
+  const deleteDependency = useDeleteAssetDependency(facilityId ?? "");
+
   const assets = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
+  const dependencies = useMemo(() => dependenciesQuery.data ?? [], [dependenciesQuery.data]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
   if (!facilityId || !uploadId) {
     return <p>Missing facility or upload id in the URL.</p>;
@@ -65,11 +79,26 @@ export function FacilityMapPage(): React.JSX.Element {
     <div style={{ width: "100vw", height: "100vh", display: "flex" }}>
       <div style={{ flex: 1, position: "relative" }}>
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
+        <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
         <AssetLayer
           map={map}
           assets={assets}
           addMode={addMode}
           onSelectAsset={(assetId) => {
+            if (linkMode) {
+              if (!pendingParentId) {
+                setPendingParentId(assetId);
+                return;
+              }
+              if (pendingParentId !== assetId) {
+                createDependency.mutate({
+                  parent_asset_id: pendingParentId,
+                  child_asset_id: assetId,
+                });
+              }
+              setPendingParentId(null);
+              return;
+            }
             setNewAssetDraft(null);
             setSelectedAssetId(assetId);
           }}
@@ -82,16 +111,33 @@ export function FacilityMapPage(): React.JSX.Element {
           }}
         />
         {canEdit && (
-          <button
-            type="button"
-            style={{ position: "absolute", top: 8, left: 8 }}
-            onClick={() => {
-              setAddMode((current) => !current);
-              setNewAssetDraft(null);
-            }}
-          >
-            {addMode ? "Cancel placing asset" : "Add asset"}
-          </button>
+          <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAddMode((current) => !current);
+                setNewAssetDraft(null);
+              }}
+            >
+              {addMode ? "Cancel placing asset" : "Add asset"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLinkMode((current) => !current);
+                setPendingParentId(null);
+              }}
+            >
+              {linkMode ? "Cancel linking" : "Link dependency"}
+            </button>
+          </div>
+        )}
+        {linkMode && (
+          <p style={{ position: "absolute", top: 40, left: 8, background: "#fff", padding: 4 }}>
+            {pendingParentId
+              ? `Click the asset "${assetsById.get(pendingParentId)?.name ?? pendingParentId}" depends on...`
+              : "Click the asset that depends on another..."}
+          </p>
         )}
       </div>
 
@@ -121,12 +167,16 @@ export function FacilityMapPage(): React.JSX.Element {
             canEdit={canEdit}
             isSaving={updateAsset.isPending}
             isDeleting={deleteAsset.isPending}
+            dependencies={dependencies}
+            assetsById={assetsById}
+            isDeletingDependency={deleteDependency.isPending}
             onUpdate={(updates) => updateAsset.mutate({ assetId: selectedAsset.id, body: updates })}
             onDelete={() => {
               deleteAsset.mutate(selectedAsset.id, {
                 onSuccess: () => setSelectedAssetId(null),
               });
             }}
+            onDeleteDependency={(dependencyId) => deleteDependency.mutate(dependencyId)}
             onClose={() => setSelectedAssetId(null)}
           />
         )}
@@ -207,18 +257,32 @@ function AssetDetailPanel({
   canEdit,
   isSaving,
   isDeleting,
+  dependencies,
+  assetsById,
+  isDeletingDependency,
   onUpdate,
   onDelete,
+  onDeleteDependency,
   onClose,
 }: {
   asset: Asset;
   canEdit: boolean;
   isSaving: boolean;
   isDeleting: boolean;
+  dependencies: AssetDependency[];
+  assetsById: Map<string, Asset>;
+  isDeletingDependency: boolean;
   onUpdate: (updates: { name?: string; type?: string; status?: AssetStatus }) => void;
   onDelete: () => void;
+  onDeleteDependency: (dependencyId: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
+  // parent depends_on child (see AssetDependency's docstring in types/api.ts) - so
+  // "depends on" (upstream) is where this asset is the parent, "depended on by"
+  // (downstream) is where it's the child.
+  const dependsOn = dependencies.filter((dep) => dep.parent_asset_id === asset.id);
+  const dependedOnBy = dependencies.filter((dep) => dep.child_asset_id === asset.id);
+
   return (
     <div>
       <button type="button" onClick={onClose}>
@@ -244,6 +308,45 @@ function AssetDetailPanel({
       {asset.manufacturer && <p>Manufacturer: {asset.manufacturer}</p>}
       {asset.model && <p>Model: {asset.model}</p>}
       {asset.installed_date && <p>Installed: {asset.installed_date}</p>}
+
+      <h4>Depends on</h4>
+      {dependsOn.length === 0 && <p>None</p>}
+      <ul style={{ listStyle: "none", padding: 0 }}>
+        {dependsOn.map((dep) => (
+          <li key={dep.id}>
+            {assetsById.get(dep.child_asset_id)?.name ?? dep.child_asset_id}
+            {canEdit && (
+              <button
+                type="button"
+                disabled={isDeletingDependency}
+                onClick={() => onDeleteDependency(dep.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <h4>Depended on by</h4>
+      {dependedOnBy.length === 0 && <p>None</p>}
+      <ul style={{ listStyle: "none", padding: 0 }}>
+        {dependedOnBy.map((dep) => (
+          <li key={dep.id}>
+            {assetsById.get(dep.parent_asset_id)?.name ?? dep.parent_asset_id}
+            {canEdit && (
+              <button
+                type="button"
+                disabled={isDeletingDependency}
+                onClick={() => onDeleteDependency(dep.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+
       {canEdit && (
         <button type="button" onClick={onDelete} disabled={isDeleting}>
           Delete asset

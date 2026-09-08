@@ -70,8 +70,13 @@ async def create_asset(
         model=model,
     )
     session.add(asset)
+    # No session.refresh() here - deliberately. See update_asset's comment below: it
+    # would issue a new SELECT after the RLS-scoping GUC's SET LOCAL has gone out of
+    # scope along with commit(), which is unnecessary anyway since expire_on_commit=False
+    # (app/core/db.py) already keeps `asset`'s attributes - including server-side
+    # `id`/`created_at` defaults, populated via Postgres's implicit RETURNING - correct
+    # after commit().
     await session.commit()
-    await session.refresh(asset)
     return asset
 
 
@@ -107,8 +112,15 @@ async def update_asset(
     )
     for field, value in updates.items():
         setattr(asset, field, value)
+    # No session.refresh() here either - `asset`'s attributes already reflect the
+    # setattr() calls above and expire_on_commit=False keeps them from being
+    # invalidated by commit(); a refresh() would issue a redundant SELECT after the
+    # RLS-scoping GUC has gone out of scope (see create_asset's comment and migration
+    # 0008 - found live-verifying issue 2.7, this had been silently broken since 2.6
+    # whenever a real, non-bypass-RLS role hit this path, which every real deployment
+    # does; the integration tests never caught it because they connect as an
+    # RLS-bypassing admin role, not app_role).
     await session.commit()
-    await session.refresh(asset)
     return asset
 
 

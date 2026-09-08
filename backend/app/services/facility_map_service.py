@@ -67,8 +67,15 @@ async def create_map_upload(
         status=UploadStatus.PENDING,
     )
     session.add(upload)
+    # No session.refresh() here - `id` is set explicitly above, and expire_on_commit=False
+    # (app/core/db.py) keeps every other attribute (including `created_at`, populated via
+    # RETURNING on flush) correct on `upload` after commit(). A refresh() would run a
+    # second SELECT in a new transaction after the RLS-scoping GUC (SET LOCAL
+    # app.current_tenant_id) has gone out of scope along with the commit above - same bug
+    # as asset_service.py/asset_dependency_service.py, found live-verifying issue 2.7; see
+    # migration 0008 for the RLS-policy half of the fix and auth_service.py's register_user
+    # for the pattern this already correctly avoided.
     await session.commit()
-    await session.refresh(upload)
 
     # Hand off by task name + a narrow payload (ids and a storage key) only — never
     # file bytes, never DB credentials. app/sandbox/** is a separate process/container

@@ -59,3 +59,18 @@ export interface AssetCreateRequest {
 }
 
 export type AssetUpdateRequest = Partial<AssetCreateRequest>;
+
+// Mirrors backend/app/schemas/requests/asset_dependencies.py's AssetDependencyResponse.
+// `parent_asset_id` depends on `child_asset_id` (child is upstream) - see
+// backend/app/models/asset_dependency.py's docstring for why this direction was chosen.
+export interface AssetDependency {
+  id: string;
+  facility_id: string;
+  parent_asset_id: string;
+  child_asset_id: string;
+}
+
+export interface AssetDependencyCreateRequest {
+  parent_asset_id: string;
+  child_asset_id: string;
+}
