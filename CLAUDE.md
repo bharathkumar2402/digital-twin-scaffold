@@ -160,12 +160,30 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) in progress — tasks 1 "Schema & migrations" (issue 1.1),
-2 "Auth core" (issue 1.2), 3 "Tenant context middleware" (issue 1.3), 4 "RBAC"
-(issue 1.4), 5 "Tenant management CRUD" (issue 1.5), and 6 "TimescaleDB ingest endpoint"
-(issue 1.6) done. Next: task 7 "Simulated IoT data generator" (issue 1.7) — standalone
-script producing realistic normal + anomalous sensor patterns, configurable rate, posts
-to `POST /telemetry`. See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) tasks 1–7 all done — schema & migrations (1.1), auth core
+(1.2), tenant context middleware (1.3), RBAC (1.4), tenant management CRUD (1.5),
+TimescaleDB ingest endpoint (1.6), and simulated IoT data generator (1.7). All Phase 1
+Claude Code sessions from `docs/PHASE_PLAN.md` are built; see the note on 1.7 below for
+one DoD item that still needs a manual run against the live stack before Phase 1 is
+fully closed. Next: Phase 2 — Map & Asset System, task 1 "Upload endpoint + sandbox
+worker skeleton" (issue 2.1). See `docs/PHASE_PLAN.md`.
+
+Note on 1.7: added `backend/scripts/iot_data_generator.py`, a standalone CLI (not part
+of the FastAPI app) that logs in via `POST /login` once, then loops posting batches of
+synthetic readings to `POST /telemetry` for a configurable set of simulated asset UUIDs
+and sensor types (temperature/pressure/vibration/humidity), each with a sine-wave +
+Gaussian-noise baseline and an independently-rolled anomaly injection per reading
+(`--anomaly-rate`). Moved `httpx` from the `dev` optional-deps group to main
+`dependencies` in `pyproject.toml` since the script needs it at runtime, not just in
+tests. Not one of the extra-scrutiny categories (no RLS/schema/agent/upload/Phase-5
+work), so tests are unit-only and network-free: pure generation/anomaly-magnitude/
+batching logic in `tests/unit/test_iot_data_generator.py`, no testcontainers needed.
+This does not touch the anomaly-triggered-pipeline debounce logic in rule 4 — it only
+posts raw telemetry through the existing validated ingest endpoint, it doesn't trigger
+agent runs. Phase 1 DoD's "sensor data generator running, rows visibly landing in
+TimescaleDB" is satisfied by the script existing and being tested, but running it against
+a live `docker compose up` stack with a real tenant/user to actually watch rows land
+hasn't been done in this session — do that once before considering Phase 1 fully closed.
 
 Note on 1.6: `PROJECT_PLAN.md` §5 sketches `sensor_readings` without a `tenant_id`
 column, but that conflicts with repo rule 2 (every tenant_id-bearing table needs RLS +
