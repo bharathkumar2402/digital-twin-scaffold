@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_secure: bool = False
     minio_raw_uploads_bucket: str = "facility-map-raw-uploads"
+    # Populated by app/sandbox/convert.py (issue 2.3) with an anonymous-read policy
+    # (app/sandbox/storage.py, issue 2.4) — tiles are fetched straight from MinIO, no
+    # dedicated tile-server process. See tile_url_template below.
+    minio_tiles_bucket: str = "facility-map-tiles"
+    # Browser/host-facing MinIO base URL. Distinct from `minio_endpoint`, which is the
+    # in-Docker-network address (`minio:9000`) other containers use to reach it — a
+    # tile URL handed to a browser must use the host-mapped address instead
+    # (`localhost:9000` in the default compose setup).
+    minio_public_endpoint: str = "localhost:9000"
+    minio_public_secure: bool = False
 
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
@@ -113,6 +123,17 @@ class Settings(BaseSettings):
             port=self.timescale_port,
             database=self.timescale_db,
         ).render_as_string(hide_password=False)
+
+    def tile_url_template(self, tile_prefix: str) -> str:
+        """A MapLibre-style `{z}/{x}/{y}` URL template for one upload's tile pyramid,
+        addressed at the browser-facing MinIO endpoint (not the in-network one other
+        containers use). Local pixel XYZ coordinates, not a real-world CRS — see
+        app/sandbox/convert.py."""
+        scheme = "https" if self.minio_public_secure else "http"
+        return (
+            f"{scheme}://{self.minio_public_endpoint}/{self.minio_tiles_bucket}/"
+            f"{tile_prefix}/{{z}}/{{x}}/{{y}}.png"
+        )
 
     @property
     def redis_url(self) -> str:

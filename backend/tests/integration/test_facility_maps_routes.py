@@ -283,3 +283,139 @@ async def test_valid_upload_is_stored_and_handed_off_to_sandbox_queue(
     # Narrow payload only — never raw file bytes, never DB credentials.
     assert set(kwargs.keys()) == {"upload_id", "tenant_id", "storage_key"}
     assert kwargs["tenant_id"] == str(tenant_id)
+
+
+# --- GET /facilities/{id}/map/{upload_id} (issue 2.4) ---
+
+
+async def test_get_upload_status_before_tiling_has_no_tile_url(
+    client: httpx.AsyncClient, tenant_and_facility: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    tenant_id, facility_id = tenant_and_facility
+    token = _access_token(tenant_id=tenant_id, role="tenant_admin")
+
+    upload_resp = await client.post(
+        f"/facilities/{facility_id}/map",
+        files={"file": ("plan.svg", b"<svg><rect/></svg>", "image/svg+xml")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    upload_id = upload_resp.json()["id"]
+
+    resp = await client.get(
+        f"/facilities/{facility_id}/map/{upload_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "pending"
+    assert body["tile_prefix"] is None
+    assert body["tile_url_template"] is None
+
+
+async def test_get_upload_status_after_tiling_returns_tile_url_template(
+    client: httpx.AsyncClient,
+    tenant_and_facility: tuple[uuid.UUID, uuid.UUID],
+    migrated_db: PostgresContainer,
+) -> None:
+    from app.core.config import settings
+
+    tenant_id, facility_id = tenant_and_facility
+    token = _access_token(tenant_id=tenant_id, role="tenant_admin")
+
+    upload_resp = await client.post(
+        f"/facilities/{facility_id}/map",
+        files={"file": ("plan.svg", b"<svg><rect/></svg>", "image/svg+xml")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    upload_id = upload_resp.json()["id"]
+    tile_prefix = f"{tenant_id}/{facility_id}/{upload_id}"
+
+    # Simulate the callback path (app/workers/callback_tasks.py) recording a finished
+    # tiling run — done via a raw admin connection since MinIO/Celery aren't part of
+    # this harness (see the `client` fixture's docstring), matching how the other
+    # fixtures in this file seed rows the API layer doesn't create.
+    conn = await asyncpg.connect(_dsn(migrated_db, driver="postgresql"))
+    try:
+        await conn.execute(
+            "UPDATE facility_map_uploads SET status = 'tiled', tile_prefix = $1 WHERE id = $2",
+            tile_prefix,
+            uuid.UUID(upload_id),
+        )
+    finally:
+        await conn.close()
+
+    resp = await client.get(
+        f"/facilities/{facility_id}/map/{upload_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "tiled"
+    assert body["tile_prefix"] == f"{tenant_id}/{facility_id}/{upload_id}"
+    assert body["tile_url_template"] == settings.tile_url_template(body["tile_prefix"])
+    assert "{z}/{x}/{y}.png" in body["tile_url_template"]
+
+
+async def test_get_upload_status_for_another_tenant_404s(
+    client: httpx.AsyncClient,
+    tenant_and_facility: tuple[uuid.UUID, uuid.UUID],
+) -> None:
+    tenant_id, facility_id = tenant_and_facility
+    token = _access_token(tenant_id=tenant_id, role="tenant_admin")
+
+    upload_resp = await client.post(
+        f"/facilities/{facility_id}/map",
+        files={"file": ("plan.svg", b"<svg><rect/></svg>", "image/svg+xml")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    upload_id = upload_resp.json()["id"]
+
+    other_tenant_token = _access_token(tenant_id=uuid.uuid4(), role="tenant_admin")
+
+    resp = await client.get(
+        f"/facilities/{facility_id}/map/{upload_id}",
+        headers={"Authorization": f"Bearer {other_tenant_token}"},
+    )
+
+    assert resp.status_code == 404
+
+
+async def test_get_upload_status_nonexistent_upload_404s(
+    client: httpx.AsyncClient, tenant_and_facility: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    tenant_id, facility_id = tenant_and_facility
+    token = _access_token(tenant_id=tenant_id, role="tenant_admin")
+
+    resp = await client.get(
+        f"/facilities/{facility_id}/map/{uuid.uuid4()}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 404
+
+
+async def test_viewer_can_read_upload_status(
+    client: httpx.AsyncClient, tenant_and_facility: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    """Unlike POST (tenant_admin/superadmin only), GET status has no role restriction —
+    any authenticated member of the tenant can check on a facility's map processing,
+    since it's read-only and needed by any viewer of the eventual map (task 2.5)."""
+    tenant_id, facility_id = tenant_and_facility
+    admin_token = _access_token(tenant_id=tenant_id, role="tenant_admin")
+
+    upload_resp = await client.post(
+        f"/facilities/{facility_id}/map",
+        files={"file": ("plan.svg", b"<svg><rect/></svg>", "image/svg+xml")},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    upload_id = upload_resp.json()["id"]
+
+    viewer_token = _access_token(tenant_id=tenant_id, role="viewer")
+    resp = await client.get(
+        f"/facilities/{facility_id}/map/{upload_id}",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+
+    assert resp.status_code == 200, resp.text

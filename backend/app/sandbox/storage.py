@@ -1,9 +1,31 @@
 import io
+import json
 from pathlib import Path
 
 from minio import Minio
 
 from app.sandbox.config import sandbox_settings
+
+
+def _anonymous_read_policy(bucket: str) -> str:
+    """Grants anonymous `s3:GetObject` on every object in `bucket`, nothing else — no
+    ListBucket (no directory browsing) and no write/delete actions. Scoped to this one
+    bucket only, so it never touches the raw-uploads or sanitized buckets' (default
+    deny-by-default) policies. This is what lets a browser/MapLibre/curl fetch a tile by
+    URL directly from MinIO without a dedicated tile-server process (see issue 2.4)."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [f"arn:aws:s3:::{bucket}/*"],
+                }
+            ],
+        }
+    )
 
 _client: Minio | None = None
 
@@ -63,6 +85,10 @@ def put_tile_pyramid(prefix: str, tile_dir: Path) -> None:
     bucket = sandbox_settings.minio_tiles_bucket
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
+    # Set (not "set once at creation") so a bucket created before this policy existed
+    # still gets it, and so an out-of-band policy change on the bucket gets corrected
+    # on the next upload rather than silently drifting.
+    client.set_bucket_policy(bucket, _anonymous_read_policy(bucket))
     for file_path in tile_dir.rglob("*"):
         if file_path.is_file():
             relative_key = file_path.relative_to(tile_dir).as_posix()

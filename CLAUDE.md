@@ -160,12 +160,61 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–3 ("Upload endpoint +
-sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, and "GDAL
-conversion pipeline" / issue 2.3) are built and merged. Next: Phase 2 task 4 "Tile server
-wiring" (issue 2.4) — wire martin/TiTiler to serve from the `facility-map-tiles` MinIO
-bucket 2.3 now writes to, and confirm a tile actually renders via a direct URL hit before
-touching the frontend. See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–4 ("Upload endpoint +
+sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, "GDAL conversion
+pipeline" / issue 2.3, and "Tile server wiring" / issue 2.4) are built and merged. Next:
+Phase 2 task 5 "Frontend map integration" (issue 2.5) — MapLibre GL JS canvas consuming
+the tile URL 2.4 now returns, rendering an uploaded facility floor plan. See
+`docs/PHASE_PLAN.md`.
+
+Note on 2.4: PHASE_PLAN.md's "wire martin/TiTiler" phrasing turned out not to fit —
+flagged and resolved with the user before building (per the workflow's plan-first step):
+martin serves PostGIS tables, MBTiles, or PMTiles, not the loose `{z}/{x}/{y}.png` XYZ
+tree `gdal2tiles.py -p raster` (task 2.3) actually produces and uploads object-by-object
+to MinIO, and TiTiler tiles COGs dynamically — neither is a drop-in for what 2.3 already
+built and merged. Repacking into MBTiles/COG would have reopened 2.3's merged pipeline
+for no functional gain, so chosen approach: drop the unwired `tile-server: maplibre/martin`
+compose stub entirely and serve tiles straight from MinIO's own S3 HTTP API. New
+`_anonymous_read_policy` in `app/sandbox/storage.py` sets a bucket policy scoped to
+`s3:GetObject` only, only on `facility-map-tiles` (no `ListBucket`, no write/delete, no
+effect on the raw-uploads/sanitized buckets) — set on every `put_tile_pyramid` call
+(idempotent), not just at bucket creation, so it self-heals if the bucket predates this
+code or its policy drifts. New `Settings.minio_public_endpoint`/`minio_public_secure`
+(main app config) give a host-facing MinIO address distinct from `minio_endpoint` (the
+in-Docker-network one containers use to reach each other) — `Settings.tile_url_template()`
+builds the MapLibre-style URL a browser will actually be able to hit. New
+`GET /facilities/{facility_id}/map/{upload_id}` (any authenticated tenant member, no role
+restriction — read-only, and any viewer will need this once 2.5 lands) returns upload
+status plus `tile_prefix`/`tile_url_template` once `status=tiled`, via a new
+`get_map_upload` service function (same explicit-tenant_id-filter-plus-RLS
+defense-in-depth pattern as `create_map_upload`). No new `tenant_id`-bearing table, so no
+new RLS policy/cross-tenant test needed for this task.
+Verifying this for real also surfaced a second real gap, same category as several
+Phase-1 fixes: the main API/celery-worker containers' `.env` never set `MINIO_ENDPOINT`/
+`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` at all, silently falling back to
+`app/core/config.py`'s defaults (`localhost:9000`/`minioadmin`/`minioadmin`) — inside a
+container on the compose network, `localhost:9000` doesn't reach the `minio` service, and
+the credentials don't match the real `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` either. This
+had been silently masked because every existing test monkeypatches `put_raw_upload`
+rather than actually calling MinIO. Fixed by adding the three vars to `.env`/`.env.example`
+(mirroring `.env.sandbox.example`'s existing `MINIO_ENDPOINT=minio:9000`), plus
+`MINIO_PUBLIC_ENDPOINT=localhost:9000` for the new tile-URL builder.
+Verified for real: brought up the `minio` container alone, ran `put_tile_pyramid` against
+it directly (a 1×1 PNG tile pyramid, same code path 2.3's Celery task calls), then hit
+the resulting tile URL with a plain anonymous `curl` (no credentials) — got back
+`200 OK` and real PNG bytes (confirmed via `file`). Also confirmed the policy is scoped
+correctly: anonymous `ListBucket` on `facility-map-tiles` → 403, anonymous `PUT` → 403,
+and a GET against the unrelated `facility-map-raw-uploads` bucket → 403 (still fully
+private). Container torn down after. Known follow-up, not built here: MinIO's Python SDK
+(7.2.20) has no CORS API, so cross-origin browser fetches from the MapLibre frontend
+(task 2.5) will need CORS configured on the bucket separately when that task lands — out
+of scope for "confirm a tile renders via a direct URL hit," which doesn't require CORS
+(curl/server-to-server has none of a browser's cross-origin restrictions).
+165/165 backend tests pass (11 new: unit tests for the bucket policy shape and the
+tile-URL builder, integration tests for the new GET route including a cross-tenant 404
+and a viewer-role read), ruff + mypy clean. This closes task 2.4's scope; Phase 2's
+overall DoD ("a real floor plan uploads, processes, and renders in-browser") stays open
+until 2.5 lands the frontend map.
 
 Note on 2.3: added `app/sandbox/convert.py` inside the existing sandbox package (still
 covered generically by `test_sandbox_isolation.py`'s import-root scan — no new forbidden

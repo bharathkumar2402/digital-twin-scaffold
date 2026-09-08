@@ -84,3 +84,25 @@ async def create_map_upload(
     )
 
     return upload
+
+
+async def get_map_upload(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    upload_id: uuid.UUID,
+) -> FacilityMapUpload:
+    # Same explicit-tenant_id-filter-plus-RLS defense-in-depth as create_map_upload:
+    # `session` is already RLS-scoped, but this doesn't rely on that alone.
+    result = await session.execute(
+        select(FacilityMapUpload).where(
+            FacilityMapUpload.id == upload_id,
+            FacilityMapUpload.facility_id == facility_id,
+            FacilityMapUpload.tenant_id == tenant_id,
+        )
+    )
+    upload = result.scalar_one_or_none()
+    if upload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+    return upload

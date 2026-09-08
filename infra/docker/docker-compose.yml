@@ -63,6 +63,13 @@ services:
     volumes:
       - ../../frontend:/app
 
+  # No separate tile-server container: martin serves PostGIS/MBTiles/PMTiles, not the
+  # loose {z}/{x}/{y}.png XYZ tree gdal2tiles.py's raster profile produces (task 2.3).
+  # MinIO's own S3 API serves that tree directly — app/sandbox/storage.py sets an
+  # anonymous-read policy scoped to the facility-map-tiles bucket, so a tile URL like
+  # http://localhost:9000/facility-map-tiles/{prefix}/{z}/{x}/{y}.png is fetchable
+  # straight off this container (see issue 2.4). Only that one bucket is public; every
+  # other bucket keeps the default deny-by-default policy.
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -74,13 +81,6 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
-
-  tile-server:
-    image: maplibre/martin
-    ports:
-      - "3001:3000"
-    depends_on:
-      - minio
 
   redis:
     image: redis:7
