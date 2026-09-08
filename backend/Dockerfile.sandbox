@@ -1,18 +1,34 @@
 # Isolated image for the upload-sandbox worker (issue 2.1 — see PROJECT_PLAN.md §6).
 #
 # Deliberately does NOT reuse `Dockerfile`/`pyproject.toml`'s full dependency set: this
-# image installs only what app/sandbox/** needs (Celery, the MinIO client, and
-# defusedxml for issue 2.2's SVG sanitization — pure-Python, no C deps) and copies
-# only `app/__init__.py` + `app/sandbox/`. It has no SQLAlchemy, no asyncpg, no FastAPI,
-# and the rest of `app/` (core/db.py, models/, services/, api/) is not present on this
-# filesystem at all — a bug that tried to import them would fail with ImportError/
-# ModuleNotFoundError, not silently succeed, on top of the container never being handed
-# DB credentials (see infra/docker/.env.sandbox.example).
-FROM python:3.11-slim
+# image installs only what app/sandbox/** needs and copies only `app/__init__.py` +
+# `app/sandbox/`. It has no SQLAlchemy, no asyncpg, no FastAPI, and the rest of `app/`
+# (core/db.py, models/, services/, api/) is not present on this filesystem at all — a
+# bug that tried to import them would fail with ImportError/ModuleNotFoundError, not
+# silently succeed, on top of the container never being handed DB credentials (see
+# infra/docker/.env.sandbox.example).
+#
+# Base image switched from python:3.11-slim (issues 2.1/2.2) to osgeo/gdal for issue
+# 2.3's GDAL conversion pipeline: it ships a correctly built GDAL + gdal2tiles.py,
+# which is far more reliable than assembling GDAL's Python/CLI bindings by hand on
+# top of a bare Debian base (see app/sandbox/convert.py's docstring on why the sandbox
+# code only ever shells out to gdal2tiles.py rather than importing osgeo directly).
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.8.4
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "celery[redis]>=5.4" "minio>=7.2" "defusedxml>=0.7"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "celery[redis]>=5.4" \
+    "minio>=7.2" \
+    "defusedxml>=0.7" \
+    "cairosvg>=2.7" \
+    "ezdxf>=1.3" \
+    "matplotlib>=3.8" \
+    "pymupdf>=1.24"
 
 COPY app/__init__.py ./app/__init__.py
 COPY app/sandbox ./app/sandbox

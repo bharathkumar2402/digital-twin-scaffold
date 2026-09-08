@@ -160,13 +160,51 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–2 ("Upload endpoint +
-sandbox worker skeleton" / issue 2.1, and "File sanitization" / issue 2.2) are built and
-merged. Next: Phase 2 task 3 "GDAL conversion pipeline" (issue 2.3) — convert the
-sanitized file to raster tiles, store in MinIO; not itself an extra-scrutiny category, but
-it's the first thing to consume sanitized output from 2.2 (`facility-map-sanitized`
-bucket), so double-check it reads from the sanitized bucket, never the raw one. See
-`docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–3 ("Upload endpoint +
+sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, and "GDAL
+conversion pipeline" / issue 2.3) are built and merged. Next: Phase 2 task 4 "Tile server
+wiring" (issue 2.4) — wire martin/TiTiler to serve from the `facility-map-tiles` MinIO
+bucket 2.3 now writes to, and confirm a tile actually renders via a direct URL hit before
+touching the frontend. See `docs/PHASE_PLAN.md`.
+
+Note on 2.3: added `app/sandbox/convert.py` inside the existing sandbox package (still
+covered generically by `test_sandbox_isolation.py`'s import-root scan — no new forbidden
+imports). Pipeline: rasterize the sanitized SVG/DXF/PDF to a single PNG
+(`cairosvg`/`ezdxf`+`matplotlib`/`pymupdf` respectively), then shell out to
+`gdal2tiles.py -p raster` to build an XYZ tile pyramid. The **raster profile** (not a
+geographic one) was a deliberate choice: floor plans have no real-world CRS, and this
+profile tiles an arbitrary image in local pixel XYZ coordinates instead of reprojecting to
+WGS84 — matches `PROJECT_PLAN.md` §6's "local pixel or UTM, not WGS84" note, and satisfies
+Phase 2's DoD item that the coordinate system be documented where it's defined (see
+`app/sandbox/convert.py`'s docstring and the `tile_prefix` column comment on
+`FacilityMapUpload`). `app/sandbox/tasks.py`'s `receive_map_upload` now chains a new
+`convert_sanitized_map` task (same `upload-sandbox` queue) after a successful sanitize;
+that task fetches only from the sanitized bucket (`fetch_sanitized_upload`, never raw),
+uploads the resulting tile files to a new `facility-map-tiles` bucket via
+`put_tile_pyramid`, and reports a terminal `tiled`/`conversion_failed` status back through
+the existing `record_sandbox_result` callback path — never raises, so a bad file can't
+leave a row stuck at PROCESSING. Migration 0005 adds those two enum values (via an
+autocommit block, since `ALTER TYPE ... ADD VALUE` can't run in the same transaction that
+uses the value) plus a nullable `tile_prefix` column for task 2.4 to read; no new RLS
+policy/cross-tenant test needed since `facility_map_uploads` already has both from 0004,
+and this only adds a column and enum values, not a new tenant-scoped table.
+Every third-party rasterizer/GDAL call in `convert.py` is imported lazily inside the
+function that uses it (never at module load time) — deliberately, so the module stays
+importable for unit tests on hosts without GDAL/cairo installed (e.g. Windows dev
+machines); those tests inject a fake `TilePyramidBuilder` and monkeypatch `RASTERIZERS`
+instead of exercising real native calls. The real pipeline was verified by actually
+building `Dockerfile.sandbox` (switched base image from `python:3.11-slim` to
+`ghcr.io/osgeo/gdal:ubuntu-small-3.8.4`, which ships a correctly built GDAL +
+`gdal2tiles.py`, plus `libcairo2` via apt for `cairosvg`) and running all three formats
+through it directly in the container — a real SVG produced a 240-file `{z}/{x}/{y}.png`
+pyramid (zoom 0–4), and DXF/PDF rasterization each produced valid PNG bytes. Also
+switched PyMuPDF's import from the deprecated `fitz` alias to `import pymupdf`. 87/87
+backend unit tests pass (updated `test_models.py` for the new `tile_prefix` column and
+`test_telemetry_isolation.py` for the new migration head version), 154/154 total including
+cross-tenant/integration against real Postgres containers (confirms migration 0005
+actually applies), ruff + mypy clean. This closes task 2.3's scope; Phase 2's overall DoD ("a real floor plan uploads,
+processes, and renders in-browser") stays open until 2.4–2.5 land tile serving and the
+frontend map.
 
 Note on 2.2: added `app/sandbox/sanitize.py`, entirely inside the isolated sandbox
 package from 2.1 (still verified importless of Postgres/main-app code by

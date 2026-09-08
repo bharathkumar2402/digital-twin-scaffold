@@ -100,6 +100,7 @@ def test_facility_map_upload_columns_and_fks():
         "format",
         "status",
         "status_detail",
+        "tile_prefix",
         "created_at",
     }
     assert not cols["tenant_id"].nullable

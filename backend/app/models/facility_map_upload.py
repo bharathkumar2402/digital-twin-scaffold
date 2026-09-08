@@ -12,7 +12,9 @@ class UploadStatus(enum.StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     SANITIZED = "sanitized"
+    TILED = "tiled"
     FAILED = "failed"
+    CONVERSION_FAILED = "conversion_failed"
 
 
 class FacilityMapUpload(UUIDPKMixin, TimestampMixin, Base):
@@ -47,3 +49,10 @@ class FacilityMapUpload(UUIDPKMixin, TimestampMixin, Base):
         default=UploadStatus.PENDING,
     )
     status_detail: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Object-key prefix in the facility-map-tiles MinIO bucket (task 2.3's GDAL
+    # conversion pipeline) under which the {z}/{x}/{y}.png tile pyramid lives, in
+    # local pixel coordinates -- floor plans have no real-world CRS, so tiles are
+    # generated with gdal2tiles.py's "raster" profile rather than reprojected to
+    # WGS84 (see app/sandbox/convert.py and PROJECT_PLAN.md §6). Set once tiling
+    # succeeds; null until then.
+    tile_prefix: Mapped[str | None] = mapped_column(String(512), nullable=True)
