@@ -370,6 +370,115 @@ async def test_malformed_bearer_token_rejected(client: httpx.AsyncClient) -> Non
     assert resp.status_code == 401
 
 
+async def test_get_asset_telemetry_returns_readings_most_recent_first(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="f@example.com")
+    asset_id = str(uuid.uuid4())
+    older = datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+    newer = datetime(2026, 1, 2, tzinfo=UTC).isoformat()
+
+    await client.post(
+        "/telemetry",
+        json={
+            "readings": [
+                _reading(asset_id=asset_id, sensor_type="temperature", timestamp=older),
+                _reading(asset_id=asset_id, sensor_type="temperature", timestamp=newer),
+            ]
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    resp = await client.get(
+        f"/facilities/{uuid.uuid4()}/assets/{asset_id}/telemetry",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [datetime.fromisoformat(r["timestamp"]) for r in body] == [
+        datetime.fromisoformat(newer),
+        datetime.fromisoformat(older),
+    ]
+
+
+async def test_get_asset_telemetry_filters_by_sensor_type(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="g@example.com")
+    asset_id = str(uuid.uuid4())
+
+    await client.post(
+        "/telemetry",
+        json={
+            "readings": [
+                _reading(asset_id=asset_id, sensor_type="temperature"),
+                _reading(asset_id=asset_id, sensor_type="vibration"),
+            ]
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    resp = await client.get(
+        f"/facilities/{uuid.uuid4()}/assets/{asset_id}/telemetry",
+        params={"sensor_type": "vibration"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["sensor_type"] == "vibration"
+
+
+async def test_get_asset_telemetry_caps_limit_at_max(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="h@example.com")
+    asset_id = str(uuid.uuid4())
+
+    resp = await client.get(
+        f"/facilities/{uuid.uuid4()}/assets/{asset_id}/telemetry",
+        params={"limit": 99999},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_a_tenant_cannot_read_another_tenants_asset_telemetry_via_get_route(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID
+) -> None:
+    """New GET read path over the same RLS-protected table as the ingest-side isolation
+    test above - confirms RLS blocks the read (empty list), not just that the write
+    side is isolated."""
+    same_asset = str(uuid.uuid4())
+    token_a = await _register_and_login(client, tenant_id=tenant_a, email="i@example.com")
+    token_b = await _register_and_login(client, tenant_id=tenant_b, email="j@example.com")
+
+    await client.post(
+        "/telemetry",
+        json={"readings": [_reading(asset_id=same_asset, sensor_type="tenant-a-only")]},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+
+    resp_a = await client.get(
+        f"/facilities/{uuid.uuid4()}/assets/{same_asset}/telemetry",
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    resp_b = await client.get(
+        f"/facilities/{uuid.uuid4()}/assets/{same_asset}/telemetry",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+
+    assert resp_a.status_code == 200, resp_a.text
+    assert len(resp_a.json()) == 1
+    assert resp_b.status_code == 200, resp_b.text
+    assert resp_b.json() == []
+
+
+async def test_get_asset_telemetry_requires_authorization(client: httpx.AsyncClient) -> None:
+    resp = await client.get(f"/facilities/{uuid.uuid4()}/assets/{uuid.uuid4()}/telemetry")
+    assert resp.status_code == 401
+
+
 async def test_main_and_timescale_migration_chains_are_independent(
     migrated_main_db: PostgresContainer, migrated_timescale_db: PostgresContainer
 ) -> None:

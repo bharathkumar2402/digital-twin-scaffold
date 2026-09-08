@@ -5,11 +5,13 @@ import { useParams } from "react-router-dom";
 import { AssetLayer } from "../components/AssetLayer";
 import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
+import { TelemetryChart } from "../components/TelemetryChart";
 import {
   useAssetDependencies,
   useCreateAssetDependency,
   useDeleteAssetDependency,
 } from "../hooks/useAssetDependencies";
+import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
@@ -163,6 +165,8 @@ export function FacilityMapPage(): React.JSX.Element {
 
         {selectedAsset && (
           <AssetDetailPanel
+            key={selectedAsset.id}
+            facilityId={facilityId}
             asset={selectedAsset}
             canEdit={canEdit}
             isSaving={updateAsset.isPending}
@@ -253,6 +257,7 @@ function NewAssetForm({
 }
 
 function AssetDetailPanel({
+  facilityId,
   asset,
   canEdit,
   isSaving,
@@ -265,6 +270,7 @@ function AssetDetailPanel({
   onDeleteDependency,
   onClose,
 }: {
+  facilityId: string;
   asset: Asset;
   canEdit: boolean;
   isSaving: boolean;
@@ -277,6 +283,7 @@ function AssetDetailPanel({
   onDeleteDependency: (dependencyId: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
+  const telemetryQuery = useAssetTelemetry(facilityId, asset.id);
   // parent depends_on child (see AssetDependency's docstring in types/api.ts) - so
   // "depends on" (upstream) is where this asset is the parent, "depended on by"
   // (downstream) is where it's the child.
@@ -308,6 +315,16 @@ function AssetDetailPanel({
       {asset.manufacturer && <p>Manufacturer: {asset.manufacturer}</p>}
       {asset.model && <p>Model: {asset.model}</p>}
       {asset.installed_date && <p>Installed: {asset.installed_date}</p>}
+
+      <h4>Telemetry</h4>
+      {telemetryQuery.isPending && <p>Loading telemetry...</p>}
+      {telemetryQuery.isError && (
+        <p role="alert">Failed to load telemetry: {telemetryQuery.error.message}</p>
+      )}
+      {telemetryQuery.isSuccess && <TelemetryChart readings={telemetryQuery.data} />}
+
+      <h4>Maintenance history</h4>
+      <p>No maintenance records yet - scheduling arrives in a later phase.</p>
 
       <h4>Depends on</h4>
       {dependsOn.length === 0 && <p>None</p>}

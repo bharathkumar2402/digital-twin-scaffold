@@ -74,3 +74,11 @@ export interface AssetDependencyCreateRequest {
   parent_asset_id: string;
   child_asset_id: string;
 }
+
+// Mirrors backend/app/schemas/requests/telemetry.py's TelemetryReadingResponse.
+export interface TelemetryReading {
+  sensor_type: string;
+  value: number;
+  unit: string;
+  timestamp: string;
+}

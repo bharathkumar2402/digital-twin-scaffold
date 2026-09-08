@@ -160,13 +160,67 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–7 ("Upload endpoint +
-sandbox worker skeleton" / issue 2.1, "File sanitization" / issue 2.2, "GDAL conversion
-pipeline" / issue 2.3, "Tile server wiring" / issue 2.4, "Frontend map integration" /
-issue 2.5, "Asset CRUD + map placement" / issue 2.6, and "Asset dependency graph editor"
-/ issue 2.7) are built and merged. Next: Phase 2 task 8 "Asset detail panel" (issue 2.8)
-— click an asset → telemetry chart (from Phase 1's ingest data) + maintenance history
-stub. See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
+2.1–2.8) are fully closed. Phase 2's overall Definition of Done is now satisfied in
+full: a real floor plan uploads/processes/renders (2.3–2.5), sandbox isolation is
+verified (2.1–2.2), assets can be placed (2.6), linked (2.7), and clicked for detail
+(2.8), and the local-pixel coordinate system is documented in code (`app/sandbox/convert.py`,
+`app/models/asset.py`). Next: pick the first Phase 3 (ML & Risk Engine) task —
+"Feature engineering pipeline" — from `docs/PHASE_PLAN.md`.
+
+Note on 2.8 (issue 2.8, "Asset detail panel"): no new table/migration — this is a
+read-only route over the existing `sensor_readings` hypertable (RLS + migration from
+1.6/1.7-fix). New `GET /facilities/{facility_id}/assets/{asset_id}/telemetry` (any
+authenticated tenant member, matching the other read-only asset routes) backed by
+`telemetry_service.get_asset_telemetry` (explicit `tenant_id` filter as
+defense-in-depth alongside RLS, same pattern as every other tenant-scoped service —
+see repo rule 2), ordered most-recent-first, `sensor_type` filter and a server-capped
+`limit` (default 200, max 500) so a client can't force an unbounded hypertable scan.
+`facility_id` stays in the URL for symmetry with the other asset routes but isn't
+cross-checked against the reading, for the same reason `POST /telemetry` doesn't:
+`sensor_readings` lives on a physically separate TimescaleDB instance with no
+cross-database FK to `assets` (see `app/models/sensor_reading.py`) — isolation is RLS
+plus the explicit tenant filter, not a facility-ownership join. Extra scrutiny applied
+per the workflow (this is a new read path over an RLS-protected table, i.e. "anything
+touching RLS policies or cross-tenant tests"): extended `tests/cross_tenant/test_telemetry_isolation.py`
+(the same dual-container Postgres+Timescale fixture 1.6/1.7-fix built) with adversarial
+cases before treating this as done — ordering/most-recent-first, `sensor_type`
+filtering, the 422 on an over-limit request, and (the one that actually matters for
+isolation) a same-`asset_id` cross-tenant read: tenant A posts a reading, tenant B's
+own valid JWT queries the *same* `asset_id` and gets `[]`, not a 404 or another
+tenant's data — confirming RLS blocks the read, not just that the ingest side was
+already isolated. Frontend: `useAssetTelemetry.ts` (React Query, mirrors `useAssets.ts`),
+`TelemetryChart.tsx` (Recharts `LineChart` — first use of Recharts in this repo, added
+as a dependency per the root CLAUDE.md tech-stack list; one line per `sensor_type`
+present in the data, oldest-first since the API returns newest-first for the
+"most recent N readings" query shape but a time-series chart reads left-to-right), and
+`FacilityMapPage.tsx`'s existing `AssetDetailPanel` gained the chart plus a static
+"Maintenance history" section — deliberately just placeholder text, not a new
+table/endpoint: `PHASE_PLAN.md` task 2.8 calls this a "stub", and real maintenance
+scheduling is Phase 4 agent-output territory, not scoped here.
+
+Verified for real, not just unit-tested (per the extra-scrutiny workflow step): ran
+the real FastAPI app via `uvicorn` against the real managed Supabase + Timescale Cloud
+instances (not testcontainers) and drove the new endpoint end-to-end with two real
+tenants — ingested readings as tenant A, confirmed tenant B's GET against the same
+`asset_id` returns `[]` (RLS blocking a real managed-DB read, not a mocked one),
+confirmed `sensor_type` filtering and the over-limit 422, then cleaned up the temporary
+tenants/users/readings afterward (Timescale Cloud's `tsdbadmin` has no BYPASSRLS on
+this cluster per the 1.7-fix note, so cleanup had to scope the GUC per tenant before
+deleting, not just run an unscoped `DELETE`). Separately, since Recharts' actual pixel
+rendering can't be confirmed by Vitest's jsdom-based component tests (no real layout,
+so `ResponsiveContainer` needed a `getBoundingClientRect` stub just to mount its
+children at all — see `TelemetryChart.test.tsx`), drove `TelemetryChart` in a real
+Chrome tab via a temporary route in `App.tsx` (removed before committing) with
+synthetic two-sensor-type data: confirmed a real line chart painted with correct axes
+and a legend entry per sensor type, no console errors on load.
+
+5/5 new backend tests pass (ordering, `sensor_type` filter, limit cap validation,
+missing-auth, and the cross-tenant same-asset-id isolation case), 215/215 backend
+tests total, ruff + mypy clean. 4 new frontend tests pass (`useAssetTelemetry.test.tsx`,
+`TelemetryChart.test.tsx` incl. the empty-state case), 45/45 frontend tests total,
+ESLint + `tsc -b` clean, production `vite build` succeeds. This closes task 2.8's scope
+and, with it, all of Phase 2's Definition of Done.
 
 Note on 2.7: new `asset_dependencies` table (migration 0007) — directed edges,
 `parent_asset_id` DEPENDS ON `child_asset_id` (child is upstream; this direction is what

@@ -26,3 +26,12 @@ class TelemetryIngestRequest(BaseModel):
 
 class TelemetryIngestResponse(BaseModel):
     accepted: int
+
+
+class TelemetryReadingResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    sensor_type: str
+    value: float
+    unit: str
+    timestamp: datetime
