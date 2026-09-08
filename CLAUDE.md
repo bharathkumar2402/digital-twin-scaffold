@@ -160,11 +160,41 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) is fully closed. Phase 2 task 1 "Upload endpoint +
-sandbox worker skeleton" (issue 2.1) is built and merged. Next: Phase 2 task 2 "File
-sanitization" (issue 2.2) — strip SVG active content, enforce size limits, reject
-malformed input before GDAL ever touches the file; also an extra-scrutiny task per the
-rules above. See `docs/PHASE_PLAN.md`.
+**Status:** Phase 1 (Foundation) is fully closed. Phase 2 tasks 1–2 ("Upload endpoint +
+sandbox worker skeleton" / issue 2.1, and "File sanitization" / issue 2.2) are built and
+merged. Next: Phase 2 task 3 "GDAL conversion pipeline" (issue 2.3) — convert the
+sanitized file to raster tiles, store in MinIO; not itself an extra-scrutiny category, but
+it's the first thing to consume sanitized output from 2.2 (`facility-map-sanitized`
+bucket), so double-check it reads from the sanitized bucket, never the raw one. See
+`docs/PHASE_PLAN.md`.
+
+Note on 2.2: added `app/sandbox/sanitize.py`, entirely inside the isolated sandbox
+package from 2.1 (still verified importless of Postgres/main-app code by
+`tests/unit/test_sandbox_isolation.py`, 34/34 still passing). SVG: parsed with
+`defusedxml.ElementTree` (`forbid_dtd/entities/external=True` — closes an XXE/local-file-
+read vector), then strips `<script>`/`<foreignObject>` elements, every `on*` event-handler
+attribute, and any `href`/`xlink:href` that isn't a local `#fragment` reference, before
+re-serializing. DXF/PDF: no new heavy parsing library added to the sandbox's minimal
+image — DXF gets a structural check (alternating group-code/value lines, `SECTION`/`EOF`
+sentinels), PDF gets header/trailer framing checks plus a reject on
+`/JavaScript`/`/JS`/`/OpenAction`/`/AA` tokens (embedded active content); both pass through
+unchanged once validated, since GDAL (task 2.3) does the real parsing. All three
+independently re-check the size cap (duplicated constant, not imported from
+`app.core.config` — same isolation reasoning as 2.1's Redis URL). `receive_map_upload`
+now writes sanitized bytes to a **separate** `facility-map-sanitized` MinIO bucket (never
+the raw-uploads bucket) and reports `status=sanitized`/`failed` instead of always
+succeeding; a rejected file is reported `failed` rather than raising (an uncaught
+exception would leave the DB row stuck at `PROCESSING` forever). Added `defusedxml`
+(pure-Python, no C deps) to `Dockerfile.sandbox` and `pyproject.toml` — the sandbox image
+still has no SQLAlchemy/asyncpg/FastAPI/DB credentials. 28 new tests (XXE doctype,
+embedded script, event handlers, external xlink:href with local-fragment-href preserved
+as a control, foreignObject smuggling, malformed XML, non-svg root, corrupt/non-ASCII DXF,
+missing EOF sentinel, PDF active-content tokens, missing PDF header/trailer, oversized
+input for all three formats, plus task-level tests that a rejected file never reaches
+`put_sanitized_upload`) — 145/145 backend tests pass, ruff + mypy clean. This fully closes
+task 2.2's scope (sanitize/validate/reject pre-GDAL); Phase 2's overall DoD ("a real floor
+plan uploads, processes, and renders in-browser") stays open until 2.3–2.5 land GDAL
+conversion, tile serving, and the frontend map.
 
 Note on 2.1: `POST /facilities/{facility_id}/map` (tenant_admin/superadmin only) does the
 minimum needed to prove the sandbox isolation boundary, deliberately no GDAL/sanitization
