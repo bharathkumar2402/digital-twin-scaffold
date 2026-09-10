@@ -161,12 +161,71 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 2's overall Definition of Done is now satisfied in
-full: a real floor plan uploads/processes/renders (2.3–2.5), sandbox isolation is
-verified (2.1–2.2), assets can be placed (2.6), linked (2.7), and clicked for detail
-(2.8), and the local-pixel coordinate system is documented in code (`app/sandbox/convert.py`,
-`app/models/asset.py`). Next: pick the first Phase 3 (ML & Risk Engine) task —
-"Feature engineering pipeline" — from `docs/PHASE_PLAN.md`.
+2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
+engineering pipeline" (issue 3.1), is closed. Next: Phase 3 task 2, "XGBoost training
+script."
+
+Note on 3.1 ("Feature engineering pipeline", issue 3.1): builds the feature set
+`PROJECT_PLAN.md` §4.3's Risk Assessment agent (and 3.2's training script/3.3's
+inference task) will consume — no new table/migration, this reads existing data via
+two existing RLS-protected databases. Gap flagged and resolved with the user before
+building: §4.3 lists "last maintenance date" and "failure rate for that class" as risk
+factors, but no `maintenance_records`/historical-failure table exists in this repo (not
+scoped in any Phase 1–3 task) — those two factors are deliberately omitted rather than
+inventing a table; "adjacent asset failures" is covered instead by
+`dependency_neighbor_offline_count`/`dependency_neighbor_maintenance_count`, built from
+`asset_dependencies` + each neighbor's current `status`, which does exist.
+
+New `app/schemas/ml/asset_features.py` (`SensorWindowStats`, `AssetFeatureSet`) — a new
+`schemas/ml/` subfolder since this is neither a request schema nor an agent-output
+schema (`backend/CLAUDE.md`'s split). New `app/services/feature_engineering_service.py`:
+`build_asset_features`/`build_facility_features` pull rolling 30/90/365-day stats
+(mean/stddev/min/max/count/latest_value per `sensor_type`, matching §4.3's "TimescaleDB
+telemetry query (last 30/90/365 days)" tool description) via one parameterized CTE SQL
+query per window against `sensor_readings` — no new Python numerics dependency, since
+Postgres/Timescale's native aggregates (`avg`, `stddev_samp`) already do this. Each
+window also gets a window-local `anomaly_count` (readings >2 std devs from that same
+window's mean) — explicitly documented as a feature signal distinct from task 3.4's live
+rolling-Z-score anomaly detector, which scores each reading as it's ingested, not a
+duplicate of it. Combines this with `assets`/`asset_dependencies` (main DB, separate
+physical database from `sensor_readings` — see `app/models/sensor_reading.py`) for
+`asset_age_days` (from `installed_date`) and the dependency-neighbor status counts.
+New `GET /facilities/{facility_id}/assets/{asset_id}/features` (any authenticated
+tenant member, same role pattern as the telemetry route) — both to verify the pipeline
+end to end now and for 3.3's inference Celery task to call
+`feature_engineering_service.build_asset_features` directly later.
+
+This is the first route to combine both RLS-protected databases in a single request;
+not one of the four extra-scrutiny categories in the workflow above, but per 2.8's
+precedent (new read path over RLS-protected tables gets a due-diligence isolation
+check even without a new policy), added a cross-tenant case anyway:
+`tests/integration/test_feature_engineering.py`'s
+`test_a_tenant_cannot_read_another_tenants_asset_features` confirms a different
+tenant's token against a real facility_id/asset_id gets 404, not another tenant's
+feature vector (the explicit `tenant_id` filter on the asset lookup blocks it before
+the Timescale query ever runs). Unlike `sensor_readings`, `assets` has a normal
+database-wide primary key, so the same-`asset_id`-different-tenant collision test
+2.8 ran against `sensor_readings` doesn't apply here — two tenants can't have rows
+sharing one `asset_id` in the first place.
+
+Verified for real, not just unit-tested: ran the full test file against real
+Postgres + real `timescale/timescaledb` containers (the same dual-container/`app_role`
+harness `tests/cross_tenant/test_telemetry_isolation.py` built for 1.7-fix), with real
+migrations applied — window-boundary math (readings at 1/40/100/400 days ago land in
+exactly the 30/90/365-day windows they should), the empty-window shape (count=0, not an
+omitted key), asset age from a real `installed_date`, dependency-neighbor counts in
+both edge directions, and the cross-tenant 404 above. Did not additionally drive this
+against real Supabase/Timescale Cloud via `uvicorn` the way 2.4/2.5/2.7/2.8 did — this
+task isn't one of the extra-scrutiny categories, and the dual real-container run
+already exercises the actual RLS policies/migrations/cross-database query path, not
+mocks; flagging that distinction here rather than overclaiming a live-cloud run that
+didn't happen.
+
+15/15 new backend tests pass (8 schema unit tests, 7 integration tests including the
+cross-tenant case), 230/230 backend tests total, ruff + mypy clean. This task doesn't
+close any Phase 3 Definition of Done checkbox on its own (those are about visible risk
+scores/alerts, which need 3.2's trained model and 3.3's inference service first) — it's
+groundwork task 3.2 depends on.
 
 Note on 2.8 (issue 2.8, "Asset detail panel"): no new table/migration — this is a
 read-only route over the existing `sensor_readings` hypertable (RLS + migration from
