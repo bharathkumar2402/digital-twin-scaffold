@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     minio_public_endpoint: str = "localhost:9000"
     minio_public_secure: bool = False
 
+    # Holds versioned, trained risk-model artifacts (issue 3.2) - model file, feature
+    # names, and metrics per version, plus a `latest.json` pointer inference (3.3) reads.
+    minio_models_bucket: str = "ml-models"
+
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"

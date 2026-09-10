@@ -18,6 +18,9 @@ dependencies = [
     "minio>=7.2",
     "python-multipart>=0.0.18",
     "defusedxml>=0.7",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
 ]
 
 [project.optional-dependencies]
