@@ -82,3 +82,13 @@ export interface TelemetryReading {
   unit: string;
   timestamp: string;
 }
+
+// Mirrors backend/app/schemas/ml/alert_notification.py's AlertNotification - one
+// message as forwarded verbatim by /ws/alerts (issue 3.6).
+export interface AlertNotification {
+  asset_id: string;
+  sensor_type: string;
+  value: number;
+  z_score: number | null;
+  triggered_at: string;
+}

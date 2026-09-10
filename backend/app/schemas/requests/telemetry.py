@@ -29,7 +29,9 @@ class TelemetryIngestRequest(BaseModel):
 class TelemetryIngestResponse(BaseModel):
     accepted: int
     # Live rolling-Z-score check on this same batch (issue 3.4) - one result per
-    # ingested reading. Not yet wired to any alert/debounce logic; that's task 3.5.
+    # ingested reading. Debounced triggers derived from these are published to the
+    # tenant's WebSocket alert channel by the route handler (issues 3.5/3.6); this
+    # response field itself stays the raw per-reading check, unfiltered.
     anomalies: list[AnomalyCheckResult]
 
 

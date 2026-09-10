@@ -3,9 +3,17 @@ from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
-from app.core.config import settings
+from app.core.redis_client import get_redis_client
 from app.schemas.ml.anomaly import AnomalyCheckResult
 from app.schemas.ml.debounce import DebounceDecision
+
+__all__ = [
+    "BATCH_WINDOW_SECONDS",
+    "COOLDOWN_SECONDS",
+    "evaluate_anomaly",
+    "evaluate_anomaly_batch",
+    "get_redis_client",
+]
 
 # Within PROJECT_PLAN.md §7.1's documented 10-30s range for batching anomaly events
 # before a (future) pipeline trigger. A tenant-wide bucket, not per-asset: §7.1's intent
@@ -21,16 +29,6 @@ COOLDOWN_SECONDS = 120
 
 _COOLDOWN_KEY = "debounce:cooldown:{tenant_id}:{asset_id}"
 _WINDOW_KEY = "debounce:window:{tenant_id}:{bucket}"
-
-
-def get_redis_client() -> Redis:
-    """One Redis connection per caller, matching `redis.asyncio`'s own guidance that a
-    `Redis` instance is a connection *pool* meant to be created once and reused, not
-    opened per call - callers (a Celery task, a request handler) own the client's
-    lifetime and should call `.aclose()` when done, mirroring `async_session_factory`'s
-    "caller owns the session" pattern elsewhere in this repo.
-    """
-    return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 def _cooldown_key(tenant_id: uuid.UUID, asset_id: uuid.UUID) -> str:

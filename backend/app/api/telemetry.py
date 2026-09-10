@@ -1,18 +1,23 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis_client import get_redis
 from app.core.tenant_context import (
     TenantContext,
     get_tenant_context,
     get_timescale_scoped_session,
 )
+from app.schemas.ml.alert_notification import AlertNotification
 from app.schemas.requests.telemetry import (
     TelemetryIngestRequest,
     TelemetryIngestResponse,
     TelemetryReadingResponse,
 )
+from app.services.alert_debounce_service import evaluate_anomaly_batch
+from app.services.alert_publish_service import publish_alert
 from app.services.telemetry_service import (
     DEFAULT_TELEMETRY_LIMIT,
     MAX_TELEMETRY_LIMIT,
@@ -30,10 +35,35 @@ async def ingest_telemetry(
     body: TelemetryIngestRequest,
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_timescale_scoped_session),
+    redis: Redis = Depends(get_redis),
 ) -> TelemetryIngestResponse:
     accepted, anomalies = await ingest_readings(
         session, tenant_id=context.tenant_id, readings=body.readings
     )
+
+    # Issue 3.6: route the same batch's anomalies through 3.5's debounce decision
+    # engine, then publish only the decisions it says should actually fire (issue
+    # 3.5's docstrings are explicit that the service itself never does this - wiring
+    # a `True` decision to something downstream is this task's job). Readings-by-value
+    # is looked up from `anomalies` (not re-queried) since it's the exact same
+    # `AnomalyCheckResult` the debounce engine just evaluated.
+    anomalies_by_key = {(a.asset_id, a.sensor_type): a for a in anomalies}
+    decisions = await evaluate_anomaly_batch(
+        redis, tenant_id=context.tenant_id, anomalies=anomalies
+    )
+    for decision in decisions:
+        if not decision.should_trigger_light_rescore:
+            continue
+        anomaly = anomalies_by_key[(decision.asset_id, decision.sensor_type)]
+        notification = AlertNotification(
+            asset_id=anomaly.asset_id,
+            sensor_type=anomaly.sensor_type,
+            value=anomaly.value,
+            z_score=anomaly.z_score,
+            triggered_at=decision.evaluated_at,
+        )
+        await publish_alert(redis, tenant_id=context.tenant_id, notification=notification)
+
     return TelemetryIngestResponse(accepted=accepted, anomalies=anomalies)
 
 

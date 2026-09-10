@@ -12,6 +12,7 @@ matter more than they would with a foreign-key safety net.
 """
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -23,8 +24,11 @@ from pathlib import Path
 import asyncpg
 import httpx
 import pytest
+from fakeredis import aioredis as fakeredis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
+
+from app.services.alert_publish_service import alert_channel
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 APP_ROLE_PASSWORD = "test-app-role-password"
@@ -92,13 +96,20 @@ def migrated_timescale_db(timescale_pg_container: PostgresContainer):
 
 
 @pytest.fixture
+def fake_redis_server() -> fakeredis.FakeServer:
+    return fakeredis.FakeServer()
+
+
+@pytest.fixture
 async def client(
     migrated_main_db: PostgresContainer,
     migrated_timescale_db: PostgresContainer,
+    fake_redis_server: fakeredis.FakeServer,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
     from app.core.config import settings
     from app.core.db import get_session, get_timescale_session
+    from app.core.redis_client import get_redis
     from app.main import app
 
     monkeypatch.setattr(settings, "cookie_secure", False)
@@ -133,8 +144,16 @@ async def client(
         async with timescale_session_factory() as session:
             yield session
 
+    async def _get_redis() -> AsyncGenerator:
+        redis = fakeredis.FakeRedis(server=fake_redis_server, decode_responses=True)
+        try:
+            yield redis
+        finally:
+            await redis.aclose()
+
     app.dependency_overrides[get_session] = _get_session
     app.dependency_overrides[get_timescale_session] = _get_timescale_session
+    app.dependency_overrides[get_redis] = _get_redis
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -666,3 +685,170 @@ async def test_main_and_timescale_migration_chains_are_independent(
     finally:
         await main_conn.close()
         await timescale_conn.close()
+
+
+async def _subscribe(fake_redis_server: fakeredis.FakeServer, tenant_id: uuid.UUID) -> tuple:
+    redis = fakeredis.FakeRedis(server=fake_redis_server, decode_responses=True)
+    pubsub = redis.pubsub()
+    await pubsub.subscribe(alert_channel(tenant_id))
+    await pubsub.get_message(timeout=1)  # discard the "subscribe" confirmation
+    return redis, pubsub
+
+
+async def test_a_debounced_anomaly_publishes_to_the_tenants_alert_channel(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, fake_redis_server: fakeredis.FakeServer
+) -> None:
+    """Issue 3.6: the first anomaly for an asset must reach that tenant's Redis alert
+    channel (`alert_publish_service.alert_channel`), wired through 3.5's debounce
+    decision engine at the route level (`app/api/telemetry.py`)."""
+    token = await _register_and_login(client, tenant_id=tenant_a, email="o@example.com")
+    asset_id = str(uuid.uuid4())
+    redis, pubsub = await _subscribe(fake_redis_server, tenant_a)
+    try:
+        baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+        baseline_readings = [
+            _reading(
+                asset_id=asset_id,
+                sensor_type="pressure",
+                value=value,
+                timestamp=datetime(2026, 1, 4, 0, i, tzinfo=UTC).isoformat(),
+            )
+            for i, value in enumerate(baseline_values)
+        ]
+        await client.post(
+            "/telemetry",
+            json={"readings": baseline_readings},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        resp = await client.post(
+            "/telemetry",
+            json={
+                "readings": [
+                    _reading(
+                        asset_id=asset_id,
+                        sensor_type="pressure",
+                        value=500.0,
+                        timestamp=datetime(2026, 1, 4, 1, 0, tzinfo=UTC).isoformat(),
+                    )
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["anomalies"][0]["is_anomaly"] is True
+
+        message = await pubsub.get_message(timeout=1)
+        assert message is not None
+        assert message["type"] == "message"
+        payload = json.loads(message["data"])
+        assert payload["asset_id"] == asset_id
+        assert payload["sensor_type"] == "pressure"
+    finally:
+        await pubsub.aclose()
+        await redis.aclose()
+
+
+async def test_repeated_anomalies_on_the_same_asset_do_not_flood_the_alert_channel(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, fake_redis_server: fakeredis.FakeServer
+) -> None:
+    """The phase plan's DoD wording again, now end-to-end through the live HTTP route:
+    'rapid repeated anomalies on one asset do NOT produce a flood of triggers' - here,
+    a flood of published alert messages."""
+    token = await _register_and_login(client, tenant_id=tenant_a, email="p@example.com")
+    asset_id = str(uuid.uuid4())
+    redis, pubsub = await _subscribe(fake_redis_server, tenant_a)
+    try:
+        baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+        baseline_readings = [
+            _reading(
+                asset_id=asset_id,
+                sensor_type="pressure",
+                value=value,
+                timestamp=datetime(2026, 1, 5, 0, i, tzinfo=UTC).isoformat(),
+            )
+            for i, value in enumerate(baseline_values)
+        ]
+        await client.post(
+            "/telemetry",
+            json={"readings": baseline_readings},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        for minute in range(1, 6):
+            resp = await client.post(
+                "/telemetry",
+                json={
+                    "readings": [
+                        _reading(
+                            asset_id=asset_id,
+                            sensor_type="pressure",
+                            value=500.0,
+                            timestamp=datetime(2026, 1, 5, 1, minute, tzinfo=UTC).isoformat(),
+                        )
+                    ]
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 201, resp.text
+
+        messages = []
+        while True:
+            message = await pubsub.get_message(timeout=0.2)
+            if message is None:
+                break
+            messages.append(message)
+
+        assert len(messages) == 1
+    finally:
+        await pubsub.aclose()
+        await redis.aclose()
+
+
+async def test_an_anomaly_for_one_tenant_is_not_published_on_another_tenants_channel(
+    client: httpx.AsyncClient,
+    tenant_a: uuid.UUID,
+    tenant_b: uuid.UUID,
+    fake_redis_server: fakeredis.FakeServer,
+) -> None:
+    token_a = await _register_and_login(client, tenant_id=tenant_a, email="q@example.com")
+    asset_id = str(uuid.uuid4())
+    redis_b, pubsub_b = await _subscribe(fake_redis_server, tenant_b)
+    try:
+        baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+        baseline_readings = [
+            _reading(
+                asset_id=asset_id,
+                sensor_type="pressure",
+                value=value,
+                timestamp=datetime(2026, 1, 6, 0, i, tzinfo=UTC).isoformat(),
+            )
+            for i, value in enumerate(baseline_values)
+        ]
+        await client.post(
+            "/telemetry",
+            json={"readings": baseline_readings},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        resp = await client.post(
+            "/telemetry",
+            json={
+                "readings": [
+                    _reading(
+                        asset_id=asset_id,
+                        sensor_type="pressure",
+                        value=500.0,
+                        timestamp=datetime(2026, 1, 6, 1, 0, tzinfo=UTC).isoformat(),
+                    )
+                ]
+            },
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["anomalies"][0]["is_anomaly"] is True
+
+        message = await pubsub_b.get_message(timeout=0.2)
+        assert message is None
+    finally:
+        await pubsub_b.aclose()
+        await redis_b.aclose()

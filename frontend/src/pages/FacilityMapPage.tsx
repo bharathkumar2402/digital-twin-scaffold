@@ -2,6 +2,7 @@ import type maplibregl from "maplibre-gl";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { AlertToast } from "../components/AlertToast";
 import { AssetLayer } from "../components/AssetLayer";
 import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
@@ -11,6 +12,7 @@ import {
   useCreateAssetDependency,
   useDeleteAssetDependency,
 } from "../hooks/useAssetDependencies";
+import { useAlertsSocket } from "../hooks/useAlertsSocket";
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
@@ -39,6 +41,7 @@ export function FacilityMapPage(): React.JSX.Element {
   const { data, isPending, isError, error } = useFacilityMapUpload(facilityId ?? "", uploadId ?? "");
   const { role } = useAuth();
   const canEdit = role !== null && WRITE_ROLES.has(role);
+  const { alerts, dismiss } = useAlertsSocket();
 
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const [addMode, setAddMode] = useState(false);
@@ -80,6 +83,7 @@ export function FacilityMapPage(): React.JSX.Element {
   return (
     <div style={{ width: "100vw", height: "100vh", display: "flex" }}>
       <div style={{ flex: 1, position: "relative" }}>
+        <AlertToast alerts={alerts} onDismiss={dismiss} />
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
         <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
         <AssetLayer
