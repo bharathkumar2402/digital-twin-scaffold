@@ -160,12 +160,13 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
-engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
-task 3, "Risk inference service" (issue 3.3), task 4, "Anomaly detection" (issue 3.4),
-task 5, "Debounced alert triggering" (issue 3.5), and task 6, "Real-time delivery"
-(issue 3.6), are closed. Next: Phase 3 task 7, "Risk visualization on the map"
-(color-code asset markers green/yellow/red based on latest score).
+2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
+is code-complete. One Definition of Done item is still open: "a manually injected
+anomaly produces a browser alert in under 2 seconds" has never been empirically
+measured (delivery correctness and tenant isolation are tested; wall-clock latency is
+not) — see `docs/PROGRESS_LOG.md` for detail. A follow-up session is adding a timed
+latency check before Phase 3 is marked fully closed. Phase 4 (AI Agent System) has not
+started.
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

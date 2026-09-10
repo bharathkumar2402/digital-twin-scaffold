@@ -8,12 +8,42 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
-engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
-task 3, "Risk inference service" (issue 3.3), task 4, "Anomaly detection" (issue 3.4),
-task 5, "Debounced alert triggering" (issue 3.5), and task 6, "Real-time delivery"
-(issue 3.6), are closed. Next: Phase 3 task 7, "Risk visualization on the map"
-(color-code asset markers green/yellow/red based on latest score).
+2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
+is code-complete; see the phase-end DoD audit below for one still-open item.
+
+Note on 3.7 ("Risk visualization on the map", issue 3.7): new `useRiskScores` hook
+(`frontend/src/hooks/useRiskScores.ts`) fetches 3.3's `GET
+/facilities/{facility_id}/risk-scores`, plain `useQuery` with no polling - no
+polling convention exists elsewhere in this codebase yet, and adding one would be
+new scope beyond this task. `AssetLayer`'s circle-color paint switched from a
+`match` expression on `status` to a `step` expression on a new `risk_score` feature
+property, banded 0-33 green / 34-66 amber / 67-100 red (score's 0-100 range is
+enforced in `risk_inference_service.score_facility`, both a Pydantic field bound and
+a DB `CHECK` constraint per 3.3's notes above). An asset absent from the risk-scores
+map (never scored yet) gets a neutral grey sentinel rather than falling into a risk
+band - "no data" must not read as "low risk". Status (operational/maintenance/offline)
+is no longer the marker's fill color, per the task's literal wording ("color-code
+asset markers green/yellow/red based on latest score") and user confirmation when
+asked; it remains visible in the existing asset detail panel. 12 new/updated frontend
+tests (2 for `useRiskScores`, 10 for `AssetLayer` including the new unscored-color and
+risk_score-property cases), 53/53 frontend tests total, eslint + tsc clean.
+
+**Phase 3 end-of-phase Definition of Done audit** (triggered by 3.7 closing the last
+task in the phase, per `CLAUDE.md`'s standard workflow step 7):
+- [x] Risk scores computed and visible on the map, color-coded — 3.3 computes/persists,
+      3.7 renders.
+- [x] Debounce logic verified by test: rapid repeated anomalies on one asset do NOT
+      produce a flood of triggers —
+      `test_alert_debounce_service.py::test_rapid_repeated_anomalies_do_not_flood_triggers`,
+      plus an end-to-end cross-tenant integration case in 3.6 (5 rapid repeats → 1
+      publish).
+- [x] Model version is recorded alongside each stored risk score — `RiskScore.model_version`
+      is a non-nullable column, enforced at insert time (3.3).
+- [ ] **Open gap:** a manually injected anomaly produces a browser alert in under 2
+      seconds — the full pipeline (anomaly detection → debounce → Redis pub/sub →
+      WebSocket → toast) is wired end-to-end with passing correctness and
+      tenant-isolation tests (3.4-3.6), but no test or manual run has ever measured
+      actual wall-clock latency. A follow-up session is adding a timed check.
 
 Note on 3.6 ("Real-time delivery", issue 3.6): wires 3.5's `evaluate_anomaly_batch`
 into `POST /telemetry`'s route handler (`app/api/telemetry.py`) - not into
