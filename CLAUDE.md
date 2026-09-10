@@ -162,8 +162,59 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
-engineering pipeline" (issue 3.1), is closed. Next: Phase 3 task 2, "XGBoost training
-script."
+engineering pipeline" (issue 3.1), and task 2, "XGBoost training script" (issue 3.2),
+are closed. Next: Phase 3 task 3, "Risk inference service."
+
+Note on 3.2 ("XGBoost training script", issue 3.2): no `maintenance_records`/
+historical-failure table exists in this repo (same gap 3.1 flagged), so "train
+offline on synthetic data with injected failure patterns" per `PHASE_PLAN.md` means
+literally synthetic: no real DB access at all in this task, no new
+table/migration/RLS policy. New `app/ml/` package (shared going forward by 3.2 now
+and 3.3's inference service later, not duplicated): `feature_vector.py` is the single
+source of truth for the model's input shape — `vectorize(AssetFeatureSet) -> np.ndarray`
+against a fixed, ordered `FEATURE_NAMES` (91 columns: asset-status one-hot, age,
+3 dependency-neighbor counts, plus 7 stats × 4 sensor types × 3 windows, hardcoded to
+the same four sensor types `backend/scripts/iot_data_generator.py` produces, since
+that's this repo's only real telemetry source) — both training and 3.3's inference
+must vectorize through this one function so a trained model's column layout can never
+drift from what inference feeds it. `synthetic_data.py` generates `AssetFeatureSet`
+instances plus binary failure labels from a documented, injected latent-risk function
+(older assets, more offline neighbors, unstable 30-day vibration readings → higher
+failure probability; every other feature is uncorrelated noise on purpose, so the
+test suite can confirm the trained model actually recovers the injected signal rather
+than overfitting noise columns). `train.py` fits an `XGBClassifier`
+(`train_risk_model`) and versions the artifacts into a new `ml-models` MinIO bucket
+(`save_model_to_minio`/`load_model`): `model.ubj` + `feature_names.json` +
+`metrics.json` under a version string (UTC timestamp + short content hash — re-saving
+a byte-identical model is idempotent on version rather than manufacturing a fake
+distinct one), plus a `latest.json` pointer 3.3 will follow. New
+`backend/scripts/train_risk_model.py` (standalone CLI, no DB session, mirrors
+`iot_data_generator.py`'s pattern) refuses to publish (`SystemExit`) a model below a
+`--min-test-auc` threshold (default 0.75) rather than silently shipping a bad model.
+New deps: `numpy`, `scikit-learn`, `xgboost`. A plain `numpy>=1.26` resolved to 2.5.3,
+which ships stub syntax `mypy`'s configured `python_version = "3.11"` can't parse;
+fixed by capping `numpy>=1.26,<2.1` in `pyproject.toml` (not by relaxing the mypy
+config) and reinstalling 2.0.2, so a fresh `pip install` doesn't silently reintroduce
+the same `mypy` breakage.
+
+Not one of the extra-scrutiny categories (no RLS/new table, not Phase 2/4/5 tasks),
+so no adversarial-test walkthrough — but verified for real anyway per this repo's norm
+for storage-touching code: ran `train_risk_model.py` against a real (non-mocked)
+`minio/minio` container end to end (3000 synthetic samples, real training, real
+`save_model_to_minio` call), confirmed the real bucket held exactly the four expected
+keys (`model.ubj`, `feature_names.json`, `metrics.json`, `latest.json`), and
+round-tripped `load_model()` against that same real instance — got back the same 91
+feature names and the same metrics dict the training run reported. Container torn
+down after.
+
+21/21 new backend tests pass (feature-vector shape/ordering/missing-window-zero-fill,
+synthetic-data determinism-by-seed and the injected-factor-correlation checks, and
+the MinIO save/load round trip against a fake in-memory client), 251/251 backend
+tests total, ruff + mypy clean. This task doesn't close any Phase 3 Definition of Done
+checkbox on its own (those need 3.3's inference service to put a score anywhere
+visible) — model_version auditability (DoD item 4) is set up here (the version string
+this task produces is what `risk_scores.model_version` will store) but not wired to
+anything yet.
 
 Note on 3.1 ("Feature engineering pipeline", issue 3.1): builds the feature set
 `PROJECT_PLAN.md` §4.3's Risk Assessment agent (and 3.2's training script/3.3's
