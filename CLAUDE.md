@@ -163,8 +163,9 @@ rather than building it — that scope boundary is deliberate and documented in
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
 engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
 task 3, "Risk inference service" (issue 3.3), task 4, "Anomaly detection" (issue 3.4),
-and task 5, "Debounced alert triggering" (issue 3.5), are closed. Next: Phase 3
-task 6, "Real-time delivery" (Redis pub/sub → WebSocket server → frontend toast/alert).
+task 5, "Debounced alert triggering" (issue 3.5), and task 6, "Real-time delivery"
+(issue 3.6), are closed. Next: Phase 3 task 7, "Risk visualization on the map"
+(color-code asset markers green/yellow/red based on latest score).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

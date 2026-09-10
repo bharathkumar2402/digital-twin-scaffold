@@ -11,8 +11,54 @@ why, and how it was verified.
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
 engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
 task 3, "Risk inference service" (issue 3.3), task 4, "Anomaly detection" (issue 3.4),
-and task 5, "Debounced alert triggering" (issue 3.5), are closed. Next: Phase 3
-task 6, "Real-time delivery" (Redis pub/sub → WebSocket server → frontend toast/alert).
+task 5, "Debounced alert triggering" (issue 3.5), and task 6, "Real-time delivery"
+(issue 3.6), are closed. Next: Phase 3 task 7, "Risk visualization on the map"
+(color-code asset markers green/yellow/red based on latest score).
+
+Note on 3.6 ("Real-time delivery", issue 3.6): wires 3.5's `evaluate_anomaly_batch`
+into `POST /telemetry`'s route handler (`app/api/telemetry.py`) - not into
+`telemetry_service.ingest_readings` itself, keeping that function DB-only and the
+debounce/publish orchestration at the route layer, same separation 3.5's own module
+docstring called for ("wiring a `True` decision to something downstream is a later
+task's job"). Every `should_trigger_light_rescore=True` decision is turned into a
+validated `AlertNotification` (`app/schemas/ml/alert_notification.py`) and published
+via `app/services/alert_publish_service.publish_alert` to a `alerts:{tenant_id}`
+Redis channel - namespaced by tenant the same way 3.5's cooldown/window keys are, so
+one tenant's alert is structurally unable to reach another tenant's subscribers.
+New `app/core/redis_client.py` centralizes the Redis client factory (previously
+duplicated inside `alert_debounce_service.py`, now imported from there instead) plus
+a FastAPI `get_redis` dependency for route/DI use.
+
+New `/ws/alerts` WebSocket endpoint (`app/api/alerts_ws.py`) subscribes to that
+channel and forwards messages verbatim to the browser. Auth is a `?token=` query
+param rather than the `Authorization` header the rest of the API uses - browsers
+cannot set custom headers on a WebSocket handshake - checked against the same
+`decode_token`/`TokenType.ACCESS` as every other route, rejecting (`close(code=1008)`)
+before `accept()` on a missing/invalid/expired/wrong-type (e.g. a refresh token)
+token. Caught a real bug while writing the disconnect-handling test: the endpoint's
+watcher originally called the raw `websocket.receive()`, which returns a disconnect
+message as data rather than raising - only `receive_text()`/`receive_json()` check
+the message type and raise `WebSocketDisconnect` - so the original version would 500
+with a `RuntimeError` on every client disconnect instead of cleaning up. Also moved
+off raw `asyncio.create_task`/`asyncio.wait` for the forward-loop/disconnect-watcher
+pair to an `anyio.create_task_group`, after the raw-asyncio version produced
+order-dependent `CancelledError`s racing Starlette's own test-client portal.
+
+Frontend: `useAlertsSocket` (reconnects on drop, no-ops with no access token) and
+`AlertToast` (auto-dismissing, top-right over the map, wired into
+`FacilityMapPage`). No new UI library added - matches the existing plain-inline-style
+convention already used throughout `FacilityMapPage.tsx`.
+
+Extended `tests/cross_tenant/test_telemetry_isolation.py` (rather than a new file)
+since it already had the full main+timescale container harness `POST /telemetry`
+needs; `get_redis` is overridden there with a shared `fakeredis.FakeServer` per test.
+Added: first debounced anomaly publishes to the tenant's channel; five rapid repeat
+anomalies on one asset publish exactly once (the DoD's "no flood" wording, now
+end-to-end through the live HTTP route rather than just the decision engine); an
+anomaly for tenant A is never observed on tenant B's channel. `tests/unit/
+test_alerts_ws.py` covers the WebSocket endpoint itself (auth rejection cases,
+delivery to the right tenant, cross-tenant isolation) against a real `TestClient`
+with `get_redis_client` monkeypatched to the same shared-server pattern.
 
 Note on 3.5 ("Debounced alert triggering", issue 3.5): builds the batching/cooldown
 decision engine from `PROJECT_PLAN.md` §7.1, and, per `PHASE_PLAN.md`'s own task
