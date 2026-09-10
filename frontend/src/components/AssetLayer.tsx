@@ -26,19 +26,36 @@ const CIRCLE_LAYER_ID = "facility-assets-circle";
 // intentional drag.
 const DRAG_THRESHOLD_PX = 3;
 
-const STATUS_COLORS: Record<Asset["status"], string> = {
-  operational: "#2e7d32",
-  maintenance: "#ed6c02",
-  offline: "#c62828",
-};
+// Risk-score marker color (issue 3.7) - replaces the old status-based fill (status
+// stays visible in the asset detail panel instead). Bands mirror
+// backend/app/services/risk_inference_service.py's score_facility, which clamps
+// scores into [0, 100]: 0-33 low, 34-66 medium, 67-100 high.
+const RISK_COLOR_LOW = "#2e7d32";
+const RISK_COLOR_MEDIUM = "#ed6c02";
+const RISK_COLOR_HIGH = "#c62828";
+// An asset with no risk-score row yet (never scored) gets a neutral grey rather than
+// defaulting into one of the risk bands above, so "no data" can't be misread as "low
+// risk".
+const RISK_COLOR_UNSCORED = "#9e9e9e";
+// Sentinel written into each feature's `risk_score` property when the asset has no
+// score in `riskScores` - MapLibre expressions can't carry `null`/`undefined` through
+// a `step` expression cleanly, so this stands in for "no data" and is matched first,
+// below the real [0, 100] range.
+const UNSCORED_SENTINEL = -1;
 
-function toFeatureCollection(assets: Asset[]) {
+function toFeatureCollection(assets: Asset[], riskScores: Map<string, number>) {
   return {
     type: "FeatureCollection" as const,
     features: assets.map((asset) => ({
       type: "Feature" as const,
       geometry: { type: "Point" as const, coordinates: pixelToLngLat(asset.x, asset.y) },
-      properties: { id: asset.id, name: asset.name, type: asset.type, status: asset.status },
+      properties: {
+        id: asset.id,
+        name: asset.name,
+        type: asset.type,
+        status: asset.status,
+        risk_score: riskScores.get(asset.id) ?? UNSCORED_SENTINEL,
+      },
     })),
   };
 }
@@ -46,6 +63,9 @@ function toFeatureCollection(assets: Asset[]) {
 interface AssetLayerProps {
   map: maplibregl.Map | null;
   assets: Asset[];
+  // Latest risk score (0-100) per asset id, from useRiskScores - an asset absent from
+  // this map has never been scored yet.
+  riskScores: Map<string, number>;
   addMode: boolean;
   onSelectAsset: (assetId: string) => void;
   onMoveAsset: (assetId: string, x: number, y: number) => void;
@@ -55,6 +75,7 @@ interface AssetLayerProps {
 export function AssetLayer({
   map,
   assets,
+  riskScores,
   addMode,
   onSelectAsset,
   onMoveAsset,
@@ -84,6 +105,10 @@ export function AssetLayer({
   // `assets` directly or it would redraw the drag preview against a stale list.
   const assetsRef = useRef(assets);
   assetsRef.current = assets;
+  // Same rationale as assetsRef - read inside the long-lived drag-preview handler
+  // below rather than closed over directly.
+  const riskScoresRef = useRef(riskScores);
+  riskScoresRef.current = riskScores;
 
   useEffect(() => {
     if (!map) {
@@ -91,7 +116,7 @@ export function AssetLayer({
     }
 
     if (!map.getSource(SOURCE_ID)) {
-      map.addSource(SOURCE_ID, { type: "geojson", data: toFeatureCollection([]) });
+      map.addSource(SOURCE_ID, { type: "geojson", data: toFeatureCollection([], new Map()) });
       map.addLayer({
         id: CIRCLE_LAYER_ID,
         type: "circle",
@@ -99,15 +124,15 @@ export function AssetLayer({
         paint: {
           "circle-radius": 8,
           "circle-color": [
-            "match",
-            ["get", "status"],
-            "operational",
-            STATUS_COLORS.operational,
-            "maintenance",
-            STATUS_COLORS.maintenance,
-            "offline",
-            STATUS_COLORS.offline,
-            STATUS_COLORS.operational,
+            "step",
+            ["get", "risk_score"],
+            RISK_COLOR_UNSCORED,
+            0,
+            RISK_COLOR_LOW,
+            34,
+            RISK_COLOR_MEDIUM,
+            67,
+            RISK_COLOR_HIGH,
           ],
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
@@ -161,7 +186,7 @@ export function AssetLayer({
       const updated = assetsRef.current.map((asset) =>
         asset.id === draggingAssetId ? { ...asset, ...pixelFromLngLat(event) } : asset
       );
-      source.setData(toFeatureCollection(updated));
+      source.setData(toFeatureCollection(updated, riskScoresRef.current));
     };
 
     const handleMouseUp = (event: MapMouseEvent) => {
@@ -234,9 +259,9 @@ export function AssetLayer({
     }
     const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
     if (source && !draggingAssetIdRef.current) {
-      source.setData(toFeatureCollection(assets));
+      source.setData(toFeatureCollection(assets, riskScores));
     }
-  }, [map, assets]);
+  }, [map, assets, riskScores]);
 
   return null;
 }

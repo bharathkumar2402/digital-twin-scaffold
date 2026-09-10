@@ -84,6 +84,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={vi.fn()}
@@ -98,6 +99,51 @@ describe("AssetLayer", () => {
     expect(addLayer).toHaveBeenCalledWith(expect.objectContaining({ type: "circle" }));
   });
 
+  it("colors an unscored asset with the neutral 'no data' color, not a risk band", () => {
+    render(
+      <AssetLayer
+        map={fakeMap}
+        assets={[asset]}
+        riskScores={new Map()}
+        addMode={false}
+        onSelectAsset={vi.fn()}
+        onMoveAsset={vi.fn()}
+        onPlaceNewAsset={vi.fn()}
+      />
+    );
+
+    const layerCall = addLayer.mock.calls[0][0] as { paint: { "circle-color": unknown[] } };
+    const [, , unscoredColor] = layerCall.paint["circle-color"];
+    expect(unscoredColor).toBe("#9e9e9e");
+
+    const sourceCall = addSource.mock.calls[0][1] as {
+      data: { features: { properties: { risk_score: number } }[] };
+    };
+    // No initial features are passed to addSource (empty facility state) - the
+    // per-asset risk_score property is exercised via setData below instead.
+    expect(sourceCall.data.features).toEqual([]);
+  });
+
+  it("writes each asset's risk score onto its feature so the step-color expression can band it", () => {
+    render(
+      <AssetLayer
+        map={fakeMap}
+        assets={[asset]}
+        riskScores={new Map([["a1", 80]])}
+        addMode={false}
+        onSelectAsset={vi.fn()}
+        onMoveAsset={vi.fn()}
+        onPlaceNewAsset={vi.fn()}
+      />
+    );
+
+    expect(setData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        features: [expect.objectContaining({ properties: expect.objectContaining({ risk_score: 80 }) })],
+      })
+    );
+  });
+
   it("selects an asset when its feature is clicked, without also placing a new asset", () => {
     const onSelectAsset = vi.fn();
     const onPlaceNewAsset = vi.fn();
@@ -105,6 +151,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={true}
         onSelectAsset={onSelectAsset}
         onMoveAsset={vi.fn()}
@@ -130,6 +177,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={onMoveAsset}
@@ -155,6 +203,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={onMoveAsset}
@@ -179,6 +228,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[]}
+        riskScores={new Map()}
         addMode={true}
         onSelectAsset={vi.fn()}
         onMoveAsset={vi.fn()}
@@ -200,6 +250,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={vi.fn()}
@@ -219,6 +270,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={true}
         onSelectAsset={vi.fn()}
         onMoveAsset={onMoveAsset}
@@ -252,6 +304,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={vi.fn()}
@@ -265,6 +318,7 @@ describe("AssetLayer", () => {
       <AssetLayer
         map={fakeMap}
         assets={[asset]}
+        riskScores={new Map()}
         addMode={false}
         onSelectAsset={vi.fn()}
         onMoveAsset={vi.fn()}

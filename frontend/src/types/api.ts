@@ -92,3 +92,16 @@ export interface AlertNotification {
   z_score: number | null;
   triggered_at: string;
 }
+
+// Mirrors backend/app/schemas/requests/risk_scores.py's RiskScoreResponse. `score` is
+// 0-100 (see backend/app/services/risk_inference_service.py's score_facility, which
+// clamps model.predict_proba's [0,1] output into that range).
+export interface RiskScore {
+  id: string;
+  facility_id: string;
+  asset_id: string;
+  score: number;
+  model_version: string;
+  factors_json: Record<string, number | string | null>;
+  computed_at: string;
+}

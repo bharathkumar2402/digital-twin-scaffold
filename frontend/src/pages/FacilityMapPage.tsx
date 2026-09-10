@@ -17,6 +17,7 @@ import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
+import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 
 // Mirrors backend/app/core/rbac.py's WRITE_ROLES in app/api/assets.py - technician and
@@ -59,10 +60,18 @@ export function FacilityMapPage(): React.JSX.Element {
   const createDependency = useCreateAssetDependency(facilityId ?? "");
   const deleteDependency = useDeleteAssetDependency(facilityId ?? "");
 
+  const riskScoresQuery = useRiskScores(facilityId ?? "");
+
   const assets = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
   const dependencies = useMemo(() => dependenciesQuery.data ?? [], [dependenciesQuery.data]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
+  // Highest-computed_at score per asset - get_latest_risk_scores already returns at
+  // most one row per asset, but the map lookup itself doesn't assume that ordering.
+  const riskScoresByAssetId = useMemo(() => {
+    const scores = riskScoresQuery.data ?? [];
+    return new Map(scores.map((riskScore) => [riskScore.asset_id, riskScore.score]));
+  }, [riskScoresQuery.data]);
 
   if (!facilityId || !uploadId) {
     return <p>Missing facility or upload id in the URL.</p>;
@@ -89,6 +98,7 @@ export function FacilityMapPage(): React.JSX.Element {
         <AssetLayer
           map={map}
           assets={assets}
+          riskScores={riskScoresByAssetId}
           addMode={addMode}
           onSelectAsset={(assetId) => {
             if (linkMode) {
