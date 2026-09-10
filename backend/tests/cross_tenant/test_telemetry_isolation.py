@@ -521,7 +521,7 @@ async def test_main_and_timescale_migration_chains_are_independent(
         timescale_version = await timescale_conn.fetchval(
             "SELECT version_num FROM alembic_version"
         )
-        assert main_version == "0008"
+        assert main_version == "0009"
         assert timescale_version == "0002"
     finally:
         await main_conn.close()

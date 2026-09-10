@@ -14,6 +14,7 @@ celery_app.conf.task_routes = {
     "record_sandbox_result": {"queue": "sandbox-results"},
 }
 
-# Import so `record_sandbox_result` registers on this app when the worker starts
-# (`celery -A app.core.celery_app worker`, per infra/docker/docker-compose.yml).
-from app.workers import callback_tasks  # noqa: E402,F401
+# Import so `record_sandbox_result`/`compute_facility_risk_scores` register on this
+# app when the worker starts (`celery -A app.core.celery_app worker`, per
+# infra/docker/docker-compose.yml).
+from app.workers import callback_tasks, risk_tasks  # noqa: E402,F401

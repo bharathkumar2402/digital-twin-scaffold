@@ -6,6 +6,7 @@ from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.facility_maps import router as facility_maps_router
 from app.api.features import router as features_router
+from app.api.risk_scores import router as risk_scores_router
 from app.api.telemetry import router as telemetry_router
 from app.api.tenants import router as tenants_router
 from app.api.users import router as users_router
@@ -33,3 +34,4 @@ app.include_router(facility_maps_router)
 app.include_router(assets_router)
 app.include_router(asset_dependencies_router)
 app.include_router(features_router)
+app.include_router(risk_scores_router)

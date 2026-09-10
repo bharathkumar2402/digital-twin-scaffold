@@ -5,6 +5,7 @@ from app.models import (
     Base,
     Facility,
     FacilityMapUpload,
+    RiskScore,
     Role,
     SensorReading,
     Tenant,
@@ -21,6 +22,7 @@ def test_metadata_has_exactly_the_expected_tables():
         "facility_map_uploads",
         "assets",
         "asset_dependencies",
+        "risk_scores",
     }
 
 
@@ -181,3 +183,29 @@ def test_asset_dependency_columns_and_fks():
     constraint_names = {c.name for c in AssetDependency.__table__.constraints}
     assert "uq_asset_dependencies_edge" in constraint_names
     assert "ck_asset_dependencies_no_self_loop" in constraint_names
+
+
+def test_risk_score_columns_and_fks():
+    cols = RiskScore.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "tenant_id",
+        "facility_id",
+        "asset_id",
+        "score",
+        "model_version",
+        "factors_json",
+        "computed_at",
+    }
+    assert not cols["tenant_id"].nullable
+    assert not cols["facility_id"].nullable
+    assert not cols["asset_id"].nullable
+    assert not cols["score"].nullable
+    assert not cols["model_version"].nullable
+    assert not cols["factors_json"].nullable
+    assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
+    assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
+    assert {fk.column.table.name for fk in cols["asset_id"].foreign_keys} == {"assets"}
+
+    constraint_names = {c.name for c in RiskScore.__table__.constraints}
+    assert "ck_risk_scores_score_range" in constraint_names

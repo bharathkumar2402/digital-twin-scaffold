@@ -162,8 +162,82 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
-engineering pipeline" (issue 3.1), and task 2, "XGBoost training script" (issue 3.2),
-are closed. Next: Phase 3 task 3, "Risk inference service."
+engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2), and
+task 3, "Risk inference service" (issue 3.3), are closed. Next: Phase 3 task 4,
+"Anomaly detection."
+
+Note on 3.3 ("Risk inference service", issue 3.3): new `risk_scores` table (migration
+0009) — `tenant_id, facility_id, asset_id, score, model_version, factors_json,
+computed_at`, matching PROJECT_PLAN.md §5's sketch plus the usual `tenant_id`-and-RLS
+gap fix (repo rule 2). Insert-only, never updated in place: "model version recorded
+alongside each stored risk score, for auditability" (this phase's DoD item 4) reads as
+keeping history, not overwriting a snapshot, so `GET /facilities/{id}/risk-scores`
+returns each asset's newest row via `ORDER BY computed_at DESC`, not an upserted
+single row per asset. Written from the start with migration 0008's
+`NULLIF(current_setting(...), '')::uuid` RLS guard, not the bare-cast bug 0001/0004/0006
+originally shipped with. `score`'s 0–100 bound is enforced twice, independently: a
+Pydantic `Field(ge=0, le=100)` on the new `app/schemas/ml/risk_score.py`'s
+`RiskScoreResult` (the "never write unvalidated data" rule extended to this ML output,
+even though it isn't an agent yet — Phase 4's Risk Assessment agent wraps this same
+service as a tool later) catches a scaling bug in the app layer, and a
+`CHECK (score >= 0 AND score <= 100)` constraint on the table itself catches anything
+that reaches the DB by another path.
+
+New `app/services/risk_inference_service.py`: `score_facility` loads the trained
+model once per facility (module-level cache keyed by resolved version string, not
+re-fetched per asset), pulls every asset's `AssetFeatureSet` via 3.1's
+`build_facility_features`, vectorizes through 3.1/3.2's shared `feature_vector.vectorize`
+(the single source of truth for column order both training and inference already
+vectorize through), scores via `predict_proba`, and refuses outright (`ValueError`, no
+rows written) if the loaded model's `feature_names` don't match
+`app.ml.feature_vector.FEATURE_NAMES` — a stale or corrupt model artifact fails loudly
+here rather than silently scoring against a misaligned column layout. `factors_json`
+holds human-readable context (asset age, dependency-neighbor counts, 30-day
+per-sensor anomaly counts) for later explainability, not raw model internals.
+New `app/workers/risk_tasks.py`: Celery task `compute_facility_risk_scores` on the
+main app's celery-worker (same `asyncio.run(...)`-wrapping-async-DB-code pattern
+`app/workers/callback_tasks.py` established for issue 2.1), registered via the same
+bottom-of-module import trick in `app/core/celery_app.py`. Deliberately *not* wired to
+any sensor-threshold breach — root CLAUDE.md rule 4's debounced anomaly-triggered path
+is a separate, later task (3.5); this is purely an on-demand trigger.
+`POST /facilities/{id}/risk-scores/compute` (tenant_admin/facility_manager/superadmin,
+same write-role split as asset placement) enqueues the task and returns 202 with a
+task id immediately — it does not check facility ownership itself, since the Celery
+task's own `score_facility` call already 404s off the caller's JWT-derived tenant_id,
+never a client-supplied one. `GET /facilities/{id}/risk-scores` (any tenant member,
+matching the telemetry/features routes) returns the latest score per asset.
+
+Extra scrutiny applied per the workflow (new table + RLS): before building, planned
+adversarial cases covering RLS fail-closed with no GUC, cross-tenant INSERT rejection,
+a DB-level CHECK-constraint rejection of an out-of-range score bypassing the Pydantic
+gate entirely, an asset with zero telemetry scoring cleanly via zero-filled windows, a
+mismatched-feature-names model being refused rather than silently scoring, and a
+cross-tenant facility_id being unscorable/unreadable — all of which the finished test
+suite covers (`tests/cross_tenant/test_risk_scores_rls.py`,
+`tests/integration/test_risk_inference_service.py`,
+`tests/integration/test_risk_scores_routes.py`, `tests/unit/test_risk_score_schema.py`).
+
+Verified for real, not just mocked (per the extra-scrutiny workflow step): brought up
+a real MinIO container and ran 3.2's real training pipeline against it end to end
+(2,000 synthetic samples, real `XGBClassifier`, real `save_model_to_minio`), then
+brought up real Postgres + Timescale containers, ran both real Alembic chains through
+migration 0009, inserted a real tenant/facility/two real assets (one 10-year-old
+offline pump, one 1-year-old operational pump) via `app_role` (non-BYPASSRLS)
+connections, and called `score_facility` with zero mocking anywhere in the chain — the
+real `load_model()` correctly followed the real `latest.json` pointer, and the offline
+10-year-old pump scored 23.36 vs. the operational 1-year-old pump's 7.13, confirming
+the model's injected latent-risk signal (age + offline neighbors → higher risk, from
+3.2's `synthetic_data.py`) actually surfaces through the full real pipeline, not just
+that the plumbing type-checks. Confirmed both rows persisted via a fresh, freshly
+re-scoped `SELECT` against the real Postgres container. All containers torn down after.
+
+25 new backend tests pass (4 cross-tenant RLS including the CHECK-constraint case, 6
+schema unit tests, 6 integration tests for the service including the no-telemetry and
+mismatched-feature-names adversarial cases, 7 route tests including RBAC and the
+cross-tenant enqueue-ownership case, plus 2 existing tests updated for the new
+migration head/table), 276/276 backend tests total, ruff + mypy clean. This task
+doesn't close any Phase 3 DoD checkbox outright except item 4 (model version recorded
+alongside each stored score) — map color-coding (DoD item 1) is task 7, not here.
 
 Note on 3.2 ("XGBoost training script", issue 3.2): no `maintenance_records`/
 historical-failure table exists in this repo (same gap 3.1 flagged), so "train
