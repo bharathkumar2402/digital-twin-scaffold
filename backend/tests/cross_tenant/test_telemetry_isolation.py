@@ -233,7 +233,12 @@ async def test_ingest_returns_accepted_count(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json() == {"accepted": 2}
+    body = resp.json()
+    assert body["accepted"] == 2
+    # No prior history for either reading, so neither can be flagged (issue 3.4).
+    assert len(body["anomalies"]) == 2
+    assert all(a["is_anomaly"] is False for a in body["anomalies"])
+    assert all(a["sample_count"] == 0 for a in body["anomalies"])
 
 
 async def test_a_tenant_cannot_read_another_tenants_readings_via_rls(
@@ -477,6 +482,141 @@ async def test_a_tenant_cannot_read_another_tenants_asset_telemetry_via_get_rout
 async def test_get_asset_telemetry_requires_authorization(client: httpx.AsyncClient) -> None:
     resp = await client.get(f"/facilities/{uuid.uuid4()}/assets/{uuid.uuid4()}/telemetry")
     assert resp.status_code == 401
+
+
+async def test_outlier_reading_is_flagged_as_anomaly_once_baseline_exists(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    """Issue 3.4: a value far from the established rolling baseline must be flagged,
+    once enough prior history exists to trust a stddev."""
+    token = await _register_and_login(client, tenant_id=tenant_a, email="k@example.com")
+    asset_id = str(uuid.uuid4())
+    baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+    baseline_readings = [
+        _reading(
+            asset_id=asset_id,
+            sensor_type="pressure",
+            value=value,
+            timestamp=datetime(2026, 1, 1, 0, i, tzinfo=UTC).isoformat(),
+        )
+        for i, value in enumerate(baseline_values)
+    ]
+    resp = await client.post(
+        "/telemetry",
+        json={"readings": baseline_readings},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.post(
+        "/telemetry",
+        json={
+            "readings": [
+                _reading(
+                    asset_id=asset_id,
+                    sensor_type="pressure",
+                    value=500.0,
+                    timestamp=datetime(2026, 1, 1, 1, 0, tzinfo=UTC).isoformat(),
+                )
+            ]
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    anomalies = resp.json()["anomalies"]
+    assert len(anomalies) == 1
+    assert anomalies[0]["sample_count"] == 10
+    assert anomalies[0]["is_anomaly"] is True
+    assert anomalies[0]["z_score"] is not None
+
+
+async def test_normal_reading_within_baseline_is_not_flagged(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="l@example.com")
+    asset_id = str(uuid.uuid4())
+    baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+    baseline_readings = [
+        _reading(
+            asset_id=asset_id,
+            sensor_type="pressure",
+            value=value,
+            timestamp=datetime(2026, 1, 2, 0, i, tzinfo=UTC).isoformat(),
+        )
+        for i, value in enumerate(baseline_values)
+    ]
+    await client.post(
+        "/telemetry",
+        json={"readings": baseline_readings},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    resp = await client.post(
+        "/telemetry",
+        json={
+            "readings": [
+                _reading(
+                    asset_id=asset_id,
+                    sensor_type="pressure",
+                    value=20.5,
+                    timestamp=datetime(2026, 1, 2, 1, 0, tzinfo=UTC).isoformat(),
+                )
+            ]
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    anomalies = resp.json()["anomalies"]
+    assert anomalies[0]["sample_count"] == 10
+    assert anomalies[0]["is_anomaly"] is False
+
+
+async def test_anomaly_baseline_does_not_leak_across_tenants(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, tenant_b: uuid.UUID
+) -> None:
+    """A different tenant's readings for the *same* asset_id/sensor_type must never
+    contribute to this tenant's rolling baseline - RLS must scope the anomaly
+    detector's own query, not just the ingest/read paths already covered above."""
+    same_asset = str(uuid.uuid4())
+    token_a = await _register_and_login(client, tenant_id=tenant_a, email="m@example.com")
+    token_b = await _register_and_login(client, tenant_id=tenant_b, email="n@example.com")
+
+    baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 19.0]
+    baseline_readings = [
+        _reading(
+            asset_id=same_asset,
+            sensor_type="temperature",
+            value=value,
+            timestamp=datetime(2026, 1, 3, 0, i, tzinfo=UTC).isoformat(),
+        )
+        for i, value in enumerate(baseline_values)
+    ]
+    resp = await client.post(
+        "/telemetry",
+        json={"readings": baseline_readings},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.post(
+        "/telemetry",
+        json={
+            "readings": [
+                _reading(
+                    asset_id=same_asset,
+                    sensor_type="temperature",
+                    value=20.0,
+                    timestamp=datetime(2026, 1, 3, 2, 0, tzinfo=UTC).isoformat(),
+                )
+            ]
+        },
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp.status_code == 201, resp.text
+    anomalies = resp.json()["anomalies"]
+    assert anomalies[0]["sample_count"] == 0
+    assert anomalies[0]["rolling_mean"] is None
+    assert anomalies[0]["is_anomaly"] is False
 
 
 async def test_main_and_timescale_migration_chains_are_independent(

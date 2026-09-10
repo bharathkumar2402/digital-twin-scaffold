@@ -31,8 +31,10 @@ async def ingest_telemetry(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_timescale_scoped_session),
 ) -> TelemetryIngestResponse:
-    accepted = await ingest_readings(session, tenant_id=context.tenant_id, readings=body.readings)
-    return TelemetryIngestResponse(accepted=accepted)
+    accepted, anomalies = await ingest_readings(
+        session, tenant_id=context.tenant_id, readings=body.readings
+    )
+    return TelemetryIngestResponse(accepted=accepted, anomalies=anomalies)
 
 
 @router.get(

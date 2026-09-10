@@ -4,7 +4,9 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sensor_reading import SensorReading
+from app.schemas.ml.anomaly import AnomalyCheckResult
 from app.schemas.requests.telemetry import SensorReadingIn
+from app.services.anomaly_detection_service import check_readings_for_anomalies
 
 MAX_TELEMETRY_LIMIT = 500
 DEFAULT_TELEMETRY_LIMIT = 200
@@ -12,12 +14,20 @@ DEFAULT_TELEMETRY_LIMIT = 200
 
 async def ingest_readings(
     session: AsyncSession, *, tenant_id: uuid.UUID, readings: list[SensorReadingIn]
-) -> int:
-    """Bulk-inserts validated sensor readings for the caller's tenant.
+) -> tuple[int, list[AnomalyCheckResult]]:
+    """Bulk-inserts validated sensor readings for the caller's tenant, then runs the
+    live rolling-Z-score anomaly check (issue 3.4) on the same batch.
 
     Uses a single Core `insert` rather than per-row ORM `add()`: this is an append-only
     ingest path with no need for identity-map tracking, and a bulk statement is the only
-    way to keep a large batch to one round trip.
+    way to keep a large batch to one round trip. The anomaly check runs *before* commit,
+    in the same transaction as the insert: `scope_session_to_tenant`'s GUC is set via
+    `SET LOCAL`, which only lives for the current transaction (see
+    `app/core/tenant_context.py`) - committing first and querying after would run the
+    baseline query with no GUC set, which RLS fails closed on (zero rows, not an error),
+    silently breaking every anomaly check. This is safe: the baseline query's own
+    `timestamp < cutoff` predicate already excludes this batch's own rows from its
+    baseline (see `anomaly_detection_service`), regardless of transaction visibility.
     """
     rows = [
         {
@@ -32,8 +42,11 @@ async def ingest_readings(
     ]
 
     await session.execute(insert(SensorReading), rows)
+    anomalies = await check_readings_for_anomalies(
+        session, tenant_id=tenant_id, readings=readings
+    )
     await session.commit()
-    return len(rows)
+    return len(rows), anomalies
 
 
 async def get_asset_telemetry(

@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.ml.anomaly import AnomalyCheckResult
+
 
 class SensorReadingIn(BaseModel):
     asset_id: uuid.UUID
@@ -26,6 +28,9 @@ class TelemetryIngestRequest(BaseModel):
 
 class TelemetryIngestResponse(BaseModel):
     accepted: int
+    # Live rolling-Z-score check on this same batch (issue 3.4) - one result per
+    # ingested reading. Not yet wired to any alert/debounce logic; that's task 3.5.
+    anomalies: list[AnomalyCheckResult]
 
 
 class TelemetryReadingResponse(BaseModel):

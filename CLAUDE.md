@@ -162,9 +162,77 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
-engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2), and
-task 3, "Risk inference service" (issue 3.3), are closed. Next: Phase 3 task 4,
-"Anomaly detection."
+engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
+task 3, "Risk inference service" (issue 3.3), and task 4, "Anomaly detection"
+(issue 3.4), are closed. Next: Phase 3 task 5, "Debounced alert triggering."
+
+Note on 3.4 ("Anomaly detection", issue 3.4): scoped deliberately narrow, matching
+`PHASE_PLAN.md`'s own task split — "Rolling Z-score check on live telemetry as it's
+ingested," full stop. Debouncing/cooldown is task 3.5 and Redis pub/sub → WebSocket
+delivery is task 3.6; this task doesn't wire anything downstream of detection, per
+root CLAUDE.md rule 4 (never wire a raw threshold breach straight to a pipeline run).
+No new table/migration — reads the existing RLS-protected `sensor_readings`
+hypertable the same way `get_asset_telemetry` (2.8) already does.
+
+New `app/schemas/ml/anomaly.py`'s `AnomalyCheckResult` (Pydantic-validated, same
+"never write/return unvalidated ML output" pattern 3.3's `RiskScoreResult` set) is a
+*live, per-reading* check, explicitly distinct from 3.1's `SensorWindowStats
+.anomaly_count` (a window-local outlier *count* used as a training feature, not a
+live per-reading flag — see that schema's docstring, which already called this
+distinction out before this task existed). New
+`app/services/anomaly_detection_service.py`'s `check_readings_for_anomalies` groups
+an ingest batch by `(asset_id, sensor_type)`, computes a rolling baseline (7-day
+lookback — deliberately much shorter than 3.1's 30/90/365-day feature windows, since
+this answers "what's normal *recently*" not a long-run class stat) via one SQL query
+per group, using the group's *earliest* timestamp as the baseline cutoff so the
+query can never include any reading from the batch being checked, regardless of
+in-batch ordering. Flags `is_anomaly` at `|z_score| > 3.0` (deliberately stricter
+than 3.1's window-local 2.0 threshold — a looser bar here would flag routine noise on
+every single ingest call, before 3.5's debounce/cooldown logic exists to absorb it),
+and only once at least 10 prior readings exist (`MIN_SAMPLE_COUNT`) — thin history
+reports `is_anomaly=False` with `sample_count` visible, never a false positive from
+an untrustworthy stddev. The z-score/flag math (`_z_score_and_flag`) is split into a
+pure function specifically so it's unit-testable without a database. `POST
+/telemetry`'s `TelemetryIngestResponse` gained an `anomalies: list[AnomalyCheckResult]`
+field (one per ingested reading) — the hook task 3.5 will consume next, not a new
+endpoint.
+
+Building this surfaced a real bug, same class as the RLS-GUC issue 2.7 found and
+fixed: `telemetry_service.ingest_readings` originally called
+`session.commit()` on the insert *before* running the anomaly baseline query.
+`scope_session_to_tenant`'s GUC is set via `SET LOCAL` (transaction-scoped, per
+`app/core/tenant_context.py`), so committing ends the transaction the GUC lived in —
+the anomaly query then ran with no GUC set, and RLS failed closed (silently zero
+rows, no error) rather than raising, which would have made every anomaly check
+report `sample_count=0`/`is_anomaly=False` regardless of real history. Caught by
+this session's own new integration tests (`sample_count == 10` assertions), not
+found in production first. Fixed by moving the anomaly check to run *before* commit,
+in the same transaction as the insert — safe because the baseline query's own
+`timestamp < cutoff` predicate already excludes the batch's own rows independent of
+transaction-commit visibility.
+
+Not one of the four extra-scrutiny categories (no RLS policy change, no new table,
+not Phase 2/4/5), but per this repo's own precedent (2.7/2.8/3.1) of adding a
+cross-tenant isolation check to any new read path over an RLS-protected table anyway:
+extended `tests/cross_tenant/test_telemetry_isolation.py` with adversarial cases
+before calling this done — an outlier correctly flagged once a real baseline exists,
+a normal value correctly not flagged, and (the one that actually matters for
+isolation, and the one that caught the commit-ordering bug above) a same-`asset_id`
+cross-tenant baseline check: tenant A builds a tight 11-reading baseline, tenant B
+posts a single reading for the *same* `asset_id`/`sensor_type` and must see
+`sample_count == 0`/`rolling_mean == null`, confirming RLS scopes the anomaly
+detector's own baseline query, not just the existing ingest/read paths. Also updated
+the pre-existing `test_ingest_returns_accepted_count` (its exact-match assertion on
+the response body would otherwise have started failing the moment `anomalies` was
+added) to assert the new field's shape too, rather than loosening it away.
+
+18 new backend tests pass (4 schema unit tests, 7 pure z-score/flag-logic unit tests
+run without a database, 4 new cross-tenant integration tests including the baseline
+isolation case, plus 1 existing cross-tenant test extended for the new response
+field), 290/290 backend tests total, ruff + mypy clean. This task doesn't close any
+Phase 3 Definition of Done checkbox on its own — "a manually injected anomaly
+produces a browser alert in under 2 seconds" needs 3.5's debounce logic and 3.6's
+WebSocket delivery on top of this detector, neither of which exist yet.
 
 Note on 3.3 ("Risk inference service", issue 3.3): new `risk_scores` table (migration
 0009) — `tenant_id, facility_id, asset_id, score, model_version, factors_json,
