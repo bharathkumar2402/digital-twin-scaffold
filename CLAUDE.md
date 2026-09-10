@@ -163,8 +163,78 @@ rather than building it — that scope boundary is deliberate and documented in
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is underway: task 1, "Feature
 engineering pipeline" (issue 3.1), task 2, "XGBoost training script" (issue 3.2),
-task 3, "Risk inference service" (issue 3.3), and task 4, "Anomaly detection"
-(issue 3.4), are closed. Next: Phase 3 task 5, "Debounced alert triggering."
+task 3, "Risk inference service" (issue 3.3), task 4, "Anomaly detection" (issue 3.4),
+and task 5, "Debounced alert triggering" (issue 3.5), are closed. Next: Phase 3
+task 6, "Real-time delivery" (Redis pub/sub → WebSocket server → frontend toast/alert).
+
+Note on 3.5 ("Debounced alert triggering", issue 3.5): builds the batching/cooldown
+decision engine from `PROJECT_PLAN.md` §7.1, and, per `PHASE_PLAN.md`'s own task
+wording ("implement... *before* wiring it to anything downstream"), stops there
+deliberately - not wired into `POST /telemetry`/`ingest_readings`, doesn't enqueue
+3.3's `compute_facility_risk_scores`, doesn't publish to Redis pub/sub. The full
+5-agent pipeline §7.1 describes batching triggers for doesn't exist yet (Phase 4);
+wiring a `True` decision to the lightweight risk re-score and to the browser is
+task 3.6's job, same "don't wire ahead of the task that owns it" precedent 3.4's
+note set for itself. No new table/migration/RLS - state lives entirely in Redis,
+keyed by `tenant_id`+`asset_id`, not Postgres.
+
+New `app/schemas/ml/debounce.py`'s `DebounceDecision` (Pydantic-validated, same
+"never return unvalidated output" pattern as `AnomalyCheckResult`/`RiskScoreResult`).
+New `app/services/alert_debounce_service.py`: `evaluate_anomaly_batch` filters an
+ingest batch's `AnomalyCheckResult`s down to just the flagged (`is_anomaly=True`)
+ones - a normal reading never touches Redis at all - then `evaluate_anomaly` applies
+two independent Redis-backed rules per §7.1: a per-asset **cooldown**
+(`SET NX EX`, 120s, keyed `debounce:cooldown:{tenant_id}:{asset_id}`) where only the
+first anomaly since the last trigger (or ever) reports
+`should_trigger_light_rescore=True` - every repeat within the cooldown reports
+`False`, which is the debounce working as intended, not a bug - and a per-tenant
+**batch window** (`INCR`+`EXPIRE`, 15s buckets, within §7.1's documented 10–30s
+range, keyed `debounce:window:{tenant_id}:{bucket}`) that counts how many anomalies
+land in the current window, informational only for now and reserved for Phase 4's
+eventual full-pipeline batching. The cooldown's correctness rests on `SET NX` being
+atomic in Redis, not on the 120s TTL alone - two near-simultaneous anomalies for the
+same asset can't both see "cooldown not active" and both trigger.
+
+Not one of the four extra-scrutiny categories (no RLS/new table, not Phase 2/4/5),
+but the phase plan's own wording calls this "correctness-critical" and asks for
+debounce-window/cooldown tests independent of the rest of the pipeline - treated
+that as non-optional. `tests/unit/test_alert_debounce_service.py` (10 tests, run
+against `fakeredis` for speed/determinism - this module's Redis usage is limited to
+`SET NX EX`/`INCR`/`EXPIRE`, which `fakeredis` implements faithfully) covers: first
+anomaly for an asset triggers; a repeat within cooldown is suppressed; the phase
+plan's own DoD wording directly - 20 rapid repeated anomalies on one asset produce
+exactly 1 trigger, not a flood; triggers again once the cooldown key is gone
+(simulating TTL expiry by deleting the key rather than sleeping 120 real seconds in
+a unit test); different assets don't share cooldown state; different tenants
+reusing the same asset UUID don't share cooldown state either (Redis has no
+Postgres-RLS-style tenant isolation of its own, so this has to be enforced by key
+namespacing, and is tested as its own case); batch-window count increments across
+anomalies in the same bucket; and `evaluate_anomaly_batch` skips non-anomalous
+readings entirely, including asserting no cooldown key was created for a skipped
+reading.
+
+Verified for real, not just against `fakeredis` (per this repo's norm for
+infra-touching code, even when not an extra-scrutiny category - see 2.4/2.5's real
+MinIO passes): brought up a real `redis:7-alpine` container and drove
+`evaluate_anomaly` against it directly - confirmed the cooldown key's real TTL is
+120s (not just what the code intends), and fired 10 concurrent `evaluate_anomaly`
+calls (`asyncio.gather`) for the same fresh asset to confirm the atomic `SET NX`
+race actually holds under real concurrency, not just fakeredis's single-threaded
+event loop - exactly 1 of the 10 reported `should_trigger_light_rescore=True`.
+Container torn down after.
+
+New dev dependency: `fakeredis>=2.23` (unit-test-only; no new runtime dependency -
+`redis.asyncio` was already installed transitively via `celery[redis]`).
+
+10/10 new backend tests pass, 157/157 backend unit tests total, ruff + mypy clean.
+(Did not re-run the full cross_tenant/integration testcontainers suite for this
+task - no Postgres/RLS/route surface changed, and the new Redis-backed logic is
+covered by the fakeredis suite plus the real-container pass above.) This task fully
+closes the Phase 3 DoD checkbox "Debounce logic verified by test: rapid repeated
+anomalies on one asset do NOT produce a flood of triggers" - the other three DoD
+items (risk scores on the map, a <2s browser alert, model-version auditability)
+are either already done (model version, from 3.3) or still open pending 3.6
+(real-time delivery) and task 7 (map color-coding).
 
 Note on 3.4 ("Anomaly detection", issue 3.4): scoped deliberately narrow, matching
 `PHASE_PLAN.md`'s own task split — "Rolling Z-score check on live telemetry as it's

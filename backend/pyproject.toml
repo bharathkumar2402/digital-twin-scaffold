@@ -28,6 +28,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "testcontainers[postgres]>=4.0",
+    "fakeredis>=2.23",
     "ruff>=0.4",
     "mypy>=1.9",
 ]
