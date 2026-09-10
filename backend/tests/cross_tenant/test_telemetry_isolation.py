@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -744,6 +745,77 @@ async def test_a_debounced_anomaly_publishes_to_the_tenants_alert_channel(
         payload = json.loads(message["data"])
         assert payload["asset_id"] == asset_id
         assert payload["sensor_type"] == "pressure"
+    finally:
+        await pubsub.aclose()
+        await redis.aclose()
+
+
+# Phase 3's DoD says "a manually injected anomaly produces a browser alert in under
+# 2 seconds" - prior tests here prove the ingest -> anomaly-detect -> debounce ->
+# publish leg happens *correctly*, never that it happens *fast enough*. This bounds
+# just that leg (the only compute/DB-bound part of the pipeline; Redis pub/sub ->
+# WebSocket forwarding is bounded separately in test_alerts_ws.py, and browser
+# rendering is sub-millisecond DOM work in AlertToast, not something worth a timed
+# test). Asserted at 1 second, not 2, so this fails on a real regression well before
+# the full pipeline's 2-second budget is exhausted, while still leaving headroom
+# against a loaded CI box.
+ALERT_PUBLISH_LATENCY_BUDGET_SECONDS = 1.0
+
+
+async def test_debounced_anomaly_alert_is_published_within_the_latency_slo(
+    client: httpx.AsyncClient, tenant_a: uuid.UUID, fake_redis_server: fakeredis.FakeServer
+) -> None:
+    token = await _register_and_login(client, tenant_id=tenant_a, email="latency@example.com")
+    asset_id = str(uuid.uuid4())
+    redis, pubsub = await _subscribe(fake_redis_server, tenant_a)
+    try:
+        baseline_values = [20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0, 21.0, 19.0, 20.0]
+        baseline_readings = [
+            _reading(
+                asset_id=asset_id,
+                sensor_type="pressure",
+                value=value,
+                timestamp=datetime(2026, 1, 5, 0, i, tzinfo=UTC).isoformat(),
+            )
+            for i, value in enumerate(baseline_values)
+        ]
+        await client.post(
+            "/telemetry",
+            json={"readings": baseline_readings},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # The timer starts at the manually-injected anomaly itself, mirroring the
+        # DoD wording ("a manually injected anomaly produces a browser alert...") -
+        # baseline setup above is fixture/test-harness cost, not pipeline latency.
+        started_at = time.perf_counter()
+        resp = await client.post(
+            "/telemetry",
+            json={
+                "readings": [
+                    _reading(
+                        asset_id=asset_id,
+                        sensor_type="pressure",
+                        value=500.0,
+                        timestamp=datetime(2026, 1, 5, 1, 0, tzinfo=UTC).isoformat(),
+                    )
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["anomalies"][0]["is_anomaly"] is True
+
+        message = await pubsub.get_message(timeout=ALERT_PUBLISH_LATENCY_BUDGET_SECONDS)
+        elapsed = time.perf_counter() - started_at
+
+        assert message is not None, (
+            f"no alert published within the {ALERT_PUBLISH_LATENCY_BUDGET_SECONDS}s budget"
+        )
+        assert elapsed < ALERT_PUBLISH_LATENCY_BUDGET_SECONDS, (
+            f"anomaly-to-publish latency was {elapsed:.3f}s, "
+            f"over the {ALERT_PUBLISH_LATENCY_BUDGET_SECONDS}s budget"
+        )
     finally:
         await pubsub.aclose()
         await redis.aclose()

@@ -161,12 +161,13 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
-is code-complete. One Definition of Done item is still open: "a manually injected
-anomaly produces a browser alert in under 2 seconds" has never been empirically
-measured (delivery correctness and tenant isolation are tested; wall-clock latency is
-not) — see `docs/PROGRESS_LOG.md` for detail. A follow-up session is adding a timed
-latency check before Phase 3 is marked fully closed. Phase 4 (AI Agent System) has not
-started.
+is fully closed — the end-of-phase DoD audit's one open gap (empirically verifying
+the "<2 second" alert latency) is now closed too, via timed assertions in
+`backend/tests/cross_tenant/test_telemetry_isolation.py` and
+`backend/tests/unit/test_alerts_ws.py` (see `docs/PROGRESS_LOG.md`). Phase 4 (AI Agent
+System) has not started; next up is Phase 4 task 1, "Pydantic output-validation
+layer" (issue 4.1) — one of this repo's designated extra-scrutiny tasks per
+`CLAUDE.md`'s standard workflow step 3.
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

@@ -6,6 +6,7 @@ monkeypatched to a shared `fakeredis` server so a message published in the test 
 is observable by the endpoint's own subscription.
 """
 
+import time
 import uuid
 
 import pytest
@@ -105,6 +106,34 @@ def test_a_published_alert_is_delivered_to_its_own_tenant(
         data = ws.receive_text()
         payload = AlertNotification.model_validate_json(data)
         assert payload.asset_id == asset_id
+
+
+# Phase 3's DoD ("a manually injected anomaly produces a browser alert in under 2
+# seconds") is bounded in two independent legs - see
+# tests/cross_tenant/test_telemetry_isolation.py's
+# ALERT_PUBLISH_LATENCY_BUDGET_SECONDS for the ingest -> publish leg. This is the
+# other leg: Redis pub/sub message -> forwarded over the WebSocket to the browser.
+WS_FORWARD_LATENCY_BUDGET_SECONDS = 0.5
+
+
+def test_a_published_alert_is_forwarded_over_the_socket_within_the_latency_slo(
+    client: TestClient, fake_redis_server: fakeredis.FakeServer
+) -> None:
+    asset_id = uuid.uuid4()
+    token = _token(TENANT_A)
+    with client.websocket_connect(f"/ws/alerts?token={token}") as ws:
+        started_at = time.perf_counter()
+        _publish(fake_redis_server, tenant_id=TENANT_A, asset_id=asset_id)
+
+        data = ws.receive_text()
+        elapsed = time.perf_counter() - started_at
+
+        payload = AlertNotification.model_validate_json(data)
+        assert payload.asset_id == asset_id
+        assert elapsed < WS_FORWARD_LATENCY_BUDGET_SECONDS, (
+            f"publish-to-forward latency was {elapsed:.3f}s, "
+            f"over the {WS_FORWARD_LATENCY_BUDGET_SECONDS}s budget"
+        )
 
 
 def test_an_alert_for_another_tenant_is_never_delivered(
