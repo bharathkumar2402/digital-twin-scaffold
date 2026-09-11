@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import update
 
 from app.core.celery_app import celery_app
-from app.core.db import async_session_factory
+from app.core.db import async_session_factory, engine
 from app.core.tenant_context import scope_session_to_tenant
 from app.models.facility_map_upload import FacilityMapUpload
 
@@ -32,9 +32,17 @@ def record_sandbox_result(
     """
     if status not in VALID_STATUSES:
         raise ValueError(f"invalid upload status from sandbox: {status!r}")
-    asyncio.run(
-        _record_sandbox_result_async(upload_id, tenant_id, status, detail, tile_prefix)
-    )
+    try:
+        asyncio.run(
+            _record_sandbox_result_async(upload_id, tenant_id, status, detail, tile_prefix)
+        )
+    finally:
+        # `engine`'s pool holds asyncpg connections bound to the event loop that
+        # created them. asyncio.run() tears that loop down on every task, so a pooled
+        # connection checked out by the *next* task would belong to an already-closed
+        # loop and fail with "Event loop is closed" — dispose the pool here so each
+        # task's asyncio.run() call always creates connections on its own fresh loop.
+        asyncio.run(engine.dispose())
 
 
 async def _record_sandbox_result_async(
