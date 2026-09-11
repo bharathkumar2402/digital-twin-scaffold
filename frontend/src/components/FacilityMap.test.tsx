@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FacilityMap } from "./FacilityMap";
+import { FacilityMap, RASTER_PROFILE_MAX_ZOOM } from "./FacilityMap";
 
 const addSource = vi.fn();
 const addLayer = vi.fn();
@@ -48,7 +48,7 @@ describe("FacilityMap", () => {
         type: "raster",
         tiles: [tileUrlTemplate],
         scheme: "tms",
-        maxzoom: 4,
+        maxzoom: RASTER_PROFILE_MAX_ZOOM,
       })
     );
     expect(addLayer).toHaveBeenCalledWith(

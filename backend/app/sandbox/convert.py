@@ -21,8 +21,19 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-DEFAULT_MAX_ZOOM = 4
+# Raised from 4 -> 6 zoom levels (16x more tile-canvas resolution) alongside the DPI
+# bumps below, after a real floor-plan upload came back visibly blurry at max zoom —
+# frontend/src/components/FacilityMap.tsx's RASTER_PROFILE_MAX_ZOOM must be kept equal
+# to this, and any facility map uploaded under the old value needs re-uploading (its
+# tile pyramid was baked at the old resolution/zoom range).
+DEFAULT_MAX_ZOOM = 6
 GDAL2TILES_TIMEOUT_SECONDS = 120
+
+# Source-rasterization DPI shared by the PDF/DXF rasterizers below. 72 dpi is a PDF
+# page's native resolution, so 400 is roughly a 5.5x linear pixel-density bump over
+# that — enough real detail for DEFAULT_MAX_ZOOM=6 (64x64 tiles of 256px = 16384px
+# canvas) to not just be gdal2tiles interpolating a blurry low-res source upward.
+RASTER_DPI = 400
 
 
 class TileConversionError(Exception):
@@ -33,7 +44,10 @@ class TileConversionError(Exception):
 def _rasterize_svg(content: bytes) -> bytes:
     import cairosvg
 
-    png_bytes = cairosvg.svg2png(bytestring=content)
+    # cairosvg has no dpi= kwarg - scale is expressed as an output-size multiplier
+    # instead. RASTER_DPI/96 mirrors the same ~5.5x bump the PDF/DXF rasterizers get
+    # via dpi=RASTER_DPI, treating SVG's 96dpi CSS-pixel default as the baseline.
+    png_bytes = cairosvg.svg2png(bytestring=content, scale=RASTER_DPI / 96)
     if png_bytes is None:
         raise TileConversionError("cairosvg produced no output for this SVG")
     return png_bytes
@@ -60,7 +74,7 @@ def _rasterize_dxf(content: bytes) -> bytes:
             doc.modelspace(), finalize=True
         )
         buffer = io.BytesIO()
-        figure.savefig(buffer, format="png", dpi=200)
+        figure.savefig(buffer, format="png", dpi=RASTER_DPI)
         return buffer.getvalue()
     finally:
         plt.close(figure)
@@ -72,7 +86,7 @@ def _rasterize_pdf(content: bytes) -> bytes:
     with pymupdf.open(stream=content, filetype="pdf") as doc:
         if doc.page_count == 0:
             raise TileConversionError("PDF has no pages to rasterize")
-        pixmap = doc[0].get_pixmap(dpi=200)
+        pixmap = doc[0].get_pixmap(dpi=RASTER_DPI)
         return pixmap.tobytes("png")
 
 

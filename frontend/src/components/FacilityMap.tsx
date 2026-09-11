@@ -9,15 +9,16 @@ import { useEffect, useRef } from "react";
 // what gdal2tiles actually produced:
 //   - scheme "tms": gdal2tiles' default y-axis convention (y=0 at the bottom), as
 //     opposed to MapLibre's default "xyz" (y=0 at the top).
-//   - maxzoom 4: matches DEFAULT_MAX_ZOOM in app/sandbox/convert.py. Not exposed via
-//     the FacilityMapUploadStatusResponse schema, so this is a hand-kept constant
-//     rather than a value read off the API - reopening that merged 2.4 contract for a
-//     zoom-level int didn't seem worth it for this task, but if DEFAULT_MAX_ZOOM ever
-//     changes on the backend, update this too.
+//   - maxzoom 6: matches DEFAULT_MAX_ZOOM in app/sandbox/convert.py (raised from 4
+//     after a real upload came back blurry at max zoom - see that file's comment).
+//     Not exposed via the FacilityMapUploadStatusResponse schema, so this is a
+//     hand-kept constant rather than a value read off the API - reopening that
+//     merged 2.4 contract for a zoom-level int didn't seem worth it for this task,
+//     but if DEFAULT_MAX_ZOOM ever changes on the backend, update this too.
 // Exported for src/lib/mapCoords.ts (issue 2.6's asset pixel<->lnglat conversion) so
 // that math stays pinned to the exact same zoom level this layer renders at, instead
-// of a second hand-copied "4".
-export const RASTER_PROFILE_MAX_ZOOM = 4;
+// of a second hand-copied constant.
+export const RASTER_PROFILE_MAX_ZOOM = 6;
 const RASTER_SOURCE_ID = "facility-floor-plan";
 
 interface FacilityMapProps {
