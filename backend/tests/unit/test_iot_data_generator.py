@@ -2,12 +2,14 @@ import math
 import random
 import uuid
 
+import httpx
 import pytest
 
 from scripts.iot_data_generator import (
     MAX_BATCH_SIZE,
     SENSOR_PROFILES,
     ReadingPayload,
+    TelemetryClient,
     chunk_readings,
     generate_batch,
     generate_reading,
@@ -148,3 +150,77 @@ def test_parse_args_defaults() -> None:
     assert args.num_assets == 5
     assert args.rate == 1.0
     assert set(args.sensor_types) == set(SENSOR_PROFILES)
+    assert args.facility_id is None
+
+
+def test_parse_args_accepts_facility_id() -> None:
+    facility_id = uuid.uuid4()
+    args = parse_args(
+        [
+            "--base-url",
+            "http://localhost:8000",
+            "--tenant-id",
+            str(uuid.uuid4()),
+            "--email",
+            "demo@tenant.example",
+            "--password",
+            "secretpass",
+            "--facility-id",
+            str(facility_id),
+        ]
+    )
+
+    assert args.facility_id == facility_id
+
+
+async def test_list_facility_asset_ids_returns_real_asset_ids() -> None:
+    facility_id = uuid.uuid4()
+    asset_id_1, asset_id_2 = uuid.uuid4(), uuid.uuid4()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(200, json={"access_token": "tok", "token_type": "bearer"})
+        assert request.url.path == f"/facilities/{facility_id}/assets"
+        assert request.headers["authorization"] == "Bearer tok"
+        return httpx.Response(
+            200,
+            json=[
+                {"id": str(asset_id_1), "name": "A", "type": "pump"},
+                {"id": str(asset_id_2), "name": "B", "type": "motor"},
+            ],
+        )
+
+    client = TelemetryClient(
+        base_url="http://test",
+        tenant_id=uuid.uuid4(),
+        email="demo@tenant.example",
+        password="secretpass",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        asset_ids = await client.list_facility_asset_ids(facility_id)
+    finally:
+        await client.aclose()
+
+    assert asset_ids == [asset_id_1, asset_id_2]
+
+
+async def test_list_facility_asset_ids_empty_facility_returns_empty_list() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/login":
+            return httpx.Response(200, json={"access_token": "tok", "token_type": "bearer"})
+        return httpx.Response(200, json=[])
+
+    client = TelemetryClient(
+        base_url="http://test",
+        tenant_id=uuid.uuid4(),
+        email="demo@tenant.example",
+        password="secretpass",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        asset_ids = await client.list_facility_asset_ids(uuid.uuid4())
+    finally:
+        await client.aclose()
+
+    assert asset_ids == []

@@ -2,7 +2,17 @@
 
 Standalone script (not part of the FastAPI app) that posts realistic normal and
 anomalous sensor readings to the `/telemetry` ingest endpoint, for local dev and
-demo use. Run with:
+demo use.
+
+Against a real facility's real assets (recommended - telemetry then shows up for
+whatever you've actually placed on the map, no manual asset-id bookkeeping):
+
+    python -m scripts.iot_data_generator --base-url http://localhost:8000 \\
+        --tenant-id <uuid> --email demo@tenant.example --password secret \\
+        --facility-id <facility-uuid> --rate 10 --anomaly-rate 0.02
+
+Or, without a facility (fabricates --num-assets random asset ids that don't
+correspond to anything real - only useful for exercising the ingest pipeline itself):
 
     python -m scripts.iot_data_generator --base-url http://localhost:8000 \\
         --tenant-id <uuid> --email demo@tenant.example --password secret \\
@@ -140,9 +150,17 @@ class TelemetryClient:
     """Thin wrapper: logs in once, posts batches, re-logs-in on 401."""
 
     def __init__(
-        self, *, base_url: str, tenant_id: uuid.UUID, email: str, password: str
+        self,
+        *,
+        base_url: str,
+        tenant_id: uuid.UUID,
+        email: str,
+        password: str,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=10.0)
+        # transport is only ever overridden by tests (httpx.MockTransport), to exercise
+        # _login/post_batch/list_facility_asset_ids without a real server.
+        self._client = httpx.AsyncClient(base_url=base_url, timeout=10.0, transport=transport)
         self._tenant_id = tenant_id
         self._email = email
         self._password = password
@@ -181,6 +199,27 @@ class TelemetryClient:
 
         raise RuntimeError("unreachable")  # pragma: no cover
 
+    async def list_facility_asset_ids(self, facility_id: uuid.UUID) -> list[uuid.UUID]:
+        """Fetches the real, current asset ids for a facility via
+        GET /facilities/{facility_id}/assets, so simulated telemetry always tracks
+        whatever assets actually exist there (added via the UI, an upload-driven flow,
+        etc.) instead of a fixed, made-up list of ids nothing else knows about."""
+        if self._access_token is None:
+            await self._login()
+
+        for attempt in range(2):
+            response = await self._client.get(
+                f"/facilities/{facility_id}/assets",
+                headers={"Authorization": f"Bearer {self._access_token}"},
+            )
+            if response.status_code == httpx.codes.UNAUTHORIZED and attempt == 0:
+                await self._login()
+                continue
+            response.raise_for_status()
+            return [uuid.UUID(asset["id"]) for asset in response.json()]
+
+        raise RuntimeError("unreachable")  # pragma: no cover
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -189,7 +228,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument(
-        "--num-assets", type=int, default=5, help="Number of simulated asset UUIDs to generate"
+        "--facility-id",
+        type=uuid.UUID,
+        default=None,
+        help=(
+            "Simulate telemetry for the real, current assets of this facility "
+            "(re-fetched every tick via GET /facilities/{id}/assets, so assets added "
+            "or removed mid-run are picked up automatically) instead of --num-assets "
+            "made-up ones."
+        ),
+    )
+    parser.add_argument(
+        "--num-assets",
+        type=int,
+        default=5,
+        help="Number of simulated asset UUIDs to generate. Ignored if --facility-id is set.",
     )
     parser.add_argument(
         "--sensor-types",
@@ -221,8 +274,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def run(args: argparse.Namespace) -> None:
     rng = random.Random(args.seed)
-    asset_ids = [uuid.uuid4() for _ in range(args.num_assets)]
-    logger.info("Simulating %d assets: %s", len(asset_ids), asset_ids)
+    static_asset_ids = (
+        None if args.facility_id else [uuid.uuid4() for _ in range(args.num_assets)]
+    )
+    if static_asset_ids is not None:
+        logger.info("Simulating %d assets: %s", len(static_asset_ids), static_asset_ids)
 
     client = TelemetryClient(
         base_url=args.base_url,
@@ -237,6 +293,24 @@ async def run(args: argparse.Namespace) -> None:
     try:
         while args.duration is None or (time.monotonic() - start) < args.duration:
             loop_start = time.monotonic()
+
+            if static_asset_ids is not None:
+                asset_ids = static_asset_ids
+            else:
+                # Re-fetched every tick (not just once at startup) so an asset added
+                # or deleted mid-run is picked up on the next batch without having to
+                # restart this script.
+                try:
+                    asset_ids = await client.list_facility_asset_ids(args.facility_id)
+                except httpx.HTTPError as exc:
+                    logger.warning("Failed to list facility assets, will retry next tick: %s", exc)
+                    asset_ids = []
+                if not asset_ids:
+                    logger.info(
+                        "Facility %s has no assets yet, nothing to simulate this tick",
+                        args.facility_id,
+                    )
+
             readings = generate_batch(
                 asset_ids=asset_ids,
                 sensor_types=args.sensor_types,
