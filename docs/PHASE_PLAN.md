@@ -101,21 +101,36 @@ visualization on top of a shaky map.
 **Goal:** Assets show live, color-coded risk scores, and anomalies trigger real-time
 alerts without flooding the system.
 
+**Data policy for this phase (read before task 1):** The risk model is trained on a real,
+published, cited industrial dataset — not hand-invented synthetic data. The live
+telemetry ingest pipeline (Phase 1, task 7's simulated IoT generator) stays simulated,
+since no real facility feed is available, but its statistical parameters (value ranges,
+noise, failure rates) are calibrated against the same real dataset rather than picked
+arbitrarily. See `docs/DATASETS.md` for the shortlist, licensing, and which dataset maps
+to which part of this system. This distinction — real-data-trained model, real-data-
+calibrated simulation — must be stated explicitly in the final documentation (Phase 6,
+task 5), not glossed over.
+
 **Claude Code sessions (in order)**
 
-1. **Feature engineering pipeline** — Pull rolling windows from TimescaleDB (30/90/365 day), build the feature set for the risk model.
-2. **XGBoost training script** — Train offline on synthetic data with injected failure patterns; version the model file, store in MinIO.
-3. **Risk inference service** — Celery task that loads the model and scores assets on demand.
-4. **Anomaly detection** — Rolling Z-score check on live telemetry as it's ingested.
-5. **Debounced alert triggering** — Implement the batching/cooldown logic from `PROJECT_PLAN.md` §7.1 *before* wiring it to anything downstream — this is a correctness-critical piece, write tests for the debounce window and per-asset cooldown independently of the rest of the pipeline.
-6. **Real-time delivery** — Redis pub/sub → WebSocket server → frontend toast/alert.
-7. **Risk visualization on the map** — Color-code asset markers green/yellow/red based on latest score.
+1. **Dataset acquisition & exploration** — Download the chosen training dataset (default: **AI4I 2020 Predictive Maintenance**, UCI; see `docs/DATASETS.md`). Explore its schema, confirm feature/label distributions, and write a short data profile (row count, class balance, feature ranges) into `docs/DATASETS.md`.
+2. **Dataset-to-schema mapping** — Map the external dataset's columns onto this project's `sensor_readings` / `risk_scores` schema (`PROJECT_PLAN.md` §5). Write the transform script (`backend/app/services/ml/dataset_mapping.py`) that converts the raw dataset into the shape the feature engineering pipeline expects. This is its own task because it's where subtle bugs (unit mismatches, mislabeled failure classes) tend to hide.
+3. **Feature engineering pipeline** — Build the feature set from the mapped dataset (for training) and from TimescaleDB rolling windows (30/90/365 day, for live inference) — the same feature-extraction function must serve both, or training/serving skew creeps in.
+4. **Calibrate the simulated IoT data generator** — Update Phase 1 task 7's generator so its normal-operation ranges, noise distribution, and injected-failure rate are derived from the real dataset's statistics (from task 1's data profile), not arbitrary constants. Document the calibration method in `docs/DATASETS.md`.
+5. **XGBoost training script** — Train on the real, mapped dataset from tasks 1–3. Record training metrics (precision/recall/F1 per failure class, not just accuracy — class imbalance is typical in these datasets). Version the model file, store in MinIO alongside its metrics and the dataset name/version it was trained on.
+6. **Risk inference service** — Celery task that loads the model and scores assets on demand.
+7. **Anomaly detection** — Rolling Z-score check on live telemetry as it's ingested.
+8. **Debounced alert triggering** — Implement the batching/cooldown logic from `PROJECT_PLAN.md` §7.1 *before* wiring it to anything downstream — this is a correctness-critical piece, write tests for the debounce window and per-asset cooldown independently of the rest of the pipeline.
+9. **Real-time delivery** — Redis pub/sub → WebSocket server → frontend toast/alert.
+10. **Risk visualization on the map** — Color-code asset markers green/yellow/red based on latest score.
 
 **Definition of Done**
+- [ ] Model is trained on a real, cited dataset — not synthetic data invented for this project (see `docs/DATASETS.md` for the citation)
+- [ ] The simulated IoT generator's parameters are documented as calibrated against that same real dataset
 - [ ] Risk scores computed and visible on the map, color-coded
 - [ ] A manually injected anomaly produces a browser alert in under 2 seconds
 - [ ] Debounce logic verified by test: rapid repeated anomalies on one asset do NOT produce a flood of triggers
-- [ ] Model version is recorded alongside each stored risk score (for auditability)
+- [ ] Model version, training dataset name/version, and evaluation metrics are recorded alongside each stored risk score (for auditability)
 
 ---
 

@@ -69,6 +69,10 @@ infra/
 
 docs/
   PROJECT_PLAN.md          — full plan, phases, risk table, source of truth for scope
+  PHASE_PLAN.md            — week-by-week execution runbook, one numbered task per issue
+  DATASETS.md              — real dataset used to train the risk model, mapping guidance,
+                             and how the simulated telemetry generator is calibrated from it
+  PROMPTS.md               — short session-trigger phrases for Claude Code
 ```
 
 ---
@@ -102,6 +106,14 @@ docs/
 7. **OR-Tools CVRP calls always set a solver time limit (5s default)** and return the
    best-found solution rather than blocking indefinitely.
 
+8. **The risk model is trained on a real, cited dataset — never on invented synthetic
+   data.** See `docs/DATASETS.md` for the approved dataset(s) and mapping guidance. The
+   simulated IoT telemetry generator (used for the live demo pipeline, since no real
+   facility feed exists) must have its parameters calibrated from that same real
+   dataset's statistics, not picked arbitrarily. Never train the model on the simulator's
+   own output — that's circular. If asked to add or change the training dataset, update
+   `docs/DATASETS.md` in the same PR, including the dataset's name, version, and license.
+
 ---
 
 ## Standard task workflow — follow this automatically for every task, every time
@@ -109,7 +121,9 @@ docs/
 This repo's work is tracked as GitHub issues numbered `<phase>.<task>` (e.g. `1.3`), each
 mapping to one numbered task in `docs/PHASE_PLAN.md`. Whenever the user asks you to start,
 continue, or move to a task — even with a short instruction like "next task" or "let's do
-1.4" — run this exact sequence without being asked for each step individually:
+1.4" — run this exact sequence without being asked for each step individually. **Never
+commit a task without an explicit human confirmation at step 6 — this is a hard gate, not
+a formality.**
 
 1. **Resume check** (skip only if you just finished another task in this same session).
    Read `CLAUDE.md`'s "Current phase" line, check `git log` and `git status`, and report
@@ -138,9 +152,19 @@ continue, or move to a task — even with a short instruction like "next task" o
    against the relevant phase's Definition of Done in `PHASE_PLAN.md` and say whether this
    task fully satisfies the relevant checklist items or only partially does.
 
-6. **Commit.** Commit referencing `Closes #<issue>` in the message.
+6. **Human acceptance gate — do not commit without this.** Present a short summary: what
+   automated tests exist and what each one actually checks (not just "5 tests, all pass"),
+   plus one concrete way for the user to independently verify the task themselves right
+   now — a curl command, a UI action to click through, a script to run, whatever fits the
+   task. Then explicitly ask the user to confirm before committing. Do not treat silence
+   or a vague "ok" as confirmation for extra-scrutiny tasks (see step 3) — for those,
+   wait for the user to say the manual check actually worked.
 
-7. **Periodic check-in.** Every 5th task closed, or when a phase ends (whichever comes
+7. **Commit and update tracker.** Only after step 6's confirmation. Commit referencing
+   `Closes #<issue>` in the message. Update the "Current phase" line below to point at the
+   next task, named exactly as it appears in `PHASE_PLAN.md`.
+
+8. **Periodic check-in.** Every 5th task closed, or when a phase ends (whichever comes
    first), proactively run a full Definition of Done audit for the current phase against
    actual repo state — not against which issues are marked closed — and flag any gaps,
    even if the user didn't ask for this check.
@@ -152,7 +176,6 @@ rather than building it — that scope boundary is deliberate and documented in
 `PROJECT_PLAN.md`.
 
 ---
-
 
 ## Current phase
 
