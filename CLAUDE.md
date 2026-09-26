@@ -189,8 +189,13 @@ real-dataset workflow)**:
   AI4I 2020 Predictive Maintenance dataset acquired (10,000 rows, 14 columns, 0 nulls,
   3.39% failure rate), profiler built (`app/ml/dataset_profile.py`, `scripts/acquire_dataset.py`),
   `docs/DATASETS.md` data profile populated, and unit tests passing.
-- Next task: **Phase 3, task 2: Dataset-to-schema mapping** (Issue #52, map external columns onto
-  `sensor_readings` and `risk_scores` schema in `app/services/ml/dataset_mapping.py`).
+- Task 3.2 (`Phase 3.2: Dataset-to-schema mapping`, issue #52) is **closed**:
+  mapped external AI4I 2020 columns to `sensor_readings` (air/process temp, speed, torque,
+  tool wear, temp diff, mechanical power) and `risk_scores` (factors_json, failure modes,
+  deterministic asset UUIDs) in `app/services/ml/dataset_mapping.py` with CLI in
+  `scripts/map_dataset.py` and unit tests passing.
+- Next task: **Phase 3, task 3: Feature engineering pipeline** (Issue #16, adapt feature
+  engineering to ingest mapped real dataset features alongside TimescaleDB windows).
 - The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
   and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
 - Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)
