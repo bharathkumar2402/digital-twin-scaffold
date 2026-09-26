@@ -46,16 +46,41 @@ When mapping an external dataset's columns onto this project's schema (`PROJECT_
   artifact in MinIO and in the `risk_scores.model_version` field, so every risk score is
   traceable back to what it was trained on.
 
-## Data profile (fill in after Phase 3, task 1)
+## Data profile (populated from Phase 3, task 1)
 
-> Update this section once the dataset is downloaded and explored — row count, class
-> balance, feature ranges. This is what task 4 (simulator calibration) reads from.
+> Empirical profile computed from 10,000 rows of the official AI4I 2020 dataset.
+> Task 4 (simulator calibration) and Task 5 (model retraining) derive their parameters from this table.
 
-- **Dataset used:**
-- **Version / access date:**
-- **Row count:**
+- **Dataset used:** AI4I 2020 Predictive Maintenance Dataset (UCI Machine Learning Repository (ID: 601))
+- **Citation:** Matzka, S. (2020). Explainable Artificial Intelligence for Predictive Maintenance Applications. Third International Conference on Industrial Cyber-Physical Systems (ICPS).
+- **License / access:** Creative Commons Attribution 4.0 International (CC BY 4.0)
+- **Version / access date:** September 2026
+- **Row count:** 10,000 rows across 14 columns (0 missing values across all columns)
 - **Failure class balance:**
-- **Feature ranges (for simulator calibration):**
+  - **Total Failures (`Machine failure == 1`):** 339 (3.39%)
+  - **Normal Operation (`Machine failure == 0`):** 9,661 (96.61%)
+  - **Individual Failure Modes:**
+    - `TWF` (Tool Wear Failure): 46 incidents (0.46%)
+    - `HDF` (Heat Dissipation Failure): 115 incidents (1.15%)
+    - `PWF` (Power Failure): 95 incidents (0.95%)
+    - `OSF` (Overstrain Failure): 98 incidents (0.98%)
+    - `RNF` (Random Failure): 19 incidents (0.19%)
+  - **Overlapping / Compound Failures:** 24 records exhibit >1 concurrent failure mode
+  - **Unspecified Failures:** 9 records failed without meeting the 5 specific sub-mode thresholds
+- **Product Variant Distribution:**
+  - `L` (Low quality variant (60% target allocation)): 6,000 units (60.00%)
+  - `M` (Medium quality variant (30% target allocation)): 2,997 units (29.97%)
+  - `H` (High quality variant (10% target allocation)): 1,003 units (10.03%)
+- **Feature ranges & operational statistics (for simulator calibration in task 3.4):**
+  | Feature | Unit | Min | 25% | Median | 75% | Max | Mean | Std Dev |
+  |---|---|---|---|---|---|---|---|---|
+  | Air temperature | K | 295.30 | 298.30 | 300.10 | 301.50 | 304.50 | 300.00 | 2.00 |
+  | Process temperature | K | 305.70 | 308.80 | 310.10 | 311.10 | 313.80 | 310.01 | 1.48 |
+  | Rotational speed | rpm | 1168.00 | 1423.00 | 1503.00 | 1612.00 | 2886.00 | 1538.78 | 179.28 |
+  | Torque | Nm | 3.80 | 33.20 | 40.10 | 46.80 | 76.60 | 39.99 | 9.97 |
+  | Tool wear | min | 0.00 | 53.00 | 108.00 | 162.00 | 253.00 | 107.95 | 63.65 |
+  | Temperature difference (Process - Air) | K | 7.60 | 9.30 | 9.80 | 11.00 | 12.10 | 10.00 | 1.00 |
+  | Mechanical power (Torque x Speed) | W | 1148.44 | 5561.18 | 6271.03 | 7003.00 | 10469.92 | 6279.74 | 1067.36 |
 
 ## What NOT to do
 

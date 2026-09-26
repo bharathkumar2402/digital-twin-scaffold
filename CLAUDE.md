@@ -183,25 +183,19 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is **reopened, not closed** —
-`PHASE_PLAN.md` grew Phase 3 from 7 tasks to 10 (new tasks for dataset acquisition,
-dataset-to-schema mapping, and simulator calibration, inserted before training), and
-per the new rule 8 / `docs/DATASETS.md`, the model trained under old issue 3.2 used
-invented synthetic data (`backend/app/ml/synthetic_data.py`), not a real cited
-dataset — that violates the current policy and needs to be redone, not just
-extended. Everything issue 3.1–3.7 (old numbering) built downstream of that model
-(risk inference, anomaly detection, debounce, real-time delivery, map coloring) is
-still structurally sound and doesn't need to be rebuilt, but the model itself and
-its retraining data need task 3.1 (dataset acquisition) → 3.2 (schema mapping) →
-3.4 (simulator calibration) → 3.5 (retrain on the real dataset) redone in order.
-
-The GitHub issue tracker (issues #16–#22) still reflects the *old* 7-task
-numbering/scope and has not been reconciled with the new 10-task plan — do this
-before picking a task, not after: 3 new issues need creating (new tasks 3.1, 3.2,
-3.4), and #16/#17/#18/#19/#20/#21/#22 need retitling to the new task numbers
-3.3/3.5/3.6/3.7/3.8/3.9/3.10 respectively (see `docs/PROGRESS_LOG.md` for the full
-diff and rationale). Phase 4 (AI Agent System) has not started and stays blocked
-until Phase 3's DoD is genuinely satisfied on the real dataset.
+2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is **in progress (reopened for
+real-dataset workflow)**:
+- Task 3.1 (`Phase 3.1: Dataset acquisition & exploration`, issue #51) is **closed**:
+  AI4I 2020 Predictive Maintenance dataset acquired (10,000 rows, 14 columns, 0 nulls,
+  3.39% failure rate), profiler built (`app/ml/dataset_profile.py`, `scripts/acquire_dataset.py`),
+  `docs/DATASETS.md` data profile populated, and unit tests passing.
+- Next task: **Phase 3, task 2: Dataset-to-schema mapping** (Issue #52, map external columns onto
+  `sensor_readings` and `risk_scores` schema in `app/services/ml/dataset_mapping.py`).
+- The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
+  and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
+- Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)
+  remain structurally sound; retraining on mapped real data occurs in task 3.5. Phase 4
+  stays blocked until Phase 3's DoD is fully satisfied.
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

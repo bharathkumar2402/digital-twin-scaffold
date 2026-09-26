@@ -11,6 +11,22 @@ why, and how it was verified.
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
 is code-complete; see the phase-end DoD audit below for one still-open item.
 
+Note on 3.1 ("Dataset acquisition & exploration", issue #51): acquired the real
+AI4I 2020 Predictive Maintenance dataset from the UCI ML Repository (10,000 rows, 14
+columns, 0 missing values) into `backend/data/raw/ai4i2020.csv`. Created
+`app/ml/dataset_profile.py` for structured schema analysis and statistical profiling,
+plus `scripts/acquire_dataset.py` CLI (`--profile`, `--json-output`, `--force`). Profile
+results: 339 total machine failures (3.39%), 9,661 normal operations (96.61%);
+individual failure modes: TWF (46, 0.46%), HDF (115, 1.15%), PWF (95, 0.95%), OSF (98,
+0.98%), RNF (19, 0.19%), with 24 compound multi-failure records and 9 unspecified
+failure records; product variant distribution: L (6,000, 60.00%), M (2,997, 29.97%), H
+(1,003, 10.03%); empirical continuous feature statistics (Air/Process temp, Speed,
+Torque, Tool wear, Temperature Difference, Mechanical Power). Populated the empirical
+data profile table in `docs/DATASETS.md` to ground task 3.4 (generator calibration) and
+task 3.5 (model retraining) in real data. 7 new unit tests in
+`tests/unit/test_dataset_acquisition.py`, 176/176 backend unit tests pass, ruff + mypy
+clean.
+
 Note on 3.7 ("Risk visualization on the map", issue 3.7): new `useRiskScores` hook
 (`frontend/src/hooks/useRiskScores.ts`) fetches 3.3's `GET
 /facilities/{facility_id}/risk-scores`, plain `useQuery` with no polling - no
