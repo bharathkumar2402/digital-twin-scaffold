@@ -17,8 +17,8 @@ export function AlertToast({ alerts, onDismiss }: AlertToastProps): React.JSX.El
     <div
       style={{
         position: "absolute",
-        top: 8,
-        right: 8,
+        top: 12,
+        right: 12,
         display: "flex",
         flexDirection: "column",
         gap: 8,
@@ -47,24 +47,39 @@ function AlertToastCard({
   return (
     <div
       role="alert"
+      className="card"
       style={{
-        background: "#fdecea",
-        border: "1px solid #f5c6cb",
-        borderRadius: 4,
-        padding: "8px 12px",
-        minWidth: 220,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+        background: "var(--color-danger-soft)",
+        borderColor: "var(--color-danger-border)",
+        boxShadow: "var(--shadow-md)",
+        padding: "10px 12px",
+        minWidth: 240,
+        animation: "toast-in 0.18s ease-out",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <strong>Anomaly detected</strong>
-        <button type="button" onClick={onDismiss} aria-label="Dismiss alert">
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            aria-hidden
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: "var(--color-danger)",
+              flexShrink: 0,
+            }}
+          />
+          <strong style={{ fontSize: 13, color: "var(--color-danger)" }}>Anomaly detected</strong>
+        </div>
+        <button type="button" className="btn btn-ghost btn-icon" onClick={onDismiss} aria-label="Dismiss alert">
           &times;
         </button>
       </div>
-      <p style={{ margin: "4px 0 0" }}>
-        {alert.sensor_type}: {alert.value}
-        {alert.z_score !== null && ` (z=${alert.z_score.toFixed(1)})`}
+      <p style={{ margin: "4px 0 0 16px", fontSize: 13, color: "var(--color-text)" }}>
+        {alert.sensor_type}: <strong>{alert.value}</strong>
+        {alert.z_score !== null && (
+          <span style={{ color: "var(--color-text-muted)" }}> (z={alert.z_score.toFixed(1)})</span>
+        )}
       </p>
     </div>
   );

@@ -1,6 +1,14 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { apiFetch, setAccessToken } from "../lib/apiClient";
+import { apiFetch, getAccessToken, refreshAccessToken, setAccessToken } from "../lib/apiClient";
 import type { AccessTokenResponse, Role } from "../types/api";
 
 interface LoginParams {
@@ -12,6 +20,10 @@ interface LoginParams {
 interface AuthState {
   role: Role | null;
   isAuthenticated: boolean;
+  // True only during the one-time bootstrap refresh attempt on app load (see
+  // AuthProvider's mount effect) - RequireAuth uses this to avoid bouncing to /login
+  // on a page reload before that attempt has had a chance to resolve.
+  isInitializing: boolean;
   login: (params: LoginParams) => Promise<void>;
   logout: () => void;
 }
@@ -32,6 +44,25 @@ function decodeRole(accessToken: string): Role | null {
 
 export function AuthProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [role, setRole] = useState<Role | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshAccessToken()
+      .then((refreshed) => {
+        if (cancelled) return;
+        if (refreshed) {
+          const token = getAccessToken();
+          setRole(token ? decodeRole(token) : null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsInitializing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const login = useCallback(async ({ tenantId, email, password }: LoginParams) => {
     const response = await apiFetch<AccessTokenResponse>("/login", {
@@ -48,8 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   }, []);
 
   const value = useMemo(
-    () => ({ role, isAuthenticated: role !== null, login, logout }),
-    [role, login, logout]
+    () => ({ role, isAuthenticated: role !== null, isInitializing, login, logout }),
+    [role, isInitializing, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

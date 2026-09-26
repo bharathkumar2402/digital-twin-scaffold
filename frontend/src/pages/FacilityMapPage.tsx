@@ -24,11 +24,45 @@ import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 // viewer stay read-only on the map, same restriction as facility map uploads.
 const WRITE_ROLES = new Set(["superadmin", "tenant_admin", "facility_manager"]);
 
+const SIDEBAR_WIDTH = 320;
+
 interface NewAssetDraft {
   x: number;
   y: number;
   name: string;
   type: string;
+}
+
+function CenteredMessage({
+  children,
+  isError,
+}: {
+  children: React.ReactNode;
+  isError?: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--color-bg)",
+      }}
+    >
+      <p
+        role={isError ? "alert" : undefined}
+        style={{
+          margin: 0,
+          fontSize: 14,
+          color: isError ? "var(--color-danger)" : "var(--color-text-muted)",
+        }}
+      >
+        {children}
+      </p>
+    </div>
+  );
 }
 
 // No facilities-list endpoint exists on the backend yet (facility CRUD isn't a built
@@ -74,23 +108,23 @@ export function FacilityMapPage(): React.JSX.Element {
   }, [riskScoresQuery.data]);
 
   if (!facilityId || !uploadId) {
-    return <p>Missing facility or upload id in the URL.</p>;
+    return <CenteredMessage isError>Missing facility or upload id in the URL.</CenteredMessage>;
   }
   if (isPending) {
-    return <p>Loading upload status...</p>;
+    return <CenteredMessage>Loading upload status...</CenteredMessage>;
   }
   if (isError) {
-    return <p role="alert">Failed to load upload status: {error.message}</p>;
+    return <CenteredMessage isError>Failed to load upload status: {error.message}</CenteredMessage>;
   }
   if (data.status === "failed" || data.status === "conversion_failed") {
-    return <p role="alert">Floor plan processing failed: {data.status}</p>;
+    return <CenteredMessage isError>Floor plan processing failed: {data.status}</CenteredMessage>;
   }
   if (data.status !== "tiled" || !data.tile_url_template) {
-    return <p>Processing floor plan ({data.status})...</p>;
+    return <CenteredMessage>Processing floor plan ({data.status})...</CenteredMessage>;
   }
 
   return (
-    <div style={{ width: "100vw", height: "100vh", display: "flex" }}>
+    <div style={{ width: "100vw", height: "100vh", display: "flex", background: "var(--color-bg)" }}>
       <div style={{ flex: 1, position: "relative" }}>
         <AlertToast alerts={alerts} onDismiss={dismiss} />
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
@@ -127,18 +161,31 @@ export function FacilityMapPage(): React.JSX.Element {
           }}
         />
         {canEdit && (
-          <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 8 }}>
+          <div
+            className="card"
+            style={{
+              position: "absolute",
+              top: 12,
+              left: 12,
+              display: "flex",
+              gap: 6,
+              padding: 6,
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
             <button
               type="button"
+              className={`btn btn-sm ${addMode ? "btn-active" : ""}`}
               onClick={() => {
                 setAddMode((current) => !current);
                 setNewAssetDraft(null);
               }}
             >
-              {addMode ? "Cancel placing asset" : "Add asset"}
+              {addMode ? "Cancel placing asset" : "+ Add asset"}
             </button>
             <button
               type="button"
+              className={`btn btn-sm ${linkMode ? "btn-active" : ""}`}
               onClick={() => {
                 setLinkMode((current) => !current);
                 setPendingParentId(null);
@@ -149,7 +196,19 @@ export function FacilityMapPage(): React.JSX.Element {
           </div>
         )}
         {linkMode && (
-          <p style={{ position: "absolute", top: 40, left: 8, background: "#fff", padding: 4 }}>
+          <p
+            className="card"
+            style={{
+              position: "absolute",
+              top: canEdit ? 56 : 12,
+              left: 12,
+              margin: 0,
+              padding: "8px 12px",
+              fontSize: 13,
+              color: "var(--color-text)",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
             {pendingParentId
               ? `Click the asset "${assetsById.get(pendingParentId)?.name ?? pendingParentId}" depends on...`
               : "Click the asset that depends on another..."}
@@ -157,7 +216,17 @@ export function FacilityMapPage(): React.JSX.Element {
         )}
       </div>
 
-      <div style={{ width: 280, padding: 12, overflowY: "auto", borderLeft: "1px solid #ccc" }}>
+      <div
+        className="scrollbar-thin"
+        style={{
+          width: SIDEBAR_WIDTH,
+          flexShrink: 0,
+          padding: 16,
+          overflowY: "auto",
+          borderLeft: "1px solid var(--color-border)",
+          background: "var(--color-surface)",
+        }}
+      >
         {newAssetDraft && canEdit && (
           <NewAssetForm
             draft={newAssetDraft}
@@ -201,17 +270,34 @@ export function FacilityMapPage(): React.JSX.Element {
 
         {!newAssetDraft && !selectedAsset && (
           <>
-            <h3>Assets</h3>
-            {assetsQuery.isPending && <p>Loading assets...</p>}
-            <ul style={{ listStyle: "none", padding: 0 }}>
+            <div style={{ marginBottom: 14 }}>
+              <h3 style={{ fontSize: 15 }}>Assets</h3>
+              <p style={{ fontSize: 12.5, margin: 0 }}>{assets.length} on this facility</p>
+            </div>
+            {assetsQuery.isPending && <p style={{ fontSize: 13 }}>Loading assets...</p>}
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
               {assets.map((asset) => (
                 <li key={asset.id}>
                   <button
                     type="button"
                     onClick={() => setSelectedAssetId(asset.id)}
-                    style={{ width: "100%", textAlign: "left" }}
+                    className="card"
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                      background: "var(--color-surface-alt)",
+                      border: "1px solid var(--color-border)",
+                    }}
                   >
-                    {asset.name} ({asset.type})
+                    <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--color-text)" }}>
+                      {asset.name}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
+                      <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{asset.type}</span>
+                      <StatusBadge status={asset.status} />
+                    </div>
                   </button>
                 </li>
               ))}
@@ -219,6 +305,33 @@ export function FacilityMapPage(): React.JSX.Element {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: AssetStatus }): React.JSX.Element {
+  return (
+    <span className={`status-badge status-${status}`}>
+      <span className="status-dot" />
+      {status}
+    </span>
+  );
+}
+
+function SidebarHeader({
+  title,
+  onClose,
+}: {
+  title: string;
+  onClose: () => void;
+}): React.JSX.Element {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+        &larr; Back
+      </button>
+      <h3 style={{ margin: 0, fontSize: 14 }}>{title}</h3>
+      <span style={{ width: 58 }} />
     </div>
   );
 }
@@ -246,26 +359,55 @@ function NewAssetForm({
         }
       }}
     >
-      <h3>New asset</h3>
-      <p>
+      <SidebarHeader title="New asset" onClose={onCancel} />
+
+      <p
+        style={{
+          fontSize: 12,
+          background: "var(--color-surface-alt)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-sm)",
+          padding: "6px 10px",
+          marginBottom: 16,
+        }}
+      >
         Position: ({draft.x.toFixed(1)}, {draft.y.toFixed(1)})
       </p>
-      <label>
-        Name
-        <input value={name} onChange={(event) => setName(event.target.value)} required />
-      </label>
-      <br />
-      <label>
-        Type
-        <input value={type} onChange={(event) => setType(event.target.value)} required />
-      </label>
-      <br />
-      <button type="submit" disabled={isSaving}>
-        Create
-      </button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+
+      <div className="field">
+        <label className="field-label" htmlFor="new-asset-name">
+          Name
+        </label>
+        <input
+          id="new-asset-name"
+          className="input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          required
+        />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="new-asset-type">
+          Type
+        </label>
+        <input
+          id="new-asset-type"
+          className="input"
+          value={type}
+          onChange={(event) => setType(event.target.value)}
+          required
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+        <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 1 }}>
+          {isSaving ? "Creating..." : "Create"}
+        </button>
+        <button type="button" className="btn" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -306,17 +448,30 @@ function AssetDetailPanel({
 
   return (
     <div>
-      <button type="button" onClick={onClose}>
-        &larr; Back
-      </button>
-      <h3>{asset.name}</h3>
-      <p>Type: {asset.type}</p>
-      <p>
-        Position: ({asset.x.toFixed(1)}, {asset.y.toFixed(1)})
-      </p>
-      <label>
-        Status
+      <SidebarHeader title="Asset detail" onClose={onClose} />
+
+      <div style={{ marginBottom: 18 }}>
+        <h3 style={{ fontSize: 17 }}>{asset.name}</h3>
+        <p style={{ fontSize: 12.5, margin: "2px 0 10px" }}>{asset.type}</p>
+        <StatusBadge status={asset.status} />
+      </div>
+
+      <dl className="card" style={{ padding: "10px 12px", margin: "0 0 18px", background: "var(--color-surface-alt)" }}>
+        <DetailRow label="Position">
+          ({asset.x.toFixed(1)}, {asset.y.toFixed(1)})
+        </DetailRow>
+        {asset.manufacturer && <DetailRow label="Manufacturer">{asset.manufacturer}</DetailRow>}
+        {asset.model && <DetailRow label="Model">{asset.model}</DetailRow>}
+        {asset.installed_date && <DetailRow label="Installed">{asset.installed_date}</DetailRow>}
+      </dl>
+
+      <div className="field">
+        <label className="field-label" htmlFor="asset-status">
+          Status
+        </label>
         <select
+          id="asset-status"
+          className="select"
           value={asset.status}
           disabled={!canEdit || isSaving}
           onChange={(event) => onUpdate({ status: event.target.value as AssetStatus })}
@@ -325,64 +480,127 @@ function AssetDetailPanel({
           <option value="maintenance">Maintenance</option>
           <option value="offline">Offline</option>
         </select>
-      </label>
-      {asset.manufacturer && <p>Manufacturer: {asset.manufacturer}</p>}
-      {asset.model && <p>Model: {asset.model}</p>}
-      {asset.installed_date && <p>Installed: {asset.installed_date}</p>}
+      </div>
 
-      <h4>Telemetry</h4>
-      {telemetryQuery.isPending && <p>Loading telemetry...</p>}
+      <SectionHeading>Telemetry</SectionHeading>
+      {telemetryQuery.isPending && <p style={{ fontSize: 13 }}>Loading telemetry...</p>}
       {telemetryQuery.isError && (
-        <p role="alert">Failed to load telemetry: {telemetryQuery.error.message}</p>
+        <p role="alert" style={{ fontSize: 13, color: "var(--color-danger)" }}>
+          Failed to load telemetry: {telemetryQuery.error.message}
+        </p>
       )}
-      {telemetryQuery.isSuccess && <TelemetryChart readings={telemetryQuery.data} />}
+      {telemetryQuery.isSuccess && (
+        <div className="card" style={{ padding: 8, marginBottom: 20 }}>
+          <TelemetryChart readings={telemetryQuery.data} />
+        </div>
+      )}
 
-      <h4>Maintenance history</h4>
-      <p>No maintenance records yet - scheduling arrives in a later phase.</p>
+      <SectionHeading>Maintenance history</SectionHeading>
+      <p style={{ fontSize: 13 }}>No maintenance records yet - scheduling arrives in a later phase.</p>
 
-      <h4>Depends on</h4>
-      {dependsOn.length === 0 && <p>None</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {dependsOn.map((dep) => (
-          <li key={dep.id}>
-            {assetsById.get(dep.child_asset_id)?.name ?? dep.child_asset_id}
-            {canEdit && (
-              <button
-                type="button"
-                disabled={isDeletingDependency}
-                onClick={() => onDeleteDependency(dep.id)}
-              >
-                Unlink
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+      <SectionHeading>Depends on</SectionHeading>
+      <DependencyList
+        items={dependsOn}
+        resolveName={(dep) => assetsById.get(dep.child_asset_id)?.name ?? dep.child_asset_id}
+        canEdit={canEdit}
+        isDeleting={isDeletingDependency}
+        onDelete={onDeleteDependency}
+      />
 
-      <h4>Depended on by</h4>
-      {dependedOnBy.length === 0 && <p>None</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {dependedOnBy.map((dep) => (
-          <li key={dep.id}>
-            {assetsById.get(dep.parent_asset_id)?.name ?? dep.parent_asset_id}
-            {canEdit && (
-              <button
-                type="button"
-                disabled={isDeletingDependency}
-                onClick={() => onDeleteDependency(dep.id)}
-              >
-                Unlink
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+      <SectionHeading>Depended on by</SectionHeading>
+      <DependencyList
+        items={dependedOnBy}
+        resolveName={(dep) => assetsById.get(dep.parent_asset_id)?.name ?? dep.parent_asset_id}
+        canEdit={canEdit}
+        isDeleting={isDeletingDependency}
+        onDelete={onDeleteDependency}
+      />
 
       {canEdit && (
-        <button type="button" onClick={onDelete} disabled={isDeleting}>
-          Delete asset
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={onDelete}
+          disabled={isDeleting}
+          style={{ width: "100%", marginTop: 20 }}
+        >
+          {isDeleting ? "Deleting..." : "Delete asset"}
         </button>
       )}
     </div>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return (
+    <h4
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        color: "var(--color-text-subtle)",
+        margin: "20px 0 8px",
+      }}
+    >
+      {children}
+    </h4>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 0", fontSize: 12.5 }}>
+      <dt style={{ color: "var(--color-text-muted)" }}>{label}</dt>
+      <dd style={{ margin: 0, color: "var(--color-text)", fontWeight: 500, textAlign: "right" }}>{children}</dd>
+    </div>
+  );
+}
+
+function DependencyList({
+  items,
+  resolveName,
+  canEdit,
+  isDeleting,
+  onDelete,
+}: {
+  items: AssetDependency[];
+  resolveName: (dep: AssetDependency) => string;
+  canEdit: boolean;
+  isDeleting: boolean;
+  onDelete: (dependencyId: string) => void;
+}): React.JSX.Element {
+  if (items.length === 0) {
+    return <p style={{ fontSize: 13 }}>None</p>;
+  }
+  return (
+    <ul style={{ listStyle: "none", padding: 0, margin: "0 0 4px", display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map((dep) => (
+        <li
+          key={dep.id}
+          className="card"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "6px 10px",
+            fontSize: 13,
+            background: "var(--color-surface-alt)",
+          }}
+        >
+          <span>{resolveName(dep)}</span>
+          {canEdit && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={isDeleting}
+              onClick={() => onDelete(dep.id)}
+            >
+              Unlink
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

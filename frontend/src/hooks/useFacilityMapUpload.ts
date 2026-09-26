@@ -18,6 +18,11 @@ export function useFacilityMapUpload(facilityId: string, uploadId: string) {
     queryFn: () =>
       apiFetch<FacilityMapUploadStatusResponse>(`/facilities/${facilityId}/map/${uploadId}`),
     enabled: Boolean(facilityId && uploadId),
-    refetchInterval: (query) => nextPollInterval(query.state.data?.status),
+    // `data?.status` is undefined both before the first response arrives and once the
+    // query has permanently failed (e.g. a 404 for a bad upload id) - without checking
+    // query.state.status too, a permanent error looks identical to "still loading" and
+    // this would poll forever instead of ever surfacing isError to the page.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? false : nextPollInterval(query.state.data?.status),
   });
 }

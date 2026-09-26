@@ -25,7 +25,11 @@ export class ApiError extends Error {
   }
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+// Exported so AuthProvider can call it once on app bootstrap: a page reload always
+// loses the in-memory access token (see this file's top comment), but the HttpOnly
+// refresh cookie survives it, so this is what lets a reload silently restore the
+// session instead of bouncing back to /login.
+export async function refreshAccessToken(): Promise<boolean> {
   const response = await fetch(`${API_BASE_URL}/refresh`, {
     method: "POST",
     credentials: "include",

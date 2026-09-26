@@ -47,7 +47,7 @@ describe("TelemetryChart", () => {
 
   it("renders a legend entry per sensor type present in the readings", () => {
     render(<TelemetryChart readings={readings} />);
-    expect(screen.getByText("temperature")).toBeInTheDocument();
-    expect(screen.getByText("vibration")).toBeInTheDocument();
+    expect(screen.getAllByText("Temperature").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Vibration").length).toBeGreaterThan(0);
   });
 });
