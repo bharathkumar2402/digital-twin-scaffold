@@ -183,14 +183,25 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
-is fully closed — the end-of-phase DoD audit's one open gap (empirically verifying
-the "<2 second" alert latency) is now closed too, via timed assertions in
-`backend/tests/cross_tenant/test_telemetry_isolation.py` and
-`backend/tests/unit/test_alerts_ws.py` (see `docs/PROGRESS_LOG.md`). Phase 4 (AI Agent
-System) has not started; next up is Phase 4 task 1, "Pydantic output-validation
-layer" (issue 4.1) — one of this repo's designated extra-scrutiny tasks per
-`CLAUDE.md`'s standard workflow step 3.
+2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is **reopened, not closed** —
+`PHASE_PLAN.md` grew Phase 3 from 7 tasks to 10 (new tasks for dataset acquisition,
+dataset-to-schema mapping, and simulator calibration, inserted before training), and
+per the new rule 8 / `docs/DATASETS.md`, the model trained under old issue 3.2 used
+invented synthetic data (`backend/app/ml/synthetic_data.py`), not a real cited
+dataset — that violates the current policy and needs to be redone, not just
+extended. Everything issue 3.1–3.7 (old numbering) built downstream of that model
+(risk inference, anomaly detection, debounce, real-time delivery, map coloring) is
+still structurally sound and doesn't need to be rebuilt, but the model itself and
+its retraining data need task 3.1 (dataset acquisition) → 3.2 (schema mapping) →
+3.4 (simulator calibration) → 3.5 (retrain on the real dataset) redone in order.
+
+The GitHub issue tracker (issues #16–#22) still reflects the *old* 7-task
+numbering/scope and has not been reconciled with the new 10-task plan — do this
+before picking a task, not after: 3 new issues need creating (new tasks 3.1, 3.2,
+3.4), and #16/#17/#18/#19/#20/#21/#22 need retitling to the new task numbers
+3.3/3.5/3.6/3.7/3.8/3.9/3.10 respectively (see `docs/PROGRESS_LOG.md` for the full
+diff and rationale). Phase 4 (AI Agent System) has not started and stays blocked
+until Phase 3's DoD is genuinely satisfied on the real dataset.
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
