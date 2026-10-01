@@ -194,8 +194,14 @@ real-dataset workflow)**:
   tool wear, temp diff, mechanical power) and `risk_scores` (factors_json, failure modes,
   deterministic asset UUIDs) in `app/services/ml/dataset_mapping.py` with CLI in
   `scripts/map_dataset.py` and unit tests passing.
-- Next task: **Phase 3, task 3: Feature engineering pipeline** (Issue #16, adapt feature
-  engineering to ingest mapped real dataset features alongside TimescaleDB windows).
+- Task 3.3 (`Phase 3.3: Feature engineering pipeline`, issue #16) is **closed**:
+  expanded `feature_vector.py` sensor types (235-dim feature space across generic and AI4I channels),
+  built in-memory rolling window feature calculation with exact mathematical parity to SQL `stddev_samp`/outlier
+  logic, and implemented dataset vectorization (`build_training_dataset_from_mapped_records`)
+  validated across all 10,000 AI4I samples with 8 new unit tests passing.
+- Next task: **Phase 3, task 4: Calibrate the simulated IoT data generator** (Issue #53, update Phase 1 task 7's
+  generator so its normal-operation ranges, noise distribution, and injected-failure rate are derived from the real
+  dataset's statistics from task 1's data profile, not arbitrary constants. Document calibration in `docs/DATASETS.md`).
 - The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
   and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
 - Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)

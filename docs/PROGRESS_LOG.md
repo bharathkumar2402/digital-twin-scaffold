@@ -11,6 +11,23 @@ why, and how it was verified.
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
 is code-complete; see the phase-end DoD audit below for one still-open item.
 
+Note on 3.3 ("Feature engineering pipeline", issue #16): unified feature extraction
+between offline dataset records and live TimescaleDB streaming paths to eliminate
+training/serving skew. Expanded `backend/app/ml/feature_vector.py` SENSOR_TYPES from 4
+generic channels to 11 (adding 7 AI4I channels: air_temperature, process_temperature,
+rotational_speed, torque, tool_wear, temperature_difference, mechanical_power), yielding
+a 235-dimensional feature space (7 statistics * 11 sensors * 3 windows [30d, 90d, 365d] +
+4 status/dependency graph metrics). Implemented `compute_window_stats_from_readings` in
+`backend/app/services/feature_engineering_service.py` with exact parity to SQL
+`_WINDOW_STATS_SQL` (filtering by rolling cutoff, sample stddev with ddof=1, min, max,
+latest value, and outlier z-score counting at |z| > 2.0). Added
+`build_asset_features_from_readings`, `build_asset_features_from_mapped_record`, and
+`build_training_dataset_from_mapped_records` generating training matrix X in R^(N x 235)
+and binary label vector y in {0, 1}^N. Tested with 8 new unit tests in
+`tests/unit/test_feature_engineering_service.py` validating window filtering, SQL parity,
+zero NaNs, and exact preservation of the 339 failure labels (3.39%) across all 10,000 AI4I
+records; 191/191 backend unit tests pass, ruff and mypy clean repo-wide.
+
 Note on 3.2 ("Dataset-to-schema mapping", issue #52): implemented
 `backend/app/services/ml/dataset_mapping.py` to map the external AI4I 2020 dataset
 onto internal database schemas. Maps 5 raw physical sensors (Air temp, Process temp,

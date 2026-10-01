@@ -1,18 +1,19 @@
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+import numpy as np
 from fastapi import HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ml.feature_vector import FEATURE_NAMES, WINDOW_DAYS, vectorize
 from app.models.asset import Asset
 from app.models.asset_dependency import AssetDependency
 from app.models.facility import Facility
 from app.schemas.ml.asset_features import AssetFeatureSet, SensorWindowStats
-
-# Matches PROJECT_PLAN.md §4.3's "TimescaleDB telemetry query (last 30/90/365 days)"
-# tool description for the Risk Assessment agent.
-WINDOW_DAYS = (30, 90, 365)
+from app.services.ml.dataset_mapping import MappedMachineRecord
 
 # Threshold for the window-local anomaly count in SensorWindowStats - see that
 # schema's docstring for why this is a separate concept from task 3.4's live detector.
@@ -74,6 +75,225 @@ _WINDOW_STATS_SQL = text(
 )
 
 
+def _normalize_dt(dt: datetime) -> datetime:
+    """Normalize datetime to timezone-aware UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def compute_window_stats_from_readings(
+    readings: Sequence[Any],
+    window_days: int,
+    *,
+    now: datetime | None = None,
+    anomaly_threshold: float = ANOMALY_Z_SCORE_THRESHOLD,
+) -> dict[str, SensorWindowStats]:
+    """Computes rolling-window aggregate statistics across a sequence of sensor readings.
+
+    Implements the identical statistical logic as TimescaleDB's `_WINDOW_STATS_SQL`:
+    - count: number of readings in the window [now - window_days, now]
+    - mean: arithmetic mean (avg(value))
+    - stddev: sample standard deviation (stddev_samp(value), ddof=1; None if count <= 1)
+    - min / max: min_value and max_value in the window
+    - latest_value: value from the reading with the latest timestamp in the window
+    - anomaly_count: count of readings where abs(value - mean) > anomaly_threshold * stddev
+      (0 if stddev is None or stddev == 0.0)
+
+    This ensures complete mathematical and structural parity between in-memory dataset
+    feature extraction for offline training and TimescaleDB rolling-window queries for
+    live inference, eliminating training/serving skew.
+    """
+    if not readings:
+        return {}
+
+    extracted: list[tuple[str, float, datetime]] = []
+    for r in readings:
+        if isinstance(r, dict):
+            s_type = str(r["sensor_type"])
+            val = float(r["value"])
+            ts = _normalize_dt(r["timestamp"])
+        else:
+            s_type = str(r.sensor_type)
+            val = float(r.value)
+            ts = _normalize_dt(r.timestamp)
+        extracted.append((s_type, val, ts))
+
+    if now is None:
+        ref_now = max(ts for _, _, ts in extracted)
+    else:
+        ref_now = _normalize_dt(now)
+
+    window_start = ref_now - timedelta(days=window_days)
+
+    by_sensor: dict[str, list[tuple[float, datetime]]] = {}
+    for s_type, val, ts in extracted:
+        if window_start <= ts <= ref_now:
+            by_sensor.setdefault(s_type, []).append((val, ts))
+
+    result: dict[str, SensorWindowStats] = {}
+    for s_type, s_data in by_sensor.items():
+        cnt = len(s_data)
+        vals = [v for v, _ in s_data]
+        mean_val = float(np.mean(vals))
+        min_val = float(np.min(vals))
+        max_val = float(np.max(vals))
+
+        if cnt > 1:
+            std_val: float | None = float(np.std(vals, ddof=1))
+        else:
+            std_val = None
+
+        latest_reading = max(s_data, key=lambda pair: pair[1])
+        latest_val: float | None = latest_reading[0]
+
+        if std_val is not None and std_val > 0.0:
+            anomaly_cnt = sum(
+                1 for v in vals if abs(v - mean_val) > (anomaly_threshold * std_val)
+            )
+        else:
+            anomaly_cnt = 0
+
+        result[s_type] = SensorWindowStats(
+            sensor_type=s_type,
+            window_days=window_days,
+            count=cnt,
+            mean=mean_val,
+            stddev=std_val,
+            min=min_val,
+            max=max_val,
+            latest_value=latest_val,
+            anomaly_count=anomaly_cnt,
+        )
+
+    return result
+
+
+def build_asset_features_from_readings(
+    asset_id: uuid.UUID,
+    readings: Sequence[Any],
+    *,
+    tenant_id: uuid.UUID | None = None,
+    facility_id: uuid.UUID | None = None,
+    computed_at: datetime | None = None,
+    asset_status: str = "operational",
+    asset_age_days: int | None = None,
+    dependency_neighbor_count: int = 0,
+    dependency_neighbor_offline_count: int = 0,
+    dependency_neighbor_maintenance_count: int = 0,
+    anomaly_threshold: float = ANOMALY_Z_SCORE_THRESHOLD,
+) -> AssetFeatureSet:
+    """Builds an AssetFeatureSet from an in-memory sequence of sensor readings.
+
+    Aggregates rolling windows (30, 90, 365 days) via `compute_window_stats_from_readings`.
+    """
+    if computed_at is None:
+        if readings:
+            extracted_ts = [
+                _normalize_dt(r["timestamp"] if isinstance(r, dict) else r.timestamp)
+                for r in readings
+            ]
+            computed_at = max(extracted_ts)
+        else:
+            computed_at = datetime.now(UTC)
+    else:
+        computed_at = _normalize_dt(computed_at)
+
+    resolved_tenant_id = tenant_id or uuid.UUID("00000000-0000-0000-0000-000000000000")
+    resolved_facility_id = facility_id or uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+    windows: dict[int, dict[str, SensorWindowStats]] = {}
+    for window_days in WINDOW_DAYS:
+        windows[window_days] = compute_window_stats_from_readings(
+            readings,
+            window_days=window_days,
+            now=computed_at,
+            anomaly_threshold=anomaly_threshold,
+        )
+
+    return AssetFeatureSet(
+        asset_id=asset_id,
+        tenant_id=resolved_tenant_id,
+        facility_id=resolved_facility_id,
+        computed_at=computed_at,
+        asset_status=asset_status,
+        asset_age_days=asset_age_days,
+        dependency_neighbor_count=dependency_neighbor_count,
+        dependency_neighbor_offline_count=dependency_neighbor_offline_count,
+        dependency_neighbor_maintenance_count=dependency_neighbor_maintenance_count,
+        windows=windows,
+    )
+
+
+def build_asset_features_from_mapped_record(
+    record: MappedMachineRecord,
+    *,
+    tenant_id: uuid.UUID | None = None,
+    facility_id: uuid.UUID | None = None,
+    asset_status: str = "operational",
+    asset_age_days: int | None = None,
+    dependency_neighbor_count: int = 0,
+    dependency_neighbor_offline_count: int = 0,
+    dependency_neighbor_maintenance_count: int = 0,
+    anomaly_threshold: float = ANOMALY_Z_SCORE_THRESHOLD,
+) -> AssetFeatureSet:
+    """Builds an AssetFeatureSet from a MappedMachineRecord (AI4I 2020 dataset)."""
+    return build_asset_features_from_readings(
+        asset_id=record.asset_id,
+        readings=record.readings,
+        tenant_id=tenant_id,
+        facility_id=facility_id,
+        computed_at=record.timestamp,
+        asset_status=asset_status,
+        asset_age_days=asset_age_days,
+        dependency_neighbor_count=dependency_neighbor_count,
+        dependency_neighbor_offline_count=dependency_neighbor_offline_count,
+        dependency_neighbor_maintenance_count=dependency_neighbor_maintenance_count,
+        anomaly_threshold=anomaly_threshold,
+    )
+
+
+def build_training_dataset_from_mapped_records(
+    records: Sequence[MappedMachineRecord],
+    *,
+    tenant_id: uuid.UUID | None = None,
+    facility_id: uuid.UUID | None = None,
+    asset_status: str = "operational",
+    asset_age_days: int | None = None,
+    dependency_neighbor_count: int = 0,
+    dependency_neighbor_offline_count: int = 0,
+    dependency_neighbor_maintenance_count: int = 0,
+    anomaly_threshold: float = ANOMALY_Z_SCORE_THRESHOLD,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """Builds the complete training feature matrix X, target labels y, and feature_names
+    from a collection of mapped machine records.
+
+    Returns:
+        X: 2D numpy array of shape (N, len(FEATURE_NAMES)), float64.
+        y: 1D numpy array of shape (N,), int64 binary failure indicators (1=failure, 0=normal).
+        feature_names: List of column names aligned positionally with X.
+    """
+    feature_sets = [
+        build_asset_features_from_mapped_record(
+            record,
+            tenant_id=tenant_id,
+            facility_id=facility_id,
+            asset_status=asset_status,
+            asset_age_days=asset_age_days,
+            dependency_neighbor_count=dependency_neighbor_count,
+            dependency_neighbor_offline_count=dependency_neighbor_offline_count,
+            dependency_neighbor_maintenance_count=dependency_neighbor_maintenance_count,
+            anomaly_threshold=anomaly_threshold,
+        )
+        for record in records
+    ]
+
+    X = np.stack([vectorize(fs) for fs in feature_sets])
+    y = np.array([1 if record.is_failure else 0 for record in records], dtype=np.int64)
+
+    return X, y, list(FEATURE_NAMES)
+
+
 async def _get_facility_or_404(
     main_session: AsyncSession, *, tenant_id: uuid.UUID, facility_id: uuid.UUID
 ) -> Facility:
@@ -110,7 +330,7 @@ async def _dependency_neighbor_counts(
     main_session: AsyncSession, *, tenant_id: uuid.UUID, facility_id: uuid.UUID, asset_id: uuid.UUID
 ) -> tuple[int, int, int]:
     """Counts of directly-connected assets (either edge direction) by current status -
-    the "adjacent asset failures" signal from PROJECT_PLAN.md §4.3, built from data that
+    the "adjacent asset failures" signal from PROJECT_PLAN.md A 4.3, built from data that
     actually exists in this repo (see AssetFeatureSet's docstring)."""
     edges = await main_session.execute(
         select(AssetDependency.parent_asset_id, AssetDependency.child_asset_id).where(
