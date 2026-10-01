@@ -8,8 +8,23 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 3 Definition of Done audit completed with all 6
-criteria verified and passed against actual repo state.
+all tasks 3.1–3.10) are fully closed. Phase 4 in progress (task 4.1 closed).
+
+Note on 4.1 ("Pydantic output-validation layer", issue #23): implemented Pydantic v2
+validation schemas for all 5 agent nodes in `backend/app/schemas/agent_outputs/`
+(`PlannerOutput`, `RiskAssessmentOutput`, `MaintenanceInventoryOutput`,
+`RouteOptimizationOutput`, `SimulationDecisionOutput`) with `extra='forbid'`, strict
+range bounds, UUID checks, non-negative quantities, and domain status enums.
+Implemented `validate_agent_output` and `execute_agent_with_retry` in
+`backend/app/agents/validation.py` enforcing the `PROJECT_PLAN.md` §4.4 safety harness:
+on attempt 1 failure, extracts field-level Pydantic errors into structured feedback,
+injects into context, and retries once; on consecutive failure, immediately halts the
+branch by raising `AgentEscalationRequired` to prevent unvalidated data from touching
+state or DB. Tested with 14 adversarial unit tests in
+`backend/tests/unit/test_agent_output_validation.py` checking out-of-bounds
+confidence/scores, hallucinated keys, negative stock counts, OR-Tools SLA duration
+breaches, malformed JSON strings, transient self-healing recovery, and persistent
+failure escalation; 225/225 backend unit tests pass, ruff and mypy clean repo-wide.
 
 Note on 3.5 ("XGBoost training script", issue #17): trained and versioned the offline
 XGBoost risk classification model on the real mapped AI4I 2020 Predictive Maintenance

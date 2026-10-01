@@ -182,15 +182,14 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are **fully closed**. Phase 3's Definition of Done has been audited and completely
-satisfied (model trained on real AI4I 2020 dataset, telemetry generator calibrated, MinIO audit
-metadata stored, risk scores color-coded, debounce verified, <2s alert latency demonstrated).
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine)
+are **fully closed**. Phase 4 in progress: Task 4.1 (Pydantic output-validation layer, Issue #23)
+is closed.
 
-- Next task: **Phase 4, task 1: Pydantic output-validation layer** (Issue #23, schemas for all 5 agent
-  outputs in `app/schemas/agent_outputs/`, plus the shared retry-then-escalate logic in
-  `app/agents/validation.py` per `PROJECT_PLAN.md` §4.4. Extra scrutiny task: test against deliberately
-  malformed fake agent outputs before any real agent exists).
+- Next task: **Phase 4, task 2: `FacilityTwinState` + graph skeleton** (Issue #24, wire an
+  empty LangGraph pipeline with 5 placeholder nodes that pass state through, validated at each
+  hop. Confirm the graph runs end to end with dummy data before adding real logic to any node.
+  Extra scrutiny task: assert on state immutability, hop-by-hop schema contracts, and loop guards).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
