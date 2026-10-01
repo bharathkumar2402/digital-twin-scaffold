@@ -82,6 +82,45 @@ When mapping an external dataset's columns onto this project's schema (`PROJECT_
   | Temperature difference (Process - Air) | K | 7.60 | 9.30 | 9.80 | 11.00 | 12.10 | 10.00 | 1.00 |
   | Mechanical power (Torque x Speed) | W | 1148.44 | 5561.18 | 6271.03 | 7003.00 | 10469.92 | 6279.74 | 1067.36 |
 
+## Telemetry Generator Calibration (Phase 3, Task 4)
+
+In accordance with Phase 3 Task 4 and project engineering rules, the simulated IoT telemetry
+generator (`backend/scripts/iot_data_generator.py`) is calibrated directly against the empirical
+statistics above rather than using hand-invented numbers:
+
+1. **Failure / Anomaly Injection Rate:**
+   - **Calibrated Default:** `--anomaly-rate 0.0339` ($3.39\%$).
+   - **Derivation:** Exactly reflects the real ground-truth failure prevalence observed in the
+     AI4I 2020 dataset ($339$ machine failures / $10,000$ operational samples).
+
+2. **Sensor Operating Baselines and Noise Calibration:**
+   - **`air_temperature` (K):** Baseline set to $300.00\text{ K}$, thermal variation amplitude
+     $2.00\text{ K}$, Gaussian noise $\sigma = 0.50\text{ K}$, diurnal cycle period $3600\text{ s}$,
+     anomaly multiplier $4.0$.
+   - **`process_temperature` (K):** Baseline set to $310.01\text{ K}$, operational amplitude
+     $1.50\text{ K}$, Gaussian noise $\sigma = 0.40\text{ K}$, cycle period $1800\text{ s}$,
+     anomaly multiplier $4.0$ (simulating heat dissipation failures).
+   - **`rotational_speed` (rpm):** Baseline set to $1538.78\text{ rpm}$, operational swing
+     $100.00\text{ rpm}$, noise $\sigma = 25.00\text{ rpm}$, cycle period $300\text{ s}$,
+     anomaly multiplier $4.0$ (simulating motor stall/overspeed).
+   - **`torque` (Nm):** Baseline set to $39.99\text{ Nm}$, cyclic load amplitude $6.00\text{ Nm}$,
+     noise $\sigma = 1.50\text{ Nm}$, cycle period $300\text{ s}$, anomaly multiplier $4.0$
+     (simulating tool overstrain).
+   - **`tool_wear` (min):** Baseline set to $107.95\text{ min}$, wear progression amplitude
+     $30.00\text{ min}$, noise $\sigma = 5.00\text{ min}$, cycle period $7200\text{ s}$,
+     anomaly multiplier $3.5$ (simulating rapid tool wear failures).
+   - **`temperature_difference` (K):** Baseline set to $10.00\text{ K}$, amplitude $1.00\text{ K}$,
+     noise $\sigma = 0.25\text{ K}$, anomaly multiplier $4.0$.
+   - **`mechanical_power` (W):** Baseline set to $6279.74\text{ W}$, amplitude $600.00\text{ W}$,
+     noise $\sigma = 150.00\text{ W}$, anomaly multiplier $4.0$ (simulating electrical power failures).
+
+3. **Separation of Training and Simulation (Non-Circularity):**
+   - The XGBoost risk model is trained **only** on the mapped real dataset (`backend/data/raw/ai4i2020.csv`),
+     never on the generator's synthetic readings.
+   - The generator is used strictly for runtime streaming into the TimescaleDB hypertable
+     during local dev and live demonstration, ensuring the live demo accurately mirrors
+     real factory conditions without training-serving circularity.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

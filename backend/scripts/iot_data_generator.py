@@ -7,16 +7,16 @@ demo use.
 Against a real facility's real assets (recommended - telemetry then shows up for
 whatever you've actually placed on the map, no manual asset-id bookkeeping):
 
-    python -m scripts.iot_data_generator --base-url http://localhost:8000 \\
-        --tenant-id <uuid> --email demo@tenant.example --password secret \\
-        --facility-id <facility-uuid> --rate 10 --anomaly-rate 0.02
+    python -m scripts.iot_data_generator --base-url http://localhost:8000 \
+        --tenant-id <uuid> --email demo@tenant.example --password secret \
+        --facility-id <facility-uuid> --rate 10 --anomaly-rate 0.0339
 
 Or, without a facility (fabricates --num-assets random asset ids that don't
 correspond to anything real - only useful for exercising the ingest pipeline itself):
 
-    python -m scripts.iot_data_generator --base-url http://localhost:8000 \\
-        --tenant-id <uuid> --email demo@tenant.example --password secret \\
-        --num-assets 5 --rate 10 --anomaly-rate 0.02
+    python -m scripts.iot_data_generator --base-url http://localhost:8000 \
+        --tenant-id <uuid> --email demo@tenant.example --password secret \
+        --num-assets 5 --rate 10 --anomaly-rate 0.0339
 """
 
 from __future__ import annotations
@@ -61,7 +61,9 @@ class SensorProfile:
     anomaly_multiplier: float
 
 
-SENSOR_PROFILES: dict[str, SensorProfile] = {
+DEFAULT_ANOMALY_RATE: float = 0.0339  # 3.39% failure rate from AI4I 2020 dataset (339 / 10,000)
+
+GENERIC_SENSOR_PROFILES: dict[str, SensorProfile] = {
     "temperature_c": SensorProfile(
         unit="C", baseline=65.0, amplitude=5.0, noise_stddev=0.5, period_s=600.0,
         anomaly_multiplier=2.5,
@@ -78,6 +80,44 @@ SENSOR_PROFILES: dict[str, SensorProfile] = {
         unit="%", baseline=45.0, amplitude=8.0, noise_stddev=1.0, period_s=1800.0,
         anomaly_multiplier=1.8,
     ),
+}
+
+# Calibrated against the empirical data profile in docs/DATASETS.md (AI4I 2020, UCI ML #601).
+# Baseline and noise parameters ground the simulated live stream in real machine behavior.
+AI4I_SENSOR_PROFILES: dict[str, SensorProfile] = {
+    "air_temperature": SensorProfile(
+        unit="K", baseline=300.00, amplitude=2.00, noise_stddev=0.50, period_s=3600.0,
+        anomaly_multiplier=4.0,
+    ),
+    "process_temperature": SensorProfile(
+        unit="K", baseline=310.01, amplitude=1.50, noise_stddev=0.40, period_s=1800.0,
+        anomaly_multiplier=4.0,
+    ),
+    "rotational_speed": SensorProfile(
+        unit="rpm", baseline=1538.78, amplitude=100.00, noise_stddev=25.00, period_s=300.0,
+        anomaly_multiplier=4.0,
+    ),
+    "torque": SensorProfile(
+        unit="Nm", baseline=39.99, amplitude=6.00, noise_stddev=1.50, period_s=300.0,
+        anomaly_multiplier=4.0,
+    ),
+    "tool_wear": SensorProfile(
+        unit="min", baseline=107.95, amplitude=30.00, noise_stddev=5.00, period_s=7200.0,
+        anomaly_multiplier=3.5,
+    ),
+    "temperature_difference": SensorProfile(
+        unit="K", baseline=10.00, amplitude=1.00, noise_stddev=0.25, period_s=1800.0,
+        anomaly_multiplier=4.0,
+    ),
+    "mechanical_power": SensorProfile(
+        unit="W", baseline=6279.74, amplitude=600.00, noise_stddev=150.00, period_s=300.0,
+        anomaly_multiplier=4.0,
+    ),
+}
+
+SENSOR_PROFILES: dict[str, SensorProfile] = {
+    **GENERIC_SENSOR_PROFILES,
+    **AI4I_SENSOR_PROFILES,
 }
 
 
@@ -245,10 +285,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of simulated asset UUIDs to generate. Ignored if --facility-id is set.",
     )
     parser.add_argument(
+        "--profile-set",
+        choices=["all", "ai4i", "generic"],
+        default="all",
+        help="Predefined sensor profile set to simulate (default: all)",
+    )
+    parser.add_argument(
         "--sensor-types",
         nargs="+",
-        default=list(SENSOR_PROFILES),
+        default=None,
         choices=list(SENSOR_PROFILES),
+        help="Explicit list of sensor types to simulate (overrides --profile-set)",
     )
     parser.add_argument(
         "--rate", type=float, default=1.0, help="Batches posted per second (fractional allowed)"
@@ -256,8 +303,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--anomaly-rate",
         type=float,
-        default=0.02,
-        help="Independent probability per (asset, sensor_type, batch) of an anomalous reading",
+        default=DEFAULT_ANOMALY_RATE,
+        help=(
+            "Independent probability per (asset, sensor_type, batch) of an anomalous reading "
+            "(default: 0.0339 calibrated from AI4I 2020)"
+        ),
     )
     parser.add_argument(
         "--batch-size",
@@ -269,7 +319,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--duration", type=float, default=None, help="Seconds to run for; omit to run until Ctrl+C"
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed, for reproducible runs")
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(argv)
+    if parsed.sensor_types is None:
+        if parsed.profile_set == "ai4i":
+            parsed.sensor_types = list(AI4I_SENSOR_PROFILES)
+        elif parsed.profile_set == "generic":
+            parsed.sensor_types = list(GENERIC_SENSOR_PROFILES)
+        else:
+            parsed.sensor_types = list(SENSOR_PROFILES)
+    return parsed
 
 
 async def run(args: argparse.Namespace) -> None:

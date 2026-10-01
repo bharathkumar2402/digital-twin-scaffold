@@ -199,9 +199,12 @@ real-dataset workflow)**:
   built in-memory rolling window feature calculation with exact mathematical parity to SQL `stddev_samp`/outlier
   logic, and implemented dataset vectorization (`build_training_dataset_from_mapped_records`)
   validated across all 10,000 AI4I samples with 8 new unit tests passing.
-- Next task: **Phase 3, task 4: Calibrate the simulated IoT data generator** (Issue #53, update Phase 1 task 7's
-  generator so its normal-operation ranges, noise distribution, and injected-failure rate are derived from the real
-  dataset's statistics from task 1's data profile, not arbitrary constants. Document calibration in `docs/DATASETS.md`).
+- Task 3.4 (`Phase 3.4: Calibrate the simulated IoT data generator`, issue #53) is **closed**:
+  derived sensor profiles from empirical AI4I 2020 statistics (7 physical/derived channels: air/process temp,
+  speed, torque, tool wear, temp diff, mechanical power), calibrated default anomaly rate to 0.0339 (3.39%),
+  documented calibration in `docs/DATASETS.md`, and added 10 unit tests in `tests/unit/test_iot_data_generator.py`.
+- Next task: **Phase 3, task 5: XGBoost training script** (Issue #17, train on the real, mapped dataset from tasks
+  3.1–3.3, record training metrics [precision/recall/F1 per failure class, PR-AUC], version model file and store in MinIO).
 - The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
   and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
 - Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)

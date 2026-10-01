@@ -11,6 +11,23 @@ why, and how it was verified.
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
 is code-complete; see the phase-end DoD audit below for one still-open item.
 
+Note on 3.4 ("Calibrate the simulated IoT data generator", issue #53): grounded the
+simulated live telemetry generator (`backend/scripts/iot_data_generator.py`) in the
+empirical statistics of the AI4I 2020 Predictive Maintenance dataset (UCI ML #601).
+Calibrated 7 physical and derived sensor channels (`air_temperature`, `process_temperature`,
+`rotational_speed`, `torque`, `tool_wear`, `temperature_difference`, `mechanical_power`)
+to the empirical mean baselines, operational variation amplitudes, and Gaussian noise standard
+deviations from task 3.1's data profile. Retained legacy generic profiles for backwards
+compatibility and introduced `--profile-set` CLI selection (`ai4i`, `generic`, `all`).
+Updated default `--anomaly-rate` from arbitrary 0.02 to 0.0339 (3.39%), matching the ground-truth
+failure prevalence across the 10,000 real dataset records. Documented calibration mathematics
+and the architectural separation between offline real-data model training and the real-data-calibrated
+simulation stream in `docs/DATASETS.md`. Tested with 10 new unit tests in
+`tests/unit/test_iot_data_generator.py` covering profile registration, baseline tolerances,
+profile-set selection, and anomaly bounds across all 7 AI4I channels; 208/208 backend unit
+tests pass, ruff and mypy clean repo-wide. Fully closes Phase 3 DoD item "The simulated IoT
+generator's parameters are documented as calibrated against that same real dataset".
+
 Note on 3.3 ("Feature engineering pipeline", issue #16): unified feature extraction
 between offline dataset records and live TimescaleDB streaming paths to eliminate
 training/serving skew. Expanded `backend/app/ml/feature_vector.py` SENSOR_TYPES from 4
