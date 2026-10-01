@@ -7,9 +7,41 @@ why, and how it was verified.
 
 ---
 
-**Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
-is code-complete; see the phase-end DoD audit below for one still-open item.
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
+all tasks 3.1–3.10) are fully closed. Phase 3 Definition of Done audit completed with all 6
+criteria verified and passed against actual repo state.
+
+Note on 3.5 ("XGBoost training script", issue #17): trained and versioned the offline
+XGBoost risk classification model on the real mapped AI4I 2020 Predictive Maintenance
+dataset (UCI ML #601) using the 238-dimensional feature representation from task 3.3.
+Addressed rare failure class imbalance (3.39% failures) by calibrating `scale_pos_weight`
+(approx 28.5) in `backend/app/ml/train.py`. On held-out stratified test data (2,000 samples),
+the model achieved ROC-AUC of 0.974, PR-AUC (Average Precision) of 0.859, F1-score of 0.652,
+recall of 0.662, and precision of 0.643. Extended MinIO artifact storage to persist
+`model.ubj`, `feature_names.json`, `metrics.json`, and `metadata.json` (embedding dataset
+citation, UCI ID 601, CC BY 4.0 license, 10,000 row count, and training timestamp) under
+a content-addressed version prefix, updating `latest.json`. Updated CLI
+`scripts/train_risk_model.py` to ingest the real dataset by default with `--min-test-auc 0.80`,
+`--min-test-pr-auc 0.40`, and `--no-upload` flags. Tested with 3 new unit tests in
+`tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
+and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
+
+**Phase 3 Final Definition of Done Audit (Repo-wide verification)**:
+- [x] Model is trained on a real, cited dataset — not synthetic data invented for this project
+      (AI4I 2020 Predictive Maintenance Dataset, UCI ML #601, Matzka 2020, cited in `docs/DATASETS.md`).
+- [x] The simulated IoT generator's parameters are documented as calibrated against that same
+      real dataset (`docs/DATASETS.md`, 7 AI4I sensor profiles in `scripts/iot_data_generator.py`,
+      calibrated 0.0339 default failure rate).
+- [x] Risk scores computed and visible on the map, color-coded (`risk_inference_service.score_facility`
+      computes, `useRiskScores` and `AssetLayer` render 0-33 green / 34-66 amber / 67-100 red).
+- [x] A manually injected anomaly produces a browser alert in under 2 seconds (verified by timed
+      latency tests in `test_telemetry_isolation.py` and `test_alerts_ws.py` totaling < 1.5s).
+- [x] Debounce logic verified by test: rapid repeated anomalies on one asset do NOT produce
+      a flood of triggers (`test_alert_debounce_service.py` 20 rapid repeats -> 1 trigger via
+      atomic Redis `SET NX EX`).
+- [x] Model version, training dataset name/version, and evaluation metrics are recorded
+      alongside each stored risk score (for auditability) (`metadata.json` + `metrics.json`
+      persisted in MinIO, `RiskScore.model_version` non-nullable).
 
 Note on 3.4 ("Calibrate the simulated IoT data generator", issue #53): grounded the
 simulated live telemetry generator (`backend/scripts/iot_data_generator.py`) in the

@@ -4,6 +4,7 @@ than a real one (mirrors tests/unit/test_sandbox_storage.py's pattern)."""
 
 import io
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,7 +12,22 @@ import pytest
 from app.ml import train as train_module
 from app.ml.feature_vector import FEATURE_NAMES, vectorize
 from app.ml.synthetic_data import generate_synthetic_dataset
-from app.ml.train import load_model, save_model_to_minio, train_risk_model
+from app.ml.train import (
+    load_model,
+    load_model_metadata,
+    save_model_to_minio,
+    train_risk_model,
+)
+from app.services.feature_engineering_service import (
+    build_training_dataset_from_mapped_records,
+)
+from app.services.ml.dataset_mapping import map_ai4i2020_dataset
+from scripts.train_risk_model import parse_args
+from scripts.train_risk_model import run as run_train_script
+
+RAW_CSV_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "data" / "raw" / "ai4i2020.csv"
+)
 
 
 class _FakeResponse:
@@ -88,6 +104,7 @@ def test_save_model_creates_bucket_and_writes_expected_keys(
     assert (bucket, f"{prefix}/model.ubj") in fake_client.objects
     assert (bucket, f"{prefix}/feature_names.json") in fake_client.objects
     assert (bucket, f"{prefix}/metrics.json") in fake_client.objects
+    assert (bucket, f"{prefix}/metadata.json") in fake_client.objects
     assert (bucket, train_module.LATEST_POINTER_KEY) in fake_client.objects
 
 
@@ -152,3 +169,53 @@ def test_load_model_with_explicit_version_bypasses_latest_pointer(
 
     _, _, metrics = load_model(version=version_a)
     assert metrics == result.metrics
+
+
+def test_train_risk_model_on_real_ai4i_dataset() -> None:
+    """Verifies that training on the real AI4I 2020 dataset achieves high held-out AUC
+    and PR-AUC, resolving the class imbalance of 3.39% failures."""
+    if not RAW_CSV_PATH.is_file():
+        pytest.skip(f"Raw CSV not found at {RAW_CSV_PATH}")
+
+    records = map_ai4i2020_dataset(RAW_CSV_PATH)
+    X, y, _ = build_training_dataset_from_mapped_records(records)
+
+    trained = train_risk_model(X, y, seed=0)
+
+    # Asserts on held-out metrics
+    assert trained.metrics["test_auc"] > 0.90
+    assert trained.metrics["test_pr_auc"] > 0.70
+    assert trained.metrics["test_f1"] > 0.60
+    assert trained.metrics["test_recall"] > 0.60
+    assert trained.metrics["scale_pos_weight"] > 10.0
+
+    # Asserts on audit metadata
+    assert trained.metadata is not None
+    assert trained.metadata["dataset_name"] == "AI4I 2020 Predictive Maintenance Dataset"
+    assert "UCI" in str(trained.metadata["dataset_source"])
+
+
+def test_save_and_load_model_metadata(fake_client: _FakeMinioClient) -> None:
+    """Verifies that model metadata is persisted and retrievable for auditability."""
+    X = np.zeros((20, len(FEATURE_NAMES)))
+    y = np.array([0] * 16 + [1] * 4)
+    trained = train_risk_model(X, y, seed=0)
+    version = save_model_to_minio(trained)
+
+    meta = load_model_metadata(version)
+    assert meta is not None
+    assert meta["dataset_name"] == "AI4I 2020 Predictive Maintenance Dataset"
+    assert meta["target_column"] == "Machine failure"
+
+
+def test_train_risk_model_cli_real_dataset_no_upload() -> None:
+    """Verifies train_risk_model CLI execution on the real dataset with --no-upload."""
+    if not RAW_CSV_PATH.is_file():
+        pytest.skip(f"Raw CSV not found at {RAW_CSV_PATH}")
+
+    args = parse_args(["--dataset-path", str(RAW_CSV_PATH), "--no-upload", "--seed", "42"])
+    trained = run_train_script(args)
+
+    assert trained.metrics["test_auc"] > 0.80
+    assert trained.metrics["test_pr_auc"] > 0.40
+

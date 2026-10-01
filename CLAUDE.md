@@ -182,34 +182,15 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is **in progress (reopened for
-real-dataset workflow)**:
-- Task 3.1 (`Phase 3.1: Dataset acquisition & exploration`, issue #51) is **closed**:
-  AI4I 2020 Predictive Maintenance dataset acquired (10,000 rows, 14 columns, 0 nulls,
-  3.39% failure rate), profiler built (`app/ml/dataset_profile.py`, `scripts/acquire_dataset.py`),
-  `docs/DATASETS.md` data profile populated, and unit tests passing.
-- Task 3.2 (`Phase 3.2: Dataset-to-schema mapping`, issue #52) is **closed**:
-  mapped external AI4I 2020 columns to `sensor_readings` (air/process temp, speed, torque,
-  tool wear, temp diff, mechanical power) and `risk_scores` (factors_json, failure modes,
-  deterministic asset UUIDs) in `app/services/ml/dataset_mapping.py` with CLI in
-  `scripts/map_dataset.py` and unit tests passing.
-- Task 3.3 (`Phase 3.3: Feature engineering pipeline`, issue #16) is **closed**:
-  expanded `feature_vector.py` sensor types (235-dim feature space across generic and AI4I channels),
-  built in-memory rolling window feature calculation with exact mathematical parity to SQL `stddev_samp`/outlier
-  logic, and implemented dataset vectorization (`build_training_dataset_from_mapped_records`)
-  validated across all 10,000 AI4I samples with 8 new unit tests passing.
-- Task 3.4 (`Phase 3.4: Calibrate the simulated IoT data generator`, issue #53) is **closed**:
-  derived sensor profiles from empirical AI4I 2020 statistics (7 physical/derived channels: air/process temp,
-  speed, torque, tool wear, temp diff, mechanical power), calibrated default anomaly rate to 0.0339 (3.39%),
-  documented calibration in `docs/DATASETS.md`, and added 10 unit tests in `tests/unit/test_iot_data_generator.py`.
-- Next task: **Phase 3, task 5: XGBoost training script** (Issue #17, train on the real, mapped dataset from tasks
-  3.1–3.3, record training metrics [precision/recall/F1 per failure class, PR-AUC], version model file and store in MinIO).
-- The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
-  and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
-- Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)
-  remain structurally sound; retraining on mapped real data occurs in task 3.5. Phase 4
-  stays blocked until Phase 3's DoD is fully satisfied.
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
+all tasks 3.1–3.10) are **fully closed**. Phase 3's Definition of Done has been audited and completely
+satisfied (model trained on real AI4I 2020 dataset, telemetry generator calibrated, MinIO audit
+metadata stored, risk scores color-coded, debounce verified, <2s alert latency demonstrated).
+
+- Next task: **Phase 4, task 1: Pydantic output-validation layer** (Issue #23, schemas for all 5 agent
+  outputs in `app/schemas/agent_outputs/`, plus the shared retry-then-escalate logic in
+  `app/agents/validation.py` per `PROJECT_PLAN.md` §4.4. Extra scrutiny task: test against deliberately
+  malformed fake agent outputs before any real agent exists).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
