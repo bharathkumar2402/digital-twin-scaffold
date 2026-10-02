@@ -7,7 +7,11 @@ from app.agents.planner import (
     planner_node,
     real_planner_callable,
 )
-from app.agents.risk_assessment import risk_assessment_node
+from app.agents.risk_assessment import (
+    prioritize_and_explain_risks,
+    real_risk_assessment_callable,
+    risk_assessment_node,
+)
 from app.agents.route_optimization import route_optimization_node
 from app.agents.simulation_decision import simulation_decision_node
 from app.agents.state import FacilityTwinState, create_initial_state
@@ -30,7 +34,9 @@ __all__ = [
     "execute_agent_with_retry",
     "maintenance_inventory_node",
     "planner_node",
+    "prioritize_and_explain_risks",
     "real_planner_callable",
+    "real_risk_assessment_callable",
     "risk_assessment_node",
     "route_optimization_node",
     "run_facility_twin_pipeline",

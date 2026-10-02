@@ -8,7 +8,24 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.3 closed).
+all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.4 closed).
+
+Note on 4.4 ("Agent 2 — Risk Assessment", issue #26): implemented the Risk Assessment Agent
+wrapping Phase 3's ML inference service as an agent tool and adding empirical failure mode
+diagnosis and urgency prioritization. Created `backend/app/agents/tools/risk_scoring_tool.py`
+(`score_facility_assets_tool` and `score_assets_from_records_tool`) to wrap `score_facility`
+inference service and provide fallback heuristic scoring. Implemented `prioritize_and_explain_risks`
+and `real_risk_assessment_callable` in `backend/app/agents/risk_assessment.py`, performing empirical
+sensor signal diagnosis for AI4I predictive maintenance modes: HDF (temperature delta < 8.6K or air
+temp anomaly count >= 2), TWF (tool wear anomaly count >= 2 or tool wear > 200 min), OSF (torque
+anomaly count >= 2 or torque > 60 Nm), PWF (mechanical power P = torque * speed [rad/s] < 3500W or
+> 9000W), and RNF (rolling variance fallback). Implemented 4-tier urgency classification
+(critical >= 67, high 50-66, medium 34-49, low < 34), dynamic action recommendations per tier, and
+natural-language executive summaries. Enforced strict Pydantic output validation against
+`RiskAssessmentOutput` before state persistence with the retry-then-escalate safety harness. Tested
+with 8 dedicated unit and integration tests in `backend/tests/unit/test_risk_assessment_agent.py`;
+251/251 backend unit tests pass, ruff and mypy clean repo-wide. Verified independently via CLI:
+`python -c "import uuid; from app.agents.risk_assessment import prioritize_and_explain_risks; out = prioritize_and_explain_risks(facility_id=uuid.uuid4(), raw_scores=[{'asset_id': uuid.uuid4(), 'risk_score': 82.5, 'factors': {'temperature_difference_30d_latest_value': 7.2}}]); print('Rank 1 mode:', out.ranked_assets[0].predicted_failure_mode, '| Action:', out.ranked_assets[0].recommended_action, '| Summary:', out.executive_summary)"`.
 
 Note on 4.3 ("Agent 1 — Planner", issue #25): implemented the Planner Agent and asset
 graph tool absorbing Phase 2 asset tables (Non-negotiable Rule 6). Implemented

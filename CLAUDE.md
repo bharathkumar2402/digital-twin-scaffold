@@ -184,11 +184,12 @@ rather than building it — that scope boundary is deliberate and documented in
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine)
 are **fully closed**. Phase 4 in progress: Tasks 4.1 (Pydantic output-validation layer, Issue #23),
-4.2 (`FacilityTwinState` + graph skeleton, Issue #24), and 4.3 (Agent 1 — Planner, Issue #25) are closed.
+4.2 (`FacilityTwinState` + graph skeleton, Issue #24), 4.3 (Agent 1 — Planner, Issue #25), and
+4.4 (Agent 2 — Risk Assessment, Issue #26) are closed.
 
-- Next task: **Phase 4, task 4: Agent 2 — Risk Assessment** (Issue #26, Wraps Phase 3's inference
-  service as an agent tool, adds LLM-driven prioritization/explanation on top of raw scores.
-  Validate output against RiskAssessmentOutput schema).
+- Next task: **Phase 4, task 5: Agent 3 — Maintenance & Inventory Planning** (Issue #27, Constraint-based
+  scheduling + inventory tool call. Most logic-dense agent; build constraint solver + inventory tool
+  call wired into LangGraph node. Validate output against MaintenanceInventoryOutput schema).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
