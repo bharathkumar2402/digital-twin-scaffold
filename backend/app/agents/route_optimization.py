@@ -12,47 +12,54 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
+from app.agents.tools.distance_matrix_tool import extract_asset_coordinates_map
+from app.agents.tools.route_solver_tool import solve_cvrp_routes
 from app.schemas.agent_outputs.route_optimization import RouteOptimizationOutput
 
 logger = logging.getLogger("agents.route_optimization")
 
 
-async def default_route_optimization_callable(context: dict[str, Any]) -> dict[str, Any]:
-    """Default placeholder callable for Route Optimization Agent producing valid dummy output."""
+async def real_route_optimization_callable(context: dict[str, Any]) -> dict[str, Any]:
+    """Production callable for Route Optimization Agent: executes OR-Tools CVRP dispatch."""
     facility_id_raw = context.get("facility_id", str(uuid.uuid4()))
     facility_id = (
         uuid.UUID(facility_id_raw) if isinstance(facility_id_raw, str) else facility_id_raw
     )
-    asset_id = uuid.uuid4()
 
-    return {
-        "optimization_id": str(uuid.uuid4()),
-        "facility_id": str(facility_id),
-        "solver_status": "OPTIMAL",
-        "solver_duration_seconds": 1.45,
-        "technician_routes": [
+    tasks = context.get("maintenance_schedule")
+    if tasks is None:
+        # Fallback to single task for standalone/skeleton test compatibility
+        tasks = [
             {
-                "technician_id": "tech_alpha",
-                "technician_name": "Jordan Lee",
-                "assigned_stops": [
-                    {
-                        "stop_number": 1,
-                        "asset_id": str(asset_id),
-                        "task_id": "maint_task_01",
-                        "estimated_arrival_minutes": 12.0,
-                        "service_duration_minutes": 75.0,
-                        "travel_time_from_previous_minutes": 12.0,
-                    }
-                ],
-                "total_travel_minutes": 12.0,
-                "total_service_minutes": 75.0,
-                "total_route_duration_minutes": 87.0,
+                "item_id": "maint_task_01",
+                "asset_id": uuid.uuid4(),
+                "scheduled_date": "2026-10-05",
+                "priority": "critical",
+                "estimated_duration_hours": 1.25,
+                "required_technician_skills": ["mechanical"],
             }
-        ],
-        "unassigned_task_ids": [],
-        "total_distance_meters": 280.0,
-        "confidence": 0.95,
-    }
+        ]
+
+    asset_coordinates = context.get("asset_coordinates")
+    if not asset_coordinates and context.get("asset_graph"):
+        asset_coordinates = extract_asset_coordinates_map(asset_graph=context.get("asset_graph"))
+    if not asset_coordinates and context.get("assets"):
+        asset_coordinates = extract_asset_coordinates_map(assets=context.get("assets"))
+
+    technicians = context.get("technicians")
+    time_limit_seconds = float(context.get("time_limit_seconds", 5.0))
+
+    output = solve_cvrp_routes(
+        facility_id=facility_id,
+        tasks=tasks,
+        asset_coordinates=asset_coordinates,
+        technicians=technicians,
+        time_limit_seconds=time_limit_seconds,
+    )
+    return output.model_dump(mode="json")
+
+
+default_route_optimization_callable = real_route_optimization_callable
 
 
 async def route_optimization_node(
@@ -87,6 +94,11 @@ async def route_optimization_node(
         "facility_id": state["facility_id"],
         "trigger": state["trigger"],
         "maintenance_schedule": state.get("maintenance_schedule"),
+        "asset_graph": state.get("asset_graph"),
+        "assets": configurable.get("assets"),
+        "technicians": configurable.get("technicians"),
+        "asset_coordinates": configurable.get("asset_coordinates"),
+        "time_limit_seconds": configurable.get("time_limit_seconds", 5.0),
     }
 
     try:
