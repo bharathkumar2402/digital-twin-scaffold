@@ -6,56 +6,125 @@ Validates all outputs against MaintenanceInventoryOutput before updating state.
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import date
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
+from app.agents.tools.inventory_tool import evaluate_inventory_gaps_tool
+from app.agents.tools.maintenance_scheduler import generate_constraint_schedule
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.maintenance_inventory import MaintenanceInventoryOutput
 
 logger = logging.getLogger("agents.maintenance_inventory")
 
 
-async def default_maintenance_inventory_callable(context: dict[str, Any]) -> dict[str, Any]:
-    """Default placeholder for Maintenance & Inventory Agent producing valid output."""
+def plan_maintenance_and_inventory(
+    *,
+    facility_id: uuid.UUID,
+    scored_assets: list[dict[str, Any]],
+    start_date: date | None = None,
+    daily_tech_hours: float = 16.0,
+    custom_on_hand: dict[str, int] | None = None,
+) -> MaintenanceInventoryOutput:
+    """Generates a constraint-respecting 30-day maintenance schedule and evaluates parts demand."""
+    scheduled_items = generate_constraint_schedule(
+        scored_assets,
+        start_date=start_date,
+        daily_tech_hours=daily_tech_hours,
+    )
+
+    inventory_shortages, draft_pos = evaluate_inventory_gaps_tool(
+        scheduled_items,
+        custom_on_hand=custom_on_hand,
+    )
+
+    shortage_skus = {s.part_id for s in inventory_shortages}
+    critical_shortages = sum(
+        1
+        for item in scheduled_items
+        if item.priority in ("critical", "high")
+        and any(part.part_id in shortage_skus for part in item.required_parts)
+    )
+
+    total_tasks = len(scheduled_items)
+    crit_count = sum(1 for t in scheduled_items if t.priority == "critical")
+    high_count = sum(1 for t in scheduled_items if t.priority == "high")
+
+    if total_tasks == 0:
+        summary = "No maintenance tasks scheduled: all facility assets operating within low risk."
+        confidence = 0.95
+    else:
+        parts_note = (
+            f"{len(inventory_shortages)} inventory shortage(s) identified with "
+            f"{critical_shortages} critical task(s) impacted."
+            if inventory_shortages
+            else "All required spare parts currently on-hand."
+        )
+        summary = (
+            f"Scheduled {total_tasks} maintenance task(s) over 30 days ({crit_count} critical, "
+            f"{high_count} high). {parts_note}"
+        )
+        # Penalize confidence if critical tasks are blocked by inventory shortages
+        penalty = min(0.25, critical_shortages * 0.05)
+        confidence = round(max(0.70, 0.94 - penalty), 2)
+
+    return MaintenanceInventoryOutput(
+        schedule_id=uuid.uuid4(),
+        facility_id=facility_id,
+        scheduled_items=scheduled_items,
+        inventory_shortages=inventory_shortages,
+        drafted_purchase_orders=draft_pos,
+        total_tasks_scheduled=total_tasks,
+        critical_shortage_count=critical_shortages,
+        schedule_summary=summary,
+        confidence=confidence,
+    )
+
+
+async def real_maintenance_inventory_callable(context: dict[str, Any]) -> dict[str, Any]:
+    """Production callable for Agent 3: generates schedule and cross-references inventory."""
     facility_id_raw = context.get("facility_id", str(uuid.uuid4()))
     facility_id = (
         uuid.UUID(facility_id_raw) if isinstance(facility_id_raw, str) else facility_id_raw
     )
-    asset_id = uuid.uuid4()
-    today_str = datetime.now(UTC).date().isoformat()
 
-    return {
-        "schedule_id": str(uuid.uuid4()),
-        "facility_id": str(facility_id),
-        "scheduled_items": [
+    scored_assets = context.get("risk_scores")
+    if scored_assets is None:
+        # Fallback to single critical asset for skeleton compatibility
+        scored_assets = [
             {
-                "item_id": "maint_task_01",
-                "asset_id": str(asset_id),
-                "scheduled_date": today_str,
-                "priority": "high",
-                "estimated_duration_hours": 2.5,
-                "required_technician_skills": ["mechanical", "hydraulics"],
-                "required_parts": [
-                    {
-                        "part_id": "SKU-SEAL-77",
-                        "part_name": "High-Pressure Hydraulic Seal",
-                        "quantity": 2,
-                    }
-                ],
+                "asset_id": uuid.uuid4(),
+                "risk_score": 78.4,
+                "urgency_rank": 1,
+                "risk_tier": "critical",
+                "predicted_failure_mode": "HDF",
             }
-        ],
-        "inventory_shortages": [],
-        "drafted_purchase_orders": [],
-        "total_tasks_scheduled": 1,
-        "critical_shortage_count": 0,
-        "schedule_summary": (
-            "1 high-priority maintenance task scheduled with full parts availability."
-        ),
-        "confidence": 0.90,
-    }
+        ]
+
+    start_date_val = context.get("start_date")
+    start_date: date | None = None
+    if isinstance(start_date_val, date):
+        start_date = start_date_val
+    elif isinstance(start_date_val, str):
+        start_date = date.fromisoformat(start_date_val)
+
+    daily_tech_hours = float(context.get("daily_tech_hours", 16.0))
+    custom_on_hand = context.get("custom_on_hand")
+
+    output = plan_maintenance_and_inventory(
+        facility_id=facility_id,
+        scored_assets=scored_assets,
+        start_date=start_date,
+        daily_tech_hours=daily_tech_hours,
+        custom_on_hand=custom_on_hand,
+    )
+
+    return output.model_dump(mode="json")
+
+
+default_maintenance_inventory_callable = real_maintenance_inventory_callable
 
 
 async def maintenance_inventory_node(
@@ -82,7 +151,7 @@ async def maintenance_inventory_node(
 
     configurable = (config or {}).get("configurable", {})
     agent_fn = configurable.get(
-        "maintenance_inventory_callable", default_maintenance_inventory_callable
+        "maintenance_inventory_callable", real_maintenance_inventory_callable
     )
 
     context: dict[str, Any] = {
@@ -91,6 +160,9 @@ async def maintenance_inventory_node(
         "trigger": state["trigger"],
         "risk_scores": state.get("risk_scores"),
         "asset_graph": state.get("asset_graph"),
+        "custom_on_hand": configurable.get("custom_on_hand"),
+        "daily_tech_hours": configurable.get("daily_tech_hours", 16.0),
+        "start_date": configurable.get("start_date"),
     }
 
     try:

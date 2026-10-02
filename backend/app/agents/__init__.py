@@ -1,7 +1,11 @@
 """AI Agent layer for the Facility Digital Twin (PROJECT_PLAN.md §4)."""
 
 from app.agents.graph import build_facility_twin_graph, run_facility_twin_pipeline
-from app.agents.maintenance_inventory import maintenance_inventory_node
+from app.agents.maintenance_inventory import (
+    maintenance_inventory_node,
+    plan_maintenance_and_inventory,
+    real_maintenance_inventory_callable,
+)
 from app.agents.planner import (
     decompose_facility_plan,
     planner_node,
@@ -33,8 +37,10 @@ __all__ = [
     "decompose_facility_plan",
     "execute_agent_with_retry",
     "maintenance_inventory_node",
+    "plan_maintenance_and_inventory",
     "planner_node",
     "prioritize_and_explain_risks",
+    "real_maintenance_inventory_callable",
     "real_planner_callable",
     "real_risk_assessment_callable",
     "risk_assessment_node",

@@ -8,7 +8,25 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.4 closed).
+all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.5 closed).
+
+Note on 4.5 ("Agent 3 — Maintenance & Inventory Planning", issue #27): implemented the
+Maintenance & Inventory Planning Agent with constraint-based scheduling and internal spare
+parts inventory gap evaluation (Non-negotiable Rule 6). Created
+`backend/app/agents/tools/inventory_tool.py` (`DEFAULT_PARTS_CATALOG`, `get_parts_for_failure_mode`,
+and `evaluate_inventory_gaps_tool`) cross-referencing scheduled task requirements against on-hand
+stock, identifying stock deficits (`shortage_count = needed - available`), collecting impacted asset
+IDs, and drafting purchase orders (`DraftPurchaseOrder`) with estimated costs and vendor assignments.
+Created `backend/app/agents/tools/maintenance_scheduler.py` (`generate_constraint_schedule`), enforcing
+urgency horizon windows (critical: days 1–2, high: 3–5, medium: 6–14, low: 15–30), failure mode
+domain skill and duration requirements, and daily technician labor hour capacity constraints
+(`daily_tech_hours`, default 16h) with overflow rolling. Implemented `plan_maintenance_and_inventory`
+and `real_maintenance_inventory_callable` in `backend/app/agents/maintenance_inventory.py`, computing
+critical shortage counts and confidence scoring. Enforced strict Pydantic validation against
+`MaintenanceInventoryOutput` via `execute_agent_with_retry`. Tested with 9 unit and integration tests
+in `backend/tests/unit/test_maintenance_inventory_agent.py`; 260/260 backend unit tests pass, ruff and
+mypy clean repo-wide. Verified independently via CLI:
+`python -c "import uuid; from datetime import date; from app.agents.maintenance_inventory import plan_maintenance_and_inventory; out = plan_maintenance_and_inventory(facility_id=uuid.uuid4(), scored_assets=[{'asset_id': uuid.uuid4(), 'risk_score': 85.0, 'predicted_failure_mode': 'HDF'}, {'asset_id': uuid.uuid4(), 'risk_score': 55.0, 'predicted_failure_mode': 'OSF'}], start_date=date(2026, 10, 5), custom_on_hand={'SKU-SEAL-HDF': 0}); print('Scheduled tasks:', len(out.scheduled_items), '| Dates:', [t.scheduled_date.isoformat() for t in out.scheduled_items], '| Shortages:', len(out.inventory_shortages), '| POs:', len(out.drafted_purchase_orders), '| Summary:', out.schedule_summary)"`.
 
 Note on 4.4 ("Agent 2 — Risk Assessment", issue #26): implemented the Risk Assessment Agent
 wrapping Phase 3's ML inference service as an agent tool and adding empirical failure mode
