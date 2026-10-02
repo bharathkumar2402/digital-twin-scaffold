@@ -183,11 +183,12 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine)
-are **fully closed**. Phase 4 in progress: Tasks 4.1 (Pydantic output-validation layer, Issue #23)
-and 4.2 (`FacilityTwinState` + graph skeleton, Issue #24) are closed.
+are **fully closed**. Phase 4 in progress: Tasks 4.1 (Pydantic output-validation layer, Issue #23),
+4.2 (`FacilityTwinState` + graph skeleton, Issue #24), and 4.3 (Agent 1 — Planner, Issue #25) are closed.
 
-- Next task: **Phase 4, task 3: Agent 1 — Planner** (Issue #25, Task decomposition + asset graph
-  loading via tool call into Phase 2's asset tables. Validate output against PlannerOutput schema).
+- Next task: **Phase 4, task 4: Agent 2 — Risk Assessment** (Issue #26, Wraps Phase 3's inference
+  service as an agent tool, adds LLM-driven prioritization/explanation on top of raw scores.
+  Validate output against RiskAssessmentOutput schema).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

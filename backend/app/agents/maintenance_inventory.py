@@ -76,9 +76,7 @@ async def maintenance_inventory_node(
         return {
             "halted_for_escalation": True,
             "escalation_reason": "Loop guard exceeded maximum iterations",
-            "errors": [
-                "Loop guard exceeded max iterations in maintenance_inventory_node"
-            ],
+            "errors": ["Loop guard exceeded max iterations in maintenance_inventory_node"],
             "iteration_count": current_iterations + 1,
         }
 
@@ -107,9 +105,7 @@ async def maintenance_inventory_node(
             "iteration_count": current_iterations + 1,
         }
     except AgentEscalationRequired as exc:
-        logger.error(
-            "Maintenance inventory failed validation after retry. Halting for escalation."
-        )
+        logger.error("Maintenance inventory failed validation after retry. Halting for escalation.")
         return {
             "halted_for_escalation": True,
             "escalation_reason": str(exc),

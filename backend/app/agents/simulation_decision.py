@@ -110,9 +110,7 @@ async def simulation_decision_node(
             "iteration_count": current_iterations + 1,
         }
     except AgentEscalationRequired as exc:
-        logger.error(
-            "Simulation decision failed validation after retry. Halting for escalation."
-        )
+        logger.error("Simulation decision failed validation after retry. Halting for escalation.")
         return {
             "halted_for_escalation": True,
             "escalation_reason": str(exc),

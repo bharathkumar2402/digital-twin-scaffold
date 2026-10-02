@@ -8,7 +8,23 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.2 closed).
+all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.3 closed).
+
+Note on 4.3 ("Agent 1 — Planner", issue #25): implemented the Planner Agent and asset
+graph tool absorbing Phase 2 asset tables (Non-negotiable Rule 6). Implemented
+`backend/app/agents/tools/asset_graph_tool.py` (`load_facility_asset_graph` and
+`build_asset_graph_from_records`), constructing a directed `networkx.DiGraph` where edges
+(child_id, parent_id) represent failure cascade propagation (upstream child -> downstream parent),
+computing topological metrics (`total_nodes`, `total_edges`, `root_asset_ids` [in-degree 0],
+`critical_path_asset_ids` [highest out-degree]) and serializing into state. Implemented
+`decompose_facility_plan` and `real_planner_callable` in `backend/app/agents/planner.py`, decomposing
+scheduled triggers (4-task sequential DAG across all agents), anomaly alerts (priority-1 emergency
+triage), and natural user queries (matching asset names, traversing downstream cascade descendants via
+`nx.descendants`, and targeting simulation sub-tasks). Integrated the real planner logic into
+`planner_node`, validating all outputs against `PlannerOutput` via `execute_agent_with_retry`. Tested
+with 8 new unit tests in `backend/tests/unit/test_planner_agent.py` covering asset graph construction,
+empty facilities, scheduled DAGs, query parsing, and pipeline integration; 243/243 backend unit tests
+pass, ruff and mypy clean repo-wide.
 
 Note on 4.2 ("FacilityTwinState + graph skeleton", issue #24): implemented `FacilityTwinState`
 TypedDict in `backend/app/agents/state.py` conforming to `PROJECT_PLAN.md` §4.5 with
