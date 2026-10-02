@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.agent_runs import router as agent_runs_router
 from app.api.alerts_ws import router as alerts_ws_router
 from app.api.asset_dependencies import router as asset_dependencies_router
 from app.api.assets import router as assets_router
@@ -37,3 +38,4 @@ app.include_router(asset_dependencies_router)
 app.include_router(features_router)
 app.include_router(risk_scores_router)
 app.include_router(alerts_ws_router)
+app.include_router(agent_runs_router)

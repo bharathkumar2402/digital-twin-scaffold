@@ -1,4 +1,5 @@
 from app.models import (
+    AgentRun,
     Asset,
     AssetDependency,
     AssetStatus,
@@ -23,6 +24,7 @@ def test_metadata_has_exactly_the_expected_tables():
         "assets",
         "asset_dependencies",
         "risk_scores",
+        "agent_runs",
     }
 
 
@@ -209,3 +211,31 @@ def test_risk_score_columns_and_fks():
 
     constraint_names = {c.name for c in RiskScore.__table__.constraints}
     assert "ck_risk_scores_score_range" in constraint_names
+
+
+def test_agent_run_columns_and_fks():
+    cols = AgentRun.__table__.columns
+    assert set(cols.keys()) == {
+        "id",
+        "tenant_id",
+        "facility_id",
+        "trigger",
+        "status",
+        "duration_ms",
+        "state_snapshot_json",
+        "validation_errors_json",
+        "decision_report",
+        "confidence",
+        "created_at",
+    }
+    assert cols["id"].primary_key
+    assert not cols["tenant_id"].nullable
+    assert cols["facility_id"].nullable
+    assert not cols["trigger"].nullable
+    assert not cols["status"].nullable
+    assert not cols["duration_ms"].nullable
+    assert not cols["state_snapshot_json"].nullable
+    assert not cols["validation_errors_json"].nullable
+    assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
+    assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
+
