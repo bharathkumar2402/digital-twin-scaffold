@@ -1,7 +1,8 @@
-from app.agents.tools.asset_graph_tool import (
-    build_asset_graph_from_records,
-    load_facility_asset_graph,
+from app.agents.tools.cascade_simulator_tool import (
+    resolve_simulation_target_asset,
+    simulate_failure_cascade,
 )
+from app.agents.tools.decision_synthesizer_tool import synthesize_executive_decision
 from app.agents.tools.distance_matrix_tool import (
     build_distance_and_time_matrices,
     compute_euclidean_distance,
@@ -27,7 +28,10 @@ __all__ = [
     "generate_constraint_schedule",
     "get_parts_for_failure_mode",
     "load_facility_asset_graph",
+    "resolve_simulation_target_asset",
     "score_assets_from_records_tool",
     "score_facility_assets_tool",
+    "simulate_failure_cascade",
     "solve_cvrp_routes",
+    "synthesize_executive_decision",
 ]
