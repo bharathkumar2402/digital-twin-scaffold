@@ -154,11 +154,11 @@ producing a real maintenance schedule and answering "what if X fails?" queries.
 9. **End-to-end integration test** — A single scripted scenario ("Pump 7 fails") that exercises all 5 agents and asserts on the final decision report shape.
 
 **Definition of Done**
-- [ ] Full pipeline runs end to end on a real scenario and produces a valid, schema-checked decision report
-- [ ] A deliberately bad agent output (inject a malformed response) triggers retry-then-escalate, not a silent write
-- [ ] "What if Pump 7 fails?" produces an impact report naming the correct downstream assets from the dependency graph
-- [ ] Pipeline run completes within the 30-second SLO on a representative test facility size
-- [ ] `agent_runs` table has a complete, queryable history of the test scenario
+- [x] Full pipeline runs end to end on a real scenario and produces a valid, schema-checked decision report
+- [x] A deliberately bad agent output (inject a malformed response) triggers retry-then-escalate, not a silent write
+- [x] "What if Pump 7 fails?" produces an impact report naming the correct downstream assets from the dependency graph
+- [x] Pipeline run completes within the 30-second SLO on a representative test facility size
+- [x] `agent_runs` table has a complete, queryable history of the test scenario
 
 **Productivity note:** This phase has the most state-passing surface area in the project.
 Resist the urge to build all 5 agents in parallel across team members before task 2's
