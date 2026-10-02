@@ -8,7 +8,23 @@ why, and how it was verified.
 ---
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 4 in progress (task 4.1 closed).
+all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.2 closed).
+
+Note on 4.2 ("FacilityTwinState + graph skeleton", issue #24): implemented `FacilityTwinState`
+TypedDict in `backend/app/agents/state.py` conforming to `PROJECT_PLAN.md` §4.5 with
+reducer-managed validation error telemetry (`Annotated[list[str], operator.add]`), loop guards
+(`MAX_GRAPH_ITERATIONS = 10`), and human escalation latches. Implemented 5 placeholder agent
+nodes (`planner_node`, `risk_assessment_node`, `maintenance_inventory_node`,
+`route_optimization_node`, `simulation_decision_node`) in `backend/app/agents/` (one file per
+agent per repo conventions), each wrapping its execution with `execute_agent_with_retry` and
+producing immutable delta update dictionaries. Built `build_facility_twin_graph` and
+`run_facility_twin_pipeline` in `backend/app/agents/graph.py` compiling a LangGraph `StateGraph`
+with fail-fast conditional branch routing after each hop, immediately halting the pipeline if an
+agent fails validation after retry rather than propagating unvalidated data downstream. Tested
+with 10 unit and adversarial tests in `backend/tests/unit/test_langgraph_skeleton.py` asserting on
+full pipeline happy path, hop-by-hop schema contracts, mid-pipeline failure branch isolation,
+transient recovery self-healing, CVRP solver SLA duration bounds, loop guards, and state
+immutability; 235/235 backend unit tests pass, ruff and mypy clean repo-wide.
 
 Note on 4.1 ("Pydantic output-validation layer", issue #23): implemented Pydantic v2
 validation schemas for all 5 agent nodes in `backend/app/schemas/agent_outputs/`

@@ -110,10 +110,12 @@ def validate_agent_output(schema_cls: type[T], raw_data: object) -> T:
     if not isinstance(payload, dict):
         raise AgentValidationError(
             schema_name=schema_cls.__name__,
-            errors=[{
-                "msg": f"Expected dict, got {type(payload).__name__}",
-                "type": "type_error",
-            }],
+            errors=[
+                {
+                    "msg": f"Expected dict, got {type(payload).__name__}",
+                    "type": "type_error",
+                }
+            ],
             formatted_error=(
                 f"Expected dictionary object for {schema_cls.__name__}, "
                 f"received {type(payload).__name__}"
@@ -216,4 +218,3 @@ async def execute_agent_with_retry(
             validation_errors=accumulated_errors,
             raw_data=raw_retry_output,
         ) from retry_err
-
