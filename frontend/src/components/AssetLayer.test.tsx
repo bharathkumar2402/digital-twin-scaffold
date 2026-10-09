@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Asset } from "../types/api";
 import { AssetLayer } from "./AssetLayer";
 
-const setData = vi.fn();
+const setData = vi.fn((_data?: unknown) => {});
 let sourceExists = false;
-const addSource = vi.fn(() => {
+const addSource = vi.fn((_id?: string, _source?: unknown) => {
   sourceExists = true;
 });
-const addLayer = vi.fn();
-const getSource = vi.fn(() => (sourceExists ? { setData } : undefined));
+const addLayer = vi.fn((_layer?: unknown) => {});
+const getSource = vi.fn((_id?: string) => (sourceExists ? { setData } : undefined));
 const dragPanDisable = vi.fn();
 const dragPanEnable = vi.fn();
 const getCanvas = vi.fn(() => ({ style: {} }));

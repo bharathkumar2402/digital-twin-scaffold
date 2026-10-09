@@ -6,6 +6,9 @@ import httpx
 import pytest
 
 from scripts.iot_data_generator import (
+    AI4I_SENSOR_PROFILES,
+    DEFAULT_ANOMALY_RATE,
+    GENERIC_SENSOR_PROFILES,
     MAX_BATCH_SIZE,
     SENSOR_PROFILES,
     ReadingPayload,
@@ -150,6 +153,8 @@ def test_parse_args_defaults() -> None:
     assert args.num_assets == 5
     assert args.rate == 1.0
     assert set(args.sensor_types) == set(SENSOR_PROFILES)
+    assert args.anomaly_rate == DEFAULT_ANOMALY_RATE
+    assert args.anomaly_rate == 0.0339
     assert args.facility_id is None
 
 
@@ -224,3 +229,79 @@ async def test_list_facility_asset_ids_empty_facility_returns_empty_list() -> No
         await client.aclose()
 
     assert asset_ids == []
+
+
+def test_default_anomaly_rate_matches_ai4i_prevalence() -> None:
+    """Verifies default anomaly rate matches 339 / 10,000 failure prevalence in AI4I 2020."""
+    assert DEFAULT_ANOMALY_RATE == 0.0339
+
+
+def test_calibrated_ai4i_sensor_profiles_match_dataset_profile() -> None:
+    """Confirms all 7 AI4I channels exist with units and baselines matching docs/DATASETS.md."""
+    expected_channels = {
+        "air_temperature": ("K", 300.00),
+        "process_temperature": ("K", 310.01),
+        "rotational_speed": ("rpm", 1538.78),
+        "torque": ("Nm", 39.99),
+        "tool_wear": ("min", 107.95),
+        "temperature_difference": ("K", 10.00),
+        "mechanical_power": ("W", 6279.74),
+    }
+
+    for sensor_type, (expected_unit, expected_baseline) in expected_channels.items():
+        assert sensor_type in AI4I_SENSOR_PROFILES
+        assert sensor_type in SENSOR_PROFILES
+        profile = AI4I_SENSOR_PROFILES[sensor_type]
+        assert profile.unit == expected_unit
+        assert profile.baseline == pytest.approx(expected_baseline, rel=1e-3)
+        assert profile.noise_stddev > 0.0
+        assert profile.amplitude > 0.0
+        assert profile.anomaly_multiplier > 1.0
+
+
+@pytest.mark.parametrize("sensor_type", list(AI4I_SENSOR_PROFILES))
+def test_generate_reading_ai4i_anomaly_exceeds_normal_bound(sensor_type: str) -> None:
+    """Verifies that an injected anomaly pushes reading beyond normal bounds for all AI4I channels.
+    """
+    rng = random.Random(42)
+    profile = AI4I_SENSOR_PROFILES[sensor_type]
+    normal_bound = profile.amplitude + 6 * profile.noise_stddev
+
+    reading = generate_reading(
+        asset_id=uuid.uuid4(),
+        sensor_type=sensor_type,
+        tick_s=0.0,
+        anomaly=True,
+        rng=rng,
+    )
+
+    assert abs(reading["value"] - profile.baseline) > normal_bound
+    assert reading["sensor_type"] == sensor_type
+    assert reading["unit"] == profile.unit
+    assert math.isfinite(reading["value"])
+
+
+def test_parse_args_profile_set_selection() -> None:
+    """Verifies --profile-set filters sensor_types to the corresponding profile set."""
+    base_args = [
+        "--base-url", "http://localhost:8000",
+        "--tenant-id", str(uuid.uuid4()),
+        "--email", "demo@tenant.example",
+        "--password", "secretpass",
+    ]
+
+    args_ai4i = parse_args(base_args + ["--profile-set", "ai4i"])
+    assert set(args_ai4i.sensor_types) == set(AI4I_SENSOR_PROFILES)
+
+    args_generic = parse_args(base_args + ["--profile-set", "generic"])
+    assert set(args_generic.sensor_types) == set(GENERIC_SENSOR_PROFILES)
+
+    args_all = parse_args(base_args + ["--profile-set", "all"])
+    assert set(args_all.sensor_types) == set(SENSOR_PROFILES)
+
+    # Explicit --sensor-types overrides --profile-set
+    args_override = parse_args(
+        base_args + ["--profile-set", "ai4i", "--sensor-types", "torque", "rotational_speed"]
+    )
+    assert args_override.sensor_types == ["torque", "rotational_speed"]
+

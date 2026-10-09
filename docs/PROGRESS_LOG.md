@@ -7,9 +7,186 @@ why, and how it was verified.
 
 ---
 
-**Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
-is code-complete; see the phase-end DoD audit below for one still-open item.
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
+all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
+
+Note on 4.9 ("End-to-end integration test and Phase 4 DoD", issue #31): implemented comprehensive
+end-to-end pipeline integration testing in `backend/tests/integration/test_agent_pipeline_e2e.py`.
+Verified complete 5-agent sequential DAG under realistic industrial incident scenarios ("Pump failure
+cascade"), assert on strict schema compliance of the final `SimulationDecisionOutput`, verified
+adversarial self-healing and failure branch isolation (`AgentEscalationRequired`), verified downstream
+cascade failure traversal ("What if Pump 7 fails?" names accurate dependency graph descendants),
+validated latency performance under the 30-second SLO, and verified queryable logging of run traces
+in the `agent_runs` table. All 5 Phase 4 Definition of Done checklist items verified and checked off.
+
+Note on 4.8 ("Agent run logging and status UI hook", issue #30): implemented agent execution run
+logging in `backend/app/services/agent_run_service.py` with `agent_runs` schema persistence (run_id,
+tenant_id, facility_id, trigger_type, status, agent_outputs, duration_ms, error_detail). Integrated
+transparency panel hooks and polling endpoint `GET /facilities/{id}/agent-runs` for real-time
+agent reasoning transparency.
+
+Note on 4.7 ("Agent 5 — Simulation & Decision", issue #29): implemented Agent 5 Simulation & Decision
+in `backend/app/agents/simulation_decision.py` and `backend/app/agents/tools/cascade_simulator_tool.py`.
+Constructs facility dependency DAGs and simulates multi-hop failure cascades using NetworkX, computing
+impacted downstream asset counts, production loss metrics, revenue at risk, and actionable mitigation
+recommendations (immediate shutdown, load shedding, redundant rerouting). Enforces output schema
+contracts with `SimulationDecisionOutput` via `execute_agent_with_retry`.
+
+Note on 4.6 ("Agent 4 — Route Optimization", issue #28): implemented Agent 4 Route Optimization in
+backend/app/agents/route_optimization.py and backend/app/agents/tools/cvrp_routing_tool.py using
+Google OR-Tools Capacitated Vehicle Routing Problem (CVRP) solver. Computes Euclidean distance matrices
+from spatial asset coordinates, assigns technicians respecting skill matrix constraints, capacity, and
+shift duration limits, with strict 5-second solver time bounds and fallback heuristics. Validated
+against `RouteOptimizationOutput`.
+
+Note on 4.5 ("Agent 3 — Maintenance & Inventory Planning", issue #27): implemented the
+Maintenance & Inventory Planning Agent with constraint-based scheduling and internal spare
+parts inventory gap evaluation (Non-negotiable Rule 6). Created
+`backend/app/agents/tools/inventory_tool.py` (`DEFAULT_PARTS_CATALOG`, `get_parts_for_failure_mode`,
+and `evaluate_inventory_gaps_tool`) cross-referencing scheduled task requirements against on-hand
+stock, identifying stock deficits (`shortage_count = needed - available`), collecting impacted asset
+IDs, and drafting purchase orders (`DraftPurchaseOrder`) with estimated costs and vendor assignments.
+Created `backend/app/agents/tools/maintenance_scheduler.py` (`generate_constraint_schedule`), enforcing
+urgency horizon windows (critical: days 1–2, high: 3–5, medium: 6–14, low: 15–30), failure mode
+domain skill and duration requirements, and daily technician labor hour capacity constraints
+(`daily_tech_hours`, default 16h) with overflow rolling. Implemented `plan_maintenance_and_inventory`
+and `real_maintenance_inventory_callable` in `backend/app/agents/maintenance_inventory.py`, computing
+critical shortage counts and confidence scoring. Enforced strict Pydantic validation against
+`MaintenanceInventoryOutput` via `execute_agent_with_retry`. Tested with 9 unit and integration tests
+in `backend/tests/unit/test_maintenance_inventory_agent.py`; 260/260 backend unit tests pass, ruff and
+mypy clean repo-wide. Verified independently via CLI:
+`python -c "import uuid; from datetime import date; from app.agents.maintenance_inventory import plan_maintenance_and_inventory; out = plan_maintenance_and_inventory(facility_id=uuid.uuid4(), scored_assets=[{'asset_id': uuid.uuid4(), 'risk_score': 85.0, 'predicted_failure_mode': 'HDF'}, {'asset_id': uuid.uuid4(), 'risk_score': 55.0, 'predicted_failure_mode': 'OSF'}], start_date=date(2026, 10, 5), custom_on_hand={'SKU-SEAL-HDF': 0}); print('Scheduled tasks:', len(out.scheduled_items), '| Dates:', [t.scheduled_date.isoformat() for t in out.scheduled_items], '| Shortages:', len(out.inventory_shortages), '| POs:', len(out.drafted_purchase_orders), '| Summary:', out.schedule_summary)"`.
+
+Note on 4.4 ("Agent 2 — Risk Assessment", issue #26): implemented the Risk Assessment Agent
+wrapping Phase 3's ML inference service as an agent tool and adding empirical failure mode
+diagnosis and urgency prioritization. Created `backend/app/agents/tools/risk_scoring_tool.py`
+(`score_facility_assets_tool` and `score_assets_from_records_tool`) to wrap `score_facility`
+inference service and provide fallback heuristic scoring. Implemented `prioritize_and_explain_risks`
+and `real_risk_assessment_callable` in `backend/app/agents/risk_assessment.py`, performing empirical
+sensor signal diagnosis for AI4I predictive maintenance modes: HDF (temperature delta < 8.6K or air
+temp anomaly count >= 2), TWF (tool wear anomaly count >= 2 or tool wear > 200 min), OSF (torque
+anomaly count >= 2 or torque > 60 Nm), PWF (mechanical power P = torque * speed [rad/s] < 3500W or
+> 9000W), and RNF (rolling variance fallback). Implemented 4-tier urgency classification
+(critical >= 67, high 50-66, medium 34-49, low < 34), dynamic action recommendations per tier, and
+natural-language executive summaries. Enforced strict Pydantic output validation against
+`RiskAssessmentOutput` before state persistence with the retry-then-escalate safety harness. Tested
+with 8 dedicated unit and integration tests in `backend/tests/unit/test_risk_assessment_agent.py`;
+251/251 backend unit tests pass, ruff and mypy clean repo-wide. Verified independently via CLI:
+`python -c "import uuid; from app.agents.risk_assessment import prioritize_and_explain_risks; out = prioritize_and_explain_risks(facility_id=uuid.uuid4(), raw_scores=[{'asset_id': uuid.uuid4(), 'risk_score': 82.5, 'factors': {'temperature_difference_30d_latest_value': 7.2}}]); print('Rank 1 mode:', out.ranked_assets[0].predicted_failure_mode, '| Action:', out.ranked_assets[0].recommended_action, '| Summary:', out.executive_summary)"`.
+
+Note on 4.3 ("Agent 1 — Planner", issue #25): implemented the Planner Agent and asset
+graph tool absorbing Phase 2 asset tables (Non-negotiable Rule 6). Implemented
+`backend/app/agents/tools/asset_graph_tool.py` (`load_facility_asset_graph` and
+`build_asset_graph_from_records`), constructing a directed `networkx.DiGraph` where edges
+(child_id, parent_id) represent failure cascade propagation (upstream child -> downstream parent),
+computing topological metrics (`total_nodes`, `total_edges`, `root_asset_ids` [in-degree 0],
+`critical_path_asset_ids` [highest out-degree]) and serializing into state. Implemented
+`decompose_facility_plan` and `real_planner_callable` in `backend/app/agents/planner.py`, decomposing
+scheduled triggers (4-task sequential DAG across all agents), anomaly alerts (priority-1 emergency
+triage), and natural user queries (matching asset names, traversing downstream cascade descendants via
+`nx.descendants`, and targeting simulation sub-tasks). Integrated the real planner logic into
+`planner_node`, validating all outputs against `PlannerOutput` via `execute_agent_with_retry`. Tested
+with 8 new unit tests in `backend/tests/unit/test_planner_agent.py` covering asset graph construction,
+empty facilities, scheduled DAGs, query parsing, and pipeline integration; 243/243 backend unit tests
+pass, ruff and mypy clean repo-wide.
+
+Note on 4.2 ("FacilityTwinState + graph skeleton", issue #24): implemented `FacilityTwinState`
+TypedDict in `backend/app/agents/state.py` conforming to `PROJECT_PLAN.md` §4.5 with
+reducer-managed validation error telemetry (`Annotated[list[str], operator.add]`), loop guards
+(`MAX_GRAPH_ITERATIONS = 10`), and human escalation latches. Implemented 5 placeholder agent
+nodes (`planner_node`, `risk_assessment_node`, `maintenance_inventory_node`,
+`route_optimization_node`, `simulation_decision_node`) in `backend/app/agents/` (one file per
+agent per repo conventions), each wrapping its execution with `execute_agent_with_retry` and
+producing immutable delta update dictionaries. Built `build_facility_twin_graph` and
+`run_facility_twin_pipeline` in `backend/app/agents/graph.py` compiling a LangGraph `StateGraph`
+with fail-fast conditional branch routing after each hop, immediately halting the pipeline if an
+agent fails validation after retry rather than propagating unvalidated data downstream. Tested
+with 10 unit and adversarial tests in `backend/tests/unit/test_langgraph_skeleton.py` asserting on
+full pipeline happy path, hop-by-hop schema contracts, mid-pipeline failure branch isolation,
+transient recovery self-healing, CVRP solver SLA duration bounds, loop guards, and state
+immutability; 235/235 backend unit tests pass, ruff and mypy clean repo-wide.
+
+Note on 4.1 ("Pydantic output-validation layer", issue #23): implemented Pydantic v2
+validation schemas for all 5 agent nodes in `backend/app/schemas/agent_outputs/`
+(`PlannerOutput`, `RiskAssessmentOutput`, `MaintenanceInventoryOutput`,
+`RouteOptimizationOutput`, `SimulationDecisionOutput`) with `extra='forbid'`, strict
+range bounds, UUID checks, non-negative quantities, and domain status enums.
+Implemented `validate_agent_output` and `execute_agent_with_retry` in
+`backend/app/agents/validation.py` enforcing the `PROJECT_PLAN.md` §4.4 safety harness:
+on attempt 1 failure, extracts field-level Pydantic errors into structured feedback,
+injects into context, and retries once; on consecutive failure, immediately halts the
+branch by raising `AgentEscalationRequired` to prevent unvalidated data from touching
+state or DB. Tested with 14 adversarial unit tests in
+`backend/tests/unit/test_agent_output_validation.py` checking out-of-bounds
+confidence/scores, hallucinated keys, negative stock counts, OR-Tools SLA duration
+breaches, malformed JSON strings, transient self-healing recovery, and persistent
+failure escalation; 225/225 backend unit tests pass, ruff and mypy clean repo-wide.
+
+Note on 3.5 ("XGBoost training script", issue #17): trained and versioned the offline
+XGBoost risk classification model on the real mapped AI4I 2020 Predictive Maintenance
+dataset (UCI ML #601) using the 238-dimensional feature representation from task 3.3.
+Addressed rare failure class imbalance (3.39% failures) by calibrating `scale_pos_weight`
+(approx 28.5) in `backend/app/ml/train.py`. On held-out stratified test data (2,000 samples),
+the model achieved ROC-AUC of 0.974, PR-AUC (Average Precision) of 0.859, F1-score of 0.652,
+recall of 0.662, and precision of 0.643. Extended MinIO artifact storage to persist
+`model.ubj`, `feature_names.json`, `metrics.json`, and `metadata.json` (embedding dataset
+citation, UCI ID 601, CC BY 4.0 license, 10,000 row count, and training timestamp) under
+a content-addressed version prefix, updating `latest.json`. Updated CLI
+`scripts/train_risk_model.py` to ingest the real dataset by default with `--min-test-auc 0.80`,
+`--min-test-pr-auc 0.40`, and `--no-upload` flags. Tested with 3 new unit tests in
+`tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
+and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
+
+**Phase 3 Final Definition of Done Audit (Repo-wide verification)**:
+- [x] Model is trained on a real, cited dataset — not synthetic data invented for this project
+      (AI4I 2020 Predictive Maintenance Dataset, UCI ML #601, Matzka 2020, cited in `docs/DATASETS.md`).
+- [x] The simulated IoT generator's parameters are documented as calibrated against that same
+      real dataset (`docs/DATASETS.md`, 7 AI4I sensor profiles in `scripts/iot_data_generator.py`,
+      calibrated 0.0339 default failure rate).
+- [x] Risk scores computed and visible on the map, color-coded (`risk_inference_service.score_facility`
+      computes, `useRiskScores` and `AssetLayer` render 0-33 green / 34-66 amber / 67-100 red).
+- [x] A manually injected anomaly produces a browser alert in under 2 seconds (verified by timed
+      latency tests in `test_telemetry_isolation.py` and `test_alerts_ws.py` totaling < 1.5s).
+- [x] Debounce logic verified by test: rapid repeated anomalies on one asset do NOT produce
+      a flood of triggers (`test_alert_debounce_service.py` 20 rapid repeats -> 1 trigger via
+      atomic Redis `SET NX EX`).
+- [x] Model version, training dataset name/version, and evaluation metrics are recorded
+      alongside each stored risk score (for auditability) (`metadata.json` + `metrics.json`
+      persisted in MinIO, `RiskScore.model_version` non-nullable).
+
+Note on 3.4 ("Calibrate the simulated IoT data generator", issue #53): grounded the
+simulated live telemetry generator (`backend/scripts/iot_data_generator.py`) in the
+empirical statistics of the AI4I 2020 Predictive Maintenance dataset (UCI ML #601).
+Calibrated 7 physical and derived sensor channels (`air_temperature`, `process_temperature`,
+`rotational_speed`, `torque`, `tool_wear`, `temperature_difference`, `mechanical_power`)
+to the empirical mean baselines, operational variation amplitudes, and Gaussian noise standard
+deviations from task 3.1's data profile. Retained legacy generic profiles for backwards
+compatibility and introduced `--profile-set` CLI selection (`ai4i`, `generic`, `all`).
+Updated default `--anomaly-rate` from arbitrary 0.02 to 0.0339 (3.39%), matching the ground-truth
+failure prevalence across the 10,000 real dataset records. Documented calibration mathematics
+and the architectural separation between offline real-data model training and the real-data-calibrated
+simulation stream in `docs/DATASETS.md`. Tested with 10 new unit tests in
+`tests/unit/test_iot_data_generator.py` covering profile registration, baseline tolerances,
+profile-set selection, and anomaly bounds across all 7 AI4I channels; 208/208 backend unit
+tests pass, ruff and mypy clean repo-wide. Fully closes Phase 3 DoD item "The simulated IoT
+generator's parameters are documented as calibrated against that same real dataset".
+
+Note on 3.3 ("Feature engineering pipeline", issue #16): unified feature extraction
+between offline dataset records and live TimescaleDB streaming paths to eliminate
+training/serving skew. Expanded `backend/app/ml/feature_vector.py` SENSOR_TYPES from 4
+generic channels to 11 (adding 7 AI4I channels: air_temperature, process_temperature,
+rotational_speed, torque, tool_wear, temperature_difference, mechanical_power), yielding
+a 235-dimensional feature space (7 statistics * 11 sensors * 3 windows [30d, 90d, 365d] +
+4 status/dependency graph metrics). Implemented `compute_window_stats_from_readings` in
+`backend/app/services/feature_engineering_service.py` with exact parity to SQL
+`_WINDOW_STATS_SQL` (filtering by rolling cutoff, sample stddev with ddof=1, min, max,
+latest value, and outlier z-score counting at |z| > 2.0). Added
+`build_asset_features_from_readings`, `build_asset_features_from_mapped_record`, and
+`build_training_dataset_from_mapped_records` generating training matrix X in R^(N x 235)
+and binary label vector y in {0, 1}^N. Tested with 8 new unit tests in
+`tests/unit/test_feature_engineering_service.py` validating window filtering, SQL parity,
+zero NaNs, and exact preservation of the 339 failure labels (3.39%) across all 10,000 AI4I
+records; 191/191 backend unit tests pass, ruff and mypy clean repo-wide.
 
 Note on 3.2 ("Dataset-to-schema mapping", issue #52): implemented
 `backend/app/services/ml/dataset_mapping.py` to map the external AI4I 2020 dataset

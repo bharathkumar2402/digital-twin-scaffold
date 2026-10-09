@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     migration chain (`migrations/` vs `migrations_timescale/`).
     """
 
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        env_file_encoding="utf-8",
+    )
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

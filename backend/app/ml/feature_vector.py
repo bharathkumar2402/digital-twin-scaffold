@@ -1,11 +1,11 @@
 """Flattens an `AssetFeatureSet` into a fixed-length, fixed-order numeric vector.
 
 This is the single source of truth for the risk model's input shape - both the
-training script (3.2) and the inference service (3.3) must vectorize through
+training script (3.2/3.5) and the inference service (3.3/3.6) must vectorize through
 `vectorize()` so a model trained here is guaranteed to see the same column layout
-at inference time. Sensor types are hardcoded to the four produced by
-`backend/scripts/iot_data_generator.py` (this repo's only real telemetry source) -
-an asset missing a sensor type or window entirely gets zero-filled stats rather than
+at inference time. Sensor types cover both generic facility telemetry channels and
+calibrated AI4I 2020 predictive maintenance channels (UCI ML Repository #601).
+An asset missing a sensor type or window entirely gets zero-filled stats rather than
 a variable-length vector, which XGBoost can't accept.
 """
 
@@ -14,10 +14,19 @@ import numpy as np
 from app.schemas.ml.asset_features import AssetFeatureSet, SensorWindowStats
 
 SENSOR_TYPES: tuple[str, ...] = (
+    # Generic telemetry channels
     "temperature_c",
     "pressure_kpa",
     "vibration_mm_s",
     "humidity_pct",
+    # AI4I 2020 predictive maintenance channels
+    "air_temperature",
+    "process_temperature",
+    "rotational_speed",
+    "torque",
+    "tool_wear",
+    "temperature_difference",
+    "mechanical_power",
 )
 
 WINDOW_DAYS: tuple[int, ...] = (30, 90, 365)

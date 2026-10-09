@@ -182,25 +182,11 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation) and Phase 2 (Map & Asset System, tasks 1–8, issues
-2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine) is **in progress (reopened for
-real-dataset workflow)**:
-- Task 3.1 (`Phase 3.1: Dataset acquisition & exploration`, issue #51) is **closed**:
-  AI4I 2020 Predictive Maintenance dataset acquired (10,000 rows, 14 columns, 0 nulls,
-  3.39% failure rate), profiler built (`app/ml/dataset_profile.py`, `scripts/acquire_dataset.py`),
-  `docs/DATASETS.md` data profile populated, and unit tests passing.
-- Task 3.2 (`Phase 3.2: Dataset-to-schema mapping`, issue #52) is **closed**:
-  mapped external AI4I 2020 columns to `sensor_readings` (air/process temp, speed, torque,
-  tool wear, temp diff, mechanical power) and `risk_scores` (factors_json, failure modes,
-  deterministic asset UUIDs) in `app/services/ml/dataset_mapping.py` with CLI in
-  `scripts/map_dataset.py` and unit tests passing.
-- Next task: **Phase 3, task 3: Feature engineering pipeline** (Issue #16, adapt feature
-  engineering to ingest mapped real dataset features alongside TimescaleDB windows).
-- The GitHub issue tracker has been reconciled with `PHASE_PLAN.md`: issues #51, #52, #53 created,
-  and issues #16, #17, #18, #19, #20, #21, #22 retitled to 3.3, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10.
-- Downstream tasks 3.6–3.10 (inference, anomaly detection, debounce, WebSocket, map coloring)
-  remain structurally sound; retraining on mapped real data occurs in task 3.5. Phase 4
-  stays blocked until Phase 3's DoD is fully satisfied.
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine),
+and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 5 in progress.
+
+- Next task: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
+  every table in the main Postgres and TimescaleDB databases has RLS enabled and a tenant_id policy).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
