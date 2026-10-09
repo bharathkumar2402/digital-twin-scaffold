@@ -166,6 +166,35 @@ statistics above rather than using hand-invented numbers:
   model is a demonstration of run-to-failure learning on a real, cited benchmark; mapping
   to facility asset types is handled in task 3b.2 and should be presented as such.
 
+### C-MAPSS to project schema mapping and RUL features (Phase 3b, task 2)
+
+Mapping lives in `backend/app/services/ml/dataset_mapping.py` (`CMAPSS_SENSOR_MAP`,
+`map_cmapss_rows_to_readings`); features in `backend/app/ml/rul_features.py` and
+`rul_dataset.py`. Sensor definitions were checked against Table 2 of the PHM08 paper
+(`Damage Propagation Modeling.pdf`).
+
+- **Sensor mapping:** each `sensor_N` column becomes `sensor_readings.sensor_type = cmapss_sN`
+  with its physical unit (degR, psia, rpm, pps/psi, lbm/s, ratio); e.g. `sensor_2` = T24,
+  total temperature at LPC outlet (degR). Channels keep C-MAPSS identity rather than being
+  renamed to facility-style names, because these are simulated turbofan engines. One engine =
+  one asset (`uuid5` of `FDxxx:unit`); one cycle = one snapshot, `cycle_interval` apart.
+- **Separate from the risk model:** RUL has its own feature layout. `feature_vector.py` (238
+  columns) is frozen by the trained risk model and is untouched.
+- **Features (per kept sensor):** latest value, short-window mean (5 cycles), long-window mean,
+  std and least-squares slope (30 cycles), plus `cycle` (asset age) and `window_len`. All
+  computed by one function, `window_features`, for training and serving, using only rows up
+  to the current cycle.
+- **Sensor selection and scaling:** constant sensors are dropped (FD001: 6 dropped, 15 kept;
+  FD002/FD004 keep all 21). Sensors are z-scored per operating regime (regime = setting 1 and
+  3 rounded; 1 regime for FD001/FD003, 6 for FD002/FD004), with parameters fitted on training
+  data only and stored in `RulFeatureConfig` (saved alongside the model in task 3b.3). A
+  serving row whose regime is not within 2.0 of a known one is rejected.
+- **Labels:** training label at cycle t = engine's last cycle minus t, capped at 125 cycles
+  (`RUL_CAP`; standard practice, since degradation is not observable early in life). Both the
+  capped and uncapped values are kept. Test labels come from `RUL_FDxxx.txt` (the test
+  trajectories end before failure), taken at each engine's final window.
+- **Splitting:** every row carries its engine id; task 3b.3 must split by engine, never by row.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

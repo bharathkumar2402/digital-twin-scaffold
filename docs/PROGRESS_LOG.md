@@ -137,6 +137,23 @@ a content-addressed version prefix, updating `latest.json`. Updated CLI
 `tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
 and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
 
+Note on 3b.2 ("RUL feature pipeline & mapping", issue #59): added `app/ml/rul_features.py`
+(`fit_config`, `window_features`, `RulFeatureConfig`), `app/ml/rul_dataset.py` (train/test
+matrices with engine ids and capped + uncapped labels), the C-MAPSS sensor map and reading
+converter in `dataset_mapping.py`, a serving input schema `app/schemas/ml/rul_features.py`
+(`RulWindowIn`), and `scripts/summarize_rul_features.py`. Kept separate from the frozen
+238-column risk-model vector. One feature function serves both training and serving; a test
+proves the training row for (engine, cycle) is bit-identical to the serving computation, and
+another proves corrupting future rows does not change earlier features. Scaling is per
+operating regime, fitted on train only; an unseen regime at serving raises. Verified on real
+data for FD001/FD002/FD004: FD001 20,631x77 train, 100x77 test; FD002 53,759x107; FD004
+61,249x107; no NaNs. Build takes 5-10 s per subset (per-row window loop, accepted to keep the
+single code path). Sensor definitions cross-checked against the PHM08 paper's Table 2. 18 new
+tests; 236 unit tests pass locally (10 modules still fail to collect because `langchain_core`
+is not installed in this local Python - pre-existing). Pre-existing ruff errors exist in
+`app/agents/*` and `app/models/agent_run.py`; not touched here. ruff + mypy clean on all
+files added or changed by this task.
+
 Note on 3b.1 ("C-MAPSS acquisition & profile", issue #58): added `app/ml/cmapss_profile.py`
 (parsing with strict validation: ragged rows, non-numeric/NaN values, empty files, RUL length
 vs test engine count, cycle-numbering gaps, constant sensors, operating-condition clusters,

@@ -351,3 +351,100 @@ def extract_all_risk_scores(
 ) -> list[MappedRiskScoreRecord]:
     """Extract flat list of all risk score records across all mapped records."""
     return [r.risk_score for r in records]
+
+# ---------------------------------------------------------------------------
+# NASA C-MAPSS (Phase 3b) - turbofan run-to-failure data for the RUL model
+# ---------------------------------------------------------------------------
+
+CMAPSS_DATASET_NAME: str = "NASA C-MAPSS Turbofan Engine Degradation Simulation"
+CMAPSS_DATASET_VERSION: str = "cmapss_v1"
+CMAPSS_ASSET_NAMESPACE: uuid.UUID = uuid.UUID("c3a95500-0000-4000-8000-000000000000")
+
+
+@dataclass(frozen=True)
+class CmapssSensorInfo:
+    """Physical meaning of one C-MAPSS sensor column (Saxena et al. 2008, Table 2)."""
+
+    column: str
+    sensor_type: str
+    symbol: str
+    description: str
+    unit: str
+
+
+# Channels keep their C-MAPSS identity (`cmapss_sN`) instead of being renamed to
+# facility-flavoured names: these are simulated turbofan engines, not factory assets.
+_CMAPSS_SENSOR_TABLE: tuple[tuple[str, str, str], ...] = (
+    ("T2", "Total temperature at fan inlet", "degR"),
+    ("T24", "Total temperature at LPC outlet", "degR"),
+    ("T30", "Total temperature at HPC outlet", "degR"),
+    ("T50", "Total temperature at LPT outlet", "degR"),
+    ("P2", "Pressure at fan inlet", "psia"),
+    ("P15", "Total pressure in bypass-duct", "psia"),
+    ("P30", "Total pressure at HPC outlet", "psia"),
+    ("Nf", "Physical fan speed", "rpm"),
+    ("Nc", "Physical core speed", "rpm"),
+    ("epr", "Engine pressure ratio (P50/P2)", "ratio"),
+    ("Ps30", "Static pressure at HPC outlet", "psia"),
+    ("phi", "Ratio of fuel flow to Ps30", "pps/psi"),
+    ("NRf", "Corrected fan speed", "rpm"),
+    ("NRc", "Corrected core speed", "rpm"),
+    ("BPR", "Bypass ratio", "ratio"),
+    ("farB", "Burner fuel-air ratio", "ratio"),
+    ("htBleed", "Bleed enthalpy", "ratio"),
+    ("Nf_dmd", "Demanded fan speed", "rpm"),
+    ("PCNfR_dmd", "Demanded corrected fan speed", "rpm"),
+    ("W31", "HPT coolant bleed", "lbm/s"),
+    ("W32", "LPT coolant bleed", "lbm/s"),
+)
+
+CMAPSS_SENSOR_MAP: dict[str, CmapssSensorInfo] = {
+    f"sensor_{i}": CmapssSensorInfo(
+        column=f"sensor_{i}",
+        sensor_type=f"cmapss_s{i}",
+        symbol=symbol,
+        description=description,
+        unit=unit,
+    )
+    for i, (symbol, description, unit) in enumerate(_CMAPSS_SENSOR_TABLE, start=1)
+}
+
+
+def deterministic_cmapss_asset_id(subset: str, unit: int) -> uuid.UUID:
+    """Stable asset identity for engine `unit` of subset `subset` (e.g. FD001, 7)."""
+    return uuid.uuid5(CMAPSS_ASSET_NAMESPACE, f"{subset}:{unit}")
+
+
+def map_cmapss_rows_to_readings(
+    subset: str,
+    rows: Any,
+    start_time: datetime,
+    cycle_interval: timedelta = timedelta(hours=1),
+) -> list[MappedSensorReading]:
+    """Map an (n, 26) C-MAPSS table onto `sensor_readings` records.
+
+    Each cycle becomes one snapshot `cycle_interval` after the previous one; every
+    sensor column becomes one reading with its physical unit.
+    """
+    from app.ml.cmapss_profile import COLUMNS
+
+    readings: list[MappedSensorReading] = []
+    for row in rows:
+        unit = int(row[COLUMNS.index("unit")])
+        cycle = int(row[COLUMNS.index("cycle")])
+        stamp = start_time + cycle_interval * (cycle - 1)
+        asset_id = deterministic_cmapss_asset_id(subset, unit)
+        for col, info in CMAPSS_SENSOR_MAP.items():
+            value = float(row[COLUMNS.index(col)])
+            if not math.isfinite(value):
+                raise ValueError(f"non-finite value in {col} for unit {unit} cycle {cycle}")
+            readings.append(
+                MappedSensorReading(
+                    asset_id=asset_id,
+                    sensor_type=info.sensor_type,
+                    value=value,
+                    unit=info.unit,
+                    timestamp=stamp,
+                )
+            )
+    return readings
