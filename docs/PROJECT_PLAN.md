@@ -137,7 +137,7 @@ This is a hard problem independent of market size — the technical breakdown ab
 - **MinIO** — self-hosted S3-compatible store for facility map tiles and ML models (this one component is fine to self-host; it's stateless-ish and low-risk)
 
 **ML/AI** — unchanged
-- scikit-learn / XGBoost for offline-trained risk models
+- scikit-learn / XGBoost for offline-trained risk models, plus (Phase 3b) an XGBoost RUL regressor (NASA C-MAPSS) and an Isolation Forest vibration anomaly detector (NASA IMS Bearing)
 - Claude API for agent reasoning and natural-language summaries
 - OR-Tools for route optimization
 - NetworkX for the dependency graph and cascade simulation
@@ -168,7 +168,7 @@ This keeps every capability from v1.0 — nothing is cut, just consolidated into
 
 **Agent 2 — Risk Assessment Agent**
 - Role: For each asset, generates a risk score (0–100) using the ML model. Considers last maintenance date, sensor anomaly history, asset age, failure rate for that class, and adjacent asset failures.
-- Tools: TimescaleDB telemetry query (last 30/90/365 days), XGBoost model inference, anomaly detection (rolling Z-score)
+- Tools: TimescaleDB telemetry query (last 30/90/365 days), XGBoost model inference, RUL regressor and vibration anomaly detector (Phase 3b), anomaly detection (rolling Z-score)
 - Output: Risk-scored asset list ranked by urgency — **Pydantic-validated**
 
 **Agent 3 — Maintenance & Inventory Planning Agent** *(absorbs Inventory)*

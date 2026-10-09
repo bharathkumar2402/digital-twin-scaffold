@@ -26,3 +26,8 @@ build/
 
 # Misc
 *.log
+
+# C-MAPSS raw data (~45 MB); re-create with `python -m scripts.acquire_cmapss`
+backend/data/raw/cmapss/
+# Manually supplied official NASA archive (duplicate of backend/data/raw/cmapss)
+NASA dataset/

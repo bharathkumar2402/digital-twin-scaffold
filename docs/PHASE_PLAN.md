@@ -134,6 +134,45 @@ task 5), not glossed over.
 
 ---
 
+## Phase 3b — Additional ML Models: RUL & Vibration Anomaly (inserted after Phase 3, before Phase 5)
+
+**Goal:** Extend the Risk Assessment and Maintenance agents with two more models trained on
+real, cited datasets: a Remaining Useful Life (RUL) regressor and a vibration anomaly
+detector. Both are *tools* called inside existing agents — the pipeline stays at 5 agents.
+
+**Scope decisions (recorded so they are not re-litigated):**
+- Stay inside the approved stack: **XGBoost** for RUL, **scikit-learn Isolation Forest** for
+  vibration anomaly. No PyTorch/TensorFlow dependency.
+- Datasets: **NASA C-MAPSS** (RUL) and **NASA IMS Bearing** (vibration), both public domain.
+  Neither comes from the target facility types — state this limitation in the docs.
+- Storage: extend `risk_scores` with a nullable `rul_cycles` column and record model details
+  in `factors_json` — **no new tenant table**, so no new RLS policy. If a new table with
+  `tenant_id` becomes necessary, it needs RLS + a cross-tenant test (CLAUDE.md rule 2).
+- Every model output is Pydantic-validated (rule 1); `model_version` and dataset name/version
+  are recorded with each stored result (rule 8).
+
+**Claude Code sessions (in order)**
+
+1. **C-MAPSS acquisition & profile** — Download FD001–FD004, profile (units, cycles, sensor ranges), write profile + license to `docs/DATASETS.md`.
+2. **RUL feature pipeline & mapping** — Rolling-window features, RUL labels capped (~125 cycles), mapping to the project's sensor schema in `dataset_mapping.py`. One feature function serves training and live serving.
+3. **Train RUL model** — XGBoost regressor, split by engine unit (never by row). Report RMSE and the NASA scoring function. Version in MinIO with dataset name/version.
+4. **IMS bearing acquisition & profile** — Test sets 1–3 run-to-failure vibration; profile + license in `docs/DATASETS.md`.
+5. **Vibration feature pipeline** — RMS, kurtosis, crest factor, FFT band energies per snapshot.
+6. **Train vibration anomaly model** — Isolation Forest fit on the early healthy period only; evaluate on how early it flags the known failure and false-alarm rate on healthy data.
+7. **Inference services & agent tools** — Celery-backed services, Pydantic output schemas, wired as tools in Agents 2/3, `rul_cycles` migration, tests.
+8. **Simulator calibration & Phase 3b audit** — Calibrate generator vibration/degradation behavior from the real data; full Definition of Done audit.
+
+**Definition of Done**
+- [ ] RUL model trained on C-MAPSS with unit-level split; metrics (RMSE, NASA score) recorded
+- [ ] Vibration anomaly model trained on IMS healthy period; detection lead time and false-alarm rate recorded
+- [ ] Both datasets documented in `docs/DATASETS.md` (name, version, license, citation, limitations)
+- [ ] Model version + dataset recorded alongside each stored result
+- [ ] Both models callable as agent tools with Pydantic-validated outputs; failure path tested
+- [ ] Simulator vibration parameters documented as calibrated from IMS
+- [ ] Training never uses simulator output
+
+---
+
 ## Phase 4 — AI Agent System (Weeks 14–21) — the hardest phase, budget accordingly
 
 **Goal:** The full 5-agent LangGraph pipeline runs end to end, every output validated,

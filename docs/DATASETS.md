@@ -121,6 +121,51 @@ statistics above rather than using hand-invented numbers:
      during local dev and live demonstration, ensuring the live demo accurately mirrors
      real factory conditions without training-serving circularity.
 
+## C-MAPSS data profile (Phase 3b, task 1)
+
+> Empirical profile of the NASA C-MAPSS turbofan run-to-failure dataset, used by Phase 3b
+> to train the Remaining Useful Life (RUL) model (tasks 3b.2-3b.3). Regenerate with
+> `python -m scripts.acquire_cmapss --profile`.
+
+- **Dataset used:** NASA C-MAPSS Turbofan Engine Degradation Simulation (FD001-FD004)
+- **Source:** NASA Ames Prognostics Data Repository; downloaded from the PHM dataset mirror
+  `phm-datasets.s3.amazonaws.com/NASA/` (original NASA portal links redirect and were not
+  reachable during acquisition).
+- **Citation:** Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage Propagation
+  Modeling for Aircraft Engine Run-to-Failure Simulation. PHM08.
+- **License / access:** NASA open data (US Government work, public domain per the
+  repository). *Exact license wording was not re-verified against the NASA portal during
+  acquisition; confirm before external publication.*
+- **Version / access date:** October 2026 (archive dated 2022-09-17 on the mirror). Per-file
+  SHA-256 checksums are stored in the profile JSON for change detection.
+- **Integrity check:** the 12 downloaded files were compared byte-for-byte against an
+  official NASA archive copy supplied by the project owner (includes NASA's `readme.txt` and
+  the PHM08 paper PDF); all 12 are identical.
+- **Known readme typo:** NASA's `readme.txt` lists FD004 as 248 train / 249 test trajectories.
+  The data files contain 249 train / 248 test engines (the table below reports counts computed
+  from the files, not the readme; FD002's 260/259 is also train > test).
+- **Files:** 12 whitespace-delimited text files, 26 columns each: `unit`, `cycle`,
+  3 operating settings, 21 sensors. Not committed (43 MB, gitignored); re-created by the CLI.
+
+| Subset | Train engines | Train rows | Test engines | Op. conditions | Fault modes | Train life min/median/max (cycles) | Test RUL min/median/max |
+|---|---|---|---|---|---|---|---|
+| FD001 | 100 | 20,631 | 100 | 1 | 1 (HPC) | 128 / 199 / 362 | 7 / 86 / 145 |
+| FD002 | 260 | 53,759 | 259 | 6 | 1 (HPC) | 128 / 199 / 378 | 6 / 80 / 194 |
+| FD003 | 100 | 24,720 | 100 | 1 | 2 (HPC, fan) | 145 / 220.5 / 525 | 6 / 77.5 / 145 |
+| FD004 | 249 | 61,249 | 248 | 6 | 2 (HPC, fan) | 128 / 234 / 543 | 6 / 88 / 195 |
+
+(Fault-mode counts are from the dataset documentation, not computed from the files.)
+
+- **Constant (zero-variance) sensors in training data:** FD001: sensor_1, 5, 10, 16, 18, 19;
+  FD003: sensor_1, 5, 16, 18, 19; FD002/FD004: none (operating-condition variation makes
+  every sensor vary). Constant sensors carry no signal and should be dropped in 3b.2.
+- **Data quality:** zero NaNs and zero cycle-numbering gaps in train and test files.
+- **Operating-condition counting:** operating setting 2 (Mach) is excluded when clustering
+  conditions, since it is determined by setting 1 and its noise straddles rounding boundaries.
+- **Limitations:** these are simulated turbofan engines, not factory equipment. The RUL
+  model is a demonstration of run-to-failure learning on a real, cited benchmark; mapping
+  to facility asset types is handled in task 3b.2 and should be presented as such.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

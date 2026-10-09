@@ -137,6 +137,19 @@ a content-addressed version prefix, updating `latest.json`. Updated CLI
 `tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
 and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
 
+Note on 3b.1 ("C-MAPSS acquisition & profile", issue #58): added `app/ml/cmapss_profile.py`
+(parsing with strict validation: ragged rows, non-numeric/NaN values, empty files, RUL length
+vs test engine count, cycle-numbering gaps, constant sensors, operating-condition clusters,
+per-file SHA-256) and `scripts/acquire_cmapss.py` (`--profile`, `--json-output`, `--force`,
+`--url`; handles the archive's nested zip). The NASA portal links redirect/time out, so the
+default URL is the PHM S3 mirror. Real-data profile matches the published dimensions
+(FD001 100 engines/20,631 rows ... FD004 249/61,249). Found and fixed a bug while profiling:
+FD002 initially reported 7 operating conditions because Mach noise straddled a rounding
+boundary; clustering now uses settings 1 and 3 only (6 conditions, as published). Raw files
+(43 MB) are gitignored. 14 new unit tests; 218 unit tests pass locally. 10 existing test
+modules fail at collection here because `langchain_core` is not installed in this local
+Python - pre-existing environment issue, unrelated to this task. ruff + mypy clean.
+
 **Phase 3 Final Definition of Done Audit (Repo-wide verification)**:
 - [x] Model is trained on a real, cited dataset — not synthetic data invented for this project
       (AI4I 2020 Predictive Maintenance Dataset, UCI ML #601, Matzka 2020, cited in `docs/DATASETS.md`).
