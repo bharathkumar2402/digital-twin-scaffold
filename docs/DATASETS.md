@@ -195,6 +195,44 @@ Mapping lives in `backend/app/services/ml/dataset_mapping.py` (`CMAPSS_SENSOR_MA
   trajectories end before failure), taken at each engine's final window.
 - **Splitting:** every row carries its engine id; task 3b.3 must split by engine, never by row.
 
+### RUL model training and results (Phase 3b, task 3)
+
+Code: `backend/app/ml/rul_train.py`, `backend/scripts/train_rul_model.py`
+(`python -m scripts.train_rul_model --subset FD001`). XGBoost regressor on the 3b.2 features,
+target = RUL capped at 125 cycles.
+
+**Protocol.** (1) 5-fold group CV *by engine* on the training engines to estimate error and
+choose the boosting rounds (an engine never appears on both sides of a fold); (2) refit on all
+training engines; (3) one evaluation on the official test set (each test engine's final
+window, true RUL from `RUL_FDxxx.txt`). Nothing is tuned on the test set (a unit test proves
+the model bytes do not change when the test labels do). Two baselines are reported with it:
+the training-median predictor and a cycle-count-only model.
+
+| Subset | CV RMSE (capped) | Test RMSE (true RUL) | Test MAE | Mean error (+ = late) | NASA score | Baseline RMSE: median / cycle-only |
+|---|---|---|---|---|---|---|
+| **FD001** (primary, seed 0) | 11.65 +/- 0.55 | **13.10** | 9.64 | +0.29 | 236 | 49.8 / 32.2 |
+| FD001 seed 1 / seed 2 | 11.68 / 11.63 | 12.90 / 13.00 | 9.55 / 9.67 | +0.18 / +0.23 | 228 / 235 | - |
+| FD002 (6 regimes) | 13.48 +/- 0.35 | 25.41 | 16.48 | -7.96 | 7,112 | 58.0 / 38.2 |
+| FD003 | 10.16 +/- 1.43 | 14.23 | 10.25 | -0.11 | 325 | 63.1 / 35.3 |
+| FD004 (6 regimes) | 13.14 +/- 1.13 | 26.44 | 18.08 | -8.01 | 5,062 | 65.0 / 47.7 |
+
+- FD001 results are stable across seeds (test RMSE 12.9-13.1). FD002-FD004 are separate,
+  labeled experiments, stored under their own `rul_model/<subset>/` prefix; they are never
+  merged with FD001.
+- **Publish gates** (CLI defaults, set against FD001 with margin; baselines are far outside
+  them): test RMSE <= 20 and NASA score <= 1500. The six-regime subsets (FD002, FD004) do
+  **not** pass these default gates (test RMSE ~25-26) and need explicit `--max-test-*`
+  overrides to publish; that is a deliberate signal, not an oversight.
+- **Open observation:** on FD002/FD004 the CV error (~13) is much lower than the test error
+  (~25) and the model predicts slightly early (bias about -8). CV scores every cycle of an
+  engine, many of them easy; the test set scores only each engine's truncated final window.
+  The gap was not diagnosed further; improving the multi-regime models is not part of this
+  task.
+- **Limitations:** simulated turbofan engines, one fault-mode/operating profile per subset;
+  see "C-MAPSS data profile". Each stored model records dataset name/citation/license/version,
+  the SHA-256 of its three data files, hyperparameters, seed, library versions and the
+  metrics above in `metadata.json`.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

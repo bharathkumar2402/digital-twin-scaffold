@@ -137,6 +137,20 @@ a content-addressed version prefix, updating `latest.json`. Updated CLI
 `tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
 and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
 
+Note on 3b.3 ("Train RUL model", issue #60): added `app/ml/rul_train.py` (group CV by
+engine, refit, single official-test evaluation, NASA score, median and cycle-only baselines,
+versioned MinIO save/load under `rul_model/<subset>/`) and `scripts/train_rul_model.py`
+(`--subset`, `--seed`, `--no-upload`, `--max-test-rmse` default 20, `--max-test-nasa-score`
+default 1500). FD001 (primary): test RMSE 13.10, MAE 9.64, NASA score 236, bias +0.29; stable
+across seeds 0/1/2 (12.9-13.1); beats cycle-only (32.2) and median (49.8) baselines. FD002 and
+FD004 (6 operating regimes) reach test RMSE ~25-26 and do not pass the default publish gates;
+documented as an open observation, not tuned here. 14 new tests (~85 s, they train real
+models): metric hand-computation and asymmetry, engine-disjoint folds, test-set isolation
+(model bytes unchanged when test labels are scrambled), determinism, beats-baselines,
+prediction clipping, MinIO round trip with a fake client, per-subset storage, gate refusal
+(nothing uploaded), and real-FD001 checks. Local MinIO was not running, so the real upload
+path was exercised only through the fake client. ruff + mypy clean on files added by this task.
+
 Note on 3b.2 ("RUL feature pipeline & mapping", issue #59): added `app/ml/rul_features.py`
 (`fit_config`, `window_features`, `RulFeatureConfig`), `app/ml/rul_dataset.py` (train/test
 matrices with engine ids and capped + uncapped labels), the C-MAPSS sensor map and reading
