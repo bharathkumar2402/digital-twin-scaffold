@@ -11,6 +11,21 @@ why, and how it was verified.
 2.1–2.8) are fully closed. Phase 3 (ML & Risk Engine), all 7 tasks (issues 3.1–3.7),
 is code-complete; see the phase-end DoD audit below for one still-open item.
 
+Note on 3.2 ("Dataset-to-schema mapping", issue #52): implemented
+`backend/app/services/ml/dataset_mapping.py` to map the external AI4I 2020 dataset
+onto internal database schemas. Maps 5 raw physical sensors (Air temp, Process temp,
+Rotational speed, Torque, Tool wear) plus two derived physical channels (Temperature
+difference in K, Mechanical power in W) and Celsius conversions onto `sensor_readings`
+records (`asset_id`, `sensor_type`, `value`, `unit`, `timestamp`). Maps binary failure
+indicators, 5 labeled failure modes (TWF, HDF, PWF, OSF, RNF), and raw operational
+metrics into `risk_scores.factors_json`. Implements deterministic asset UUIDs via
+`uuid.uuid5` and synthetic chronological timestamp offsets. Provides CLI
+`scripts/map_dataset.py` supporting full and partial exports. Tested with 7 new unit
+tests in `tests/unit/test_dataset_mapping.py` asserting schema compatibility with
+`SensorReadingIn` and `RiskScoreResult`, exact class balance preservation across all
+10,000 records (339 failures, 90,000 readings), 183/183 backend unit tests pass, ruff +
+mypy clean repo-wide.
+
 Note on 3.1 ("Dataset acquisition & exploration", issue #51): acquired the real
 AI4I 2020 Predictive Maintenance dataset from the UCI ML Repository (10,000 rows, 14
 columns, 0 missing values) into `backend/data/raw/ai4i2020.csv`. Created
