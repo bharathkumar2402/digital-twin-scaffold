@@ -7,8 +7,37 @@ why, and how it was verified.
 
 ---
 
-**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine,
-all tasks 3.1–3.10) are fully closed. Phase 4 in progress (tasks 4.1–4.5 closed).
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
+all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
+
+Note on 4.9 ("End-to-end integration test and Phase 4 DoD", issue #31): implemented comprehensive
+end-to-end pipeline integration testing in `backend/tests/integration/test_agent_pipeline_e2e.py`.
+Verified complete 5-agent sequential DAG under realistic industrial incident scenarios ("Pump failure
+cascade"), assert on strict schema compliance of the final `SimulationDecisionOutput`, verified
+adversarial self-healing and failure branch isolation (`AgentEscalationRequired`), verified downstream
+cascade failure traversal ("What if Pump 7 fails?" names accurate dependency graph descendants),
+validated latency performance under the 30-second SLO, and verified queryable logging of run traces
+in the `agent_runs` table. All 5 Phase 4 Definition of Done checklist items verified and checked off.
+
+Note on 4.8 ("Agent run logging and status UI hook", issue #30): implemented agent execution run
+logging in `backend/app/services/agent_run_service.py` with `agent_runs` schema persistence (run_id,
+tenant_id, facility_id, trigger_type, status, agent_outputs, duration_ms, error_detail). Integrated
+transparency panel hooks and polling endpoint `GET /facilities/{id}/agent-runs` for real-time
+agent reasoning transparency.
+
+Note on 4.7 ("Agent 5 — Simulation & Decision", issue #29): implemented Agent 5 Simulation & Decision
+in `backend/app/agents/simulation_decision.py` and `backend/app/agents/tools/cascade_simulator_tool.py`.
+Constructs facility dependency DAGs and simulates multi-hop failure cascades using NetworkX, computing
+impacted downstream asset counts, production loss metrics, revenue at risk, and actionable mitigation
+recommendations (immediate shutdown, load shedding, redundant rerouting). Enforces output schema
+contracts with `SimulationDecisionOutput` via `execute_agent_with_retry`.
+
+Note on 4.6 ("Agent 4 — Route Optimization", issue #28): implemented Agent 4 Route Optimization in
+backend/app/agents/route_optimization.py and backend/app/agents/tools/cvrp_routing_tool.py using
+Google OR-Tools Capacitated Vehicle Routing Problem (CVRP) solver. Computes Euclidean distance matrices
+from spatial asset coordinates, assigns technicians respecting skill matrix constraints, capacity, and
+shift duration limits, with strict 5-second solver time bounds and fallback heuristics. Validated
+against `RouteOptimizationOutput`.
 
 Note on 4.5 ("Agent 3 — Maintenance & Inventory Planning", issue #27): implemented the
 Maintenance & Inventory Planning Agent with constraint-based scheduling and internal spare

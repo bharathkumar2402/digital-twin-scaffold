@@ -182,14 +182,11 @@ rather than building it — that scope boundary is deliberate and documented in
 > Update this line as the team progresses — this tells Claude Code where you are without
 > re-explaining it every session.
 
-**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), and Phase 3 (ML & Risk Engine)
-are **fully closed**. Phase 4 in progress: Tasks 4.1 (Pydantic output-validation layer, Issue #23),
-4.2 (`FacilityTwinState` + graph skeleton, Issue #24), 4.3 (Agent 1 — Planner, Issue #25),
-4.4 (Agent 2 — Risk Assessment, Issue #26), and 4.5 (Agent 3 — Maintenance & Inventory Planning, Issue #27) are closed.
+**Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine),
+and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 5 in progress.
 
-- Next task: **Phase 4, task 6: Agent 4 — Route Optimization** (Issue #28, OR-Tools CVRP integration,
-  5-second solver time limit, distance matrix built from Phase 2's asset coordinates. Validate output
-  against RouteOptimizationOutput schema).
+- Next task: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
+  every table in the main Postgres and TimescaleDB databases has RLS enabled and a tenant_id policy).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.
