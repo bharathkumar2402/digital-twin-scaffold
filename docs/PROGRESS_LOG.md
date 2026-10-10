@@ -137,6 +137,21 @@ a content-addressed version prefix, updating `latest.json`. Updated CLI
 `tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
 and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
 
+Note on 3b.5 ("Vibration feature pipeline", issue #62): added `app/ml/vibration_features.py`
+(17 features per channel: time-domain, 8 spectral band fractions, 3 envelope-spectrum
+defect-frequency ratios; per-channel `Baseline` with `fit_baseline`/`normalize`),
+`scripts/build_vibration_features.py` (streams all 9,464 raw files into gzip CSVs, ~8 min,
+3.9 MB committed). Defect frequencies derived from the cited rig geometry (236.4/296.9/139.9
+Hz). Results on real data are mixed and recorded honestly in DATASETS.md: kurtosis cleanly
+separates set 1's four failing channels; RMS and the BPFO envelope identify the failing bearing
+in sets 2 and 3; but healthy channels also rise late in sets 2 and 3 (cross-talk), the inner-race
+and roller envelope lines are weak, kurtosis is non-monotonic late in a run, and set 3's healthy
+channels 2 and 4 drift to RMS z of 10-16 against a fixed early baseline. 21 new tests: known
+signals (sine, Gaussian), synthetic impact trains exciting each defect frequency (own line
+>3x the others), scale invariance, dead sensor / NaN / wrong length, baseline fit (window-only,
+joint-gain invariance, constant-feature floor, validation), builder-vs-serving parity, and four
+real-data checks. 295 expected unit tests; ruff + mypy clean on files added by this task.
+
 Note on 3b.4 ("IMS bearing acquisition & profile", issue #61): added `app/ml/ims_profile.py`
 (streaming parser with a vectorised fast path that falls back to a strict line-by-line
 validator; per-channel RMS/std/mean/peak/kurtosis; gap detection; start-vs-end degradation

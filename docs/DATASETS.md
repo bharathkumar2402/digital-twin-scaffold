@@ -289,6 +289,45 @@ the training-median predictor and a cycle-count-only model.
   handful of events and must be stated that way. The bearings are not factory assets
   specifically; mapping to facility vibration sensors is handled in later tasks.
 
+### Vibration features and what they show on IMS (Phase 3b, task 5)
+
+Code: `backend/app/ml/vibration_features.py` (`vibration_features`, `fit_baseline`,
+`normalize`), batch builder `backend/scripts/build_vibration_features.py`. Output (committed,
+gzip CSV, one row per file and channel, **raw un-normalised** features):
+`backend/data/processed/ims/<test>_vibration_features.csv.gz` (3.9 MB total; 17,248 + 3,936 +
+25,296 rows).
+
+**Features (17 per channel, one 1-second / 20,480-sample snapshot):** RMS, peak, crest factor,
+std, skewness, kurtosis; fraction of spectral power in 8 log-spaced bands (20 Hz - 10 kHz);
+and the fraction of envelope-spectrum energy at each of three bearing defect frequencies and
+their 2nd harmonics (+/-3 %): `env_bpfo` (outer race, 236.4 Hz), `env_bpfi` (inner race,
+296.9 Hz), `env_bsf` (roller, 139.9 Hz). Envelope = analytic signal of the 2-8 kHz band-passed
+signal (the demodulation band is a modelling assumption). Defect frequencies are computed from
+the Rexnord ZA-2115 geometry as cited in the IMS literature (16 rollers, 2.815 in pitch, 0.331
+in roller, 15.17 deg) at 2000 RPM; the geometry is **not** in NASA's readme and was not
+re-verified against the paper here (the resulting 236/297/140 Hz match the values commonly
+quoted for this rig). A constant (dead-sensor) signal returns all zeros, not NaNs.
+
+**Per-channel baseline.** Each channel is z-scored against its own first 15 % of snapshots
+(`baseline_length`, min 10); the std is floored at 0.1 % of |mean|. The same
+function serves training (batch) and serving; a test checks the batch CSV equals the serving
+function on the same file.
+
+**What the features do and do not show (measured on the real data, baseline = first 15 %):**
+
+| Result | Detail |
+|---|---|
+| Set 1, kurtosis | Max kurtosis z on the four failing channels (ch5-8) is 112-721; on the healthy bearings (ch1-4) at most 5.6. Clean separation. |
+| Sets 2 and 3, outer race | The failing bearing has the largest late RMS z (set 2 ch1 ~257, set 3 ch3 ~98) and the largest late BPFO-envelope z (~66 and ~64). |
+| **Cross-talk** | In sets 2 and 3 the *healthy* channels also rise late in the run (RMS z 11-100, BPFO envelope z 10-49): the failing bearing's vibration reaches neighbouring sensors. Late in those runs "healthy channel" labels are not clean. |
+| Late kurtosis | Kurtosis is not monotonic: in set 3 ch3 its late median falls back to ~1 even though RMS and BPFO energy are very high (dense impacts). RMS and the BPFO ratio carry the late-stage signal; kurtosis the early one. |
+| Weak features | `env_bpfi` and `env_bsf` do not discriminate in set 1: inner-race ch5-6 reach z of only 3.5-5.7 versus 6.3 on healthy ch4; the roller defect (ch7-8) is not visible at its BSF line (z ~0-1). Do not rely on them. |
+| Early-life stability | Sets 1 and 2: no channel exceeds |z| = 6 on RMS between the baseline window and 40 % of the run. **Set 3 does not**: healthy ch2 and ch4 reach RMS z of 10-16 in that period (baseline drift, unexplained here). A fixed early baseline will raise false alarms there. |
+
+Consequences for task 3b.6: false-alarm rates must be measured only on the pre-failure period
+and the set 3 drift reported rather than hidden; detection on "healthy" channels late in a run
+is not a false alarm; and lead-time results rest on four failure events.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT
