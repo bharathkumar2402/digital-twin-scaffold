@@ -48,8 +48,13 @@ async def record_agent_run(
         confidence=confidence,
     )
     session.add(run)
+    # No session.refresh() after commit - deliberately (same reason as
+    # asset_service.create_asset). The RLS GUC is SET LOCAL, so it is gone once commit()
+    # ends the transaction; a refresh SELECT would then see zero rows under the app's
+    # non-bypass role and raise "Could not refresh instance". Unnecessary anyway:
+    # expire_on_commit=False keeps the server-side defaults (id, created_at) that
+    # INSERT ... RETURNING already populated.
     await session.commit()
-    await session.refresh(run)
     return run
 
 

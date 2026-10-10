@@ -10,6 +10,27 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on the demo kit (docs/DEMO.md, `scripts/demo_setup.py`, `docker-compose.demo.yml`; no issue): a
+self-contained local stack (Postgres, TimescaleDB, Redis, MinIO) and a one-command idempotent
+bootstrap that trains the three models from the real data, seeds a tenant/facility/6 assets,
+backfills calibrated telemetry + waveforms, scores, and runs the 5-agent pipeline; verified
+against the real API (login, risk-scores, assets, agent-runs GET and POST). Running it found two
+things. (1) A real bug, fixed with a regression test: `record_agent_run` called `session.refresh()`
+after `commit()`; the RLS GUC is SET LOCAL, so under the real `app_role` the refresh failed and
+`POST /facilities/{id}/agent-runs` would have returned an error even though the row was saved.
+Earlier tests did not run as the RLS-enforced role. The new test
+(`tests/integration/test_agent_run_persistence_rls.py`) fails with the exact production error when
+the refresh is restored, and also checks tenant B cannot read tenant A's runs. (2) An UNFIXED defect
+in the risk model's live serving: it was trained on single-snapshot AI4I rows (every window has
+count=1, stddev=0, anomaly_count=0) but is served on real windows (e.g. count=90, stddev=11,
+anomaly_count=13 for the same sensor), and an asset without the AI4I sensors is zero-filled. In the
+demo this gives both engines a risk of 99.8 (including the new one) and the plant assets ~0.3
+regardless of their telemetry, so live risk scores are not meaningful. RUL and vibration are
+unaffected. Earlier statements in this log that the models "decline where they cannot apply"
+hold for RUL and vibration only, not for the risk model. Needs a decision before Phase 5 (options:
+align the training features with serving windows and retrain, or restrict the model to
+single-snapshot scoring and decline assets lacking its sensors).
+
 Note on the Phase 3b gap fixes (follow-up to 3b.8, no new issue; closes the open audit findings):
 (1) removed the `--synthetic` / `--num-samples` path from `scripts/train_risk_model.py` (rule 8);
 `app/ml/synthetic_data.py` stays as a unit-test fixture and a test fails if any non-test code under

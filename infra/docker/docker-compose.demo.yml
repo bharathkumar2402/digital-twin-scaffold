@@ -1,0 +1,66 @@
+# Self-contained LOCAL demo stack: throwaway Postgres, TimescaleDB, Redis and MinIO.
+# Nothing here touches the managed databases in .env. Credentials are demo-only (see
+# demo.env) - never reuse them anywhere real.
+#
+#   docker compose -p twin-demo -f docker-compose.demo.yml up -d
+#   docker compose -p twin-demo -f docker-compose.demo.yml down -v   # wipe everything
+#
+# Host ports are offset (5433/5434/6380) so the demo can run next to a local Postgres/Redis.
+# The API, Celery worker and frontend run on the host (see docs/DEMO.md): the full
+# `docker-compose.yml` stack is not runnable standalone yet (no backend/Dockerfile).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: digital_twin
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: demo-admin-pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d digital_twin"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  timescale:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: digital_twin_telemetry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: demo-admin-pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - demo-timescale:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d digital_twin_telemetry"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      # Must equal app/core/config.py's hardcoded MinIO access-key defaults.
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - demo-minio:/data
+
+volumes:
+  demo-postgres:
+  demo-timescale:
+  demo-minio:

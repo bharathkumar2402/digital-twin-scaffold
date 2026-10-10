@@ -6,6 +6,7 @@ Prints the tenant_id, email and password for immediate use against /auth/login.
 """
 
 import asyncio
+import uuid
 
 from sqlalchemy import select
 
@@ -22,15 +23,14 @@ DEMO_EMAIL = "demo@twinlabs.com"
 DEMO_PASSWORD = "demo-password-123"
 
 
-async def main() -> None:
+async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """Idempotently ensure the demo tenant/admin/facility; returns (tenant, user, facility) ids."""
     async with async_session_factory() as session:
         # Reuse the existing demo tenant if one is already seeded - previously this
         # created a brand-new tenant (and tenant_id) on every rerun, which left orphaned
         # duplicate "Twin Labs Demo" rows and made login fail with a generic "Invalid
         # email or password" whenever someone used a tenant_id from an earlier run.
-        tenant_result = await session.execute(
-            select(Tenant).where(Tenant.name == DEMO_TENANT_NAME)
-        )
+        tenant_result = await session.execute(select(Tenant).where(Tenant.name == DEMO_TENANT_NAME))
         tenant = tenant_result.scalars().first()
         if tenant is None:
             tenant = await create_tenant(session, name=DEMO_TENANT_NAME, plan_tier="pro")
@@ -63,9 +63,14 @@ async def main() -> None:
             session.add(facility)
             await session.commit()
 
+    return tenant_id, user.id, facility.id
+
+
+async def main() -> None:
+    tenant_id, user_id, facility_id = await seed()
     print(f"tenant_id={tenant_id}")
-    print(f"user_id={user.id}")
-    print(f"facility_id={facility.id}")
+    print(f"user_id={user_id}")
+    print(f"facility_id={facility_id}")
     print(f"email={DEMO_EMAIL}")
     print(f"password={DEMO_PASSWORD}")
 

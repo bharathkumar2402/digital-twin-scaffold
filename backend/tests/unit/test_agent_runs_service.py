@@ -85,7 +85,9 @@ async def test_record_agent_run_service(
 
     mock_session.add.assert_called_once()
     mock_session.commit.assert_awaited_once()
-    mock_session.refresh.assert_awaited_once()
+    # No refresh after commit: the RLS GUC is SET LOCAL and gone by then (regression, see
+    # tests/integration/test_agent_run_persistence_rls.py).
+    mock_session.refresh.assert_not_awaited()
 
     assert run.tenant_id == sample_tenant_id
     assert run.facility_id == sample_facility_id
