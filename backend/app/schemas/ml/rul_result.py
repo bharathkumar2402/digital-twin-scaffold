@@ -19,6 +19,8 @@ class RulEstimate(BaseModel):
     rul_cycles: float = Field(ge=0.0, le=float(RUL_CAP * 4))
     model_version: str = Field(min_length=1, max_length=255)
     model_subset: str = Field(min_length=1, max_length=16)
+    dataset_name: str = Field(min_length=1, max_length=255)
+    dataset_version: str = Field(min_length=1, max_length=255)
     cycle: int = Field(ge=1, description="Asset age in complete telemetry snapshots")
     window_len: int = Field(ge=1, description="Snapshots actually used in the feature window")
     computed_at: datetime

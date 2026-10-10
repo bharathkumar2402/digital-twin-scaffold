@@ -28,6 +28,7 @@ from app.schemas.ml.asset_features import AssetFeatureSet
 from app.schemas.ml.risk_score import RiskScoreResult
 from app.services.feature_engineering_service import build_facility_features
 from app.services.rul_inference_service import predict_facility_rul
+from app.services.vibration_inference_service import collect_vibration_outcomes, vibration_factors
 
 # Loaded lazily and cached per (version-string) - a Celery worker process scores many
 # facilities over its lifetime, and re-fetching the ~small XGBoost artifact from MinIO
@@ -134,6 +135,14 @@ async def score_facility(
         now=now,
     )
 
+    # Vibration anomaly verdicts (Phase 3b), recorded with their model and dataset identity.
+    # Opt-in, and never allowed to break risk scoring (the collector swallows store errors).
+    vibration_outcomes = (
+        await collect_vibration_outcomes(tenant_id, [f.asset_id for f in feature_sets])
+        if settings.vibration_enabled
+        else {}
+    )
+
     saved: list[RiskScore] = []
     for features in feature_sets:
         vector = vectorize(features).reshape(1, -1)
@@ -145,9 +154,14 @@ async def score_facility(
         if rul.estimate is not None:
             factors["rul_model_version"] = rul.estimate.model_version
             factors["rul_model_subset"] = rul.estimate.model_subset
+            factors["rul_dataset_name"] = rul.estimate.dataset_name
+            factors["rul_dataset_version"] = rul.estimate.dataset_version
             factors["rul_cycle"] = rul.estimate.cycle
         elif rul.skip_reason not in (None, "no_cmapss_telemetry"):
             factors["rul_unavailable_reason"] = rul.skip_reason
+
+        if features.asset_id in vibration_outcomes:
+            factors.update(vibration_factors(vibration_outcomes[features.asset_id]))
 
         result = RiskScoreResult(
             asset_id=features.asset_id,

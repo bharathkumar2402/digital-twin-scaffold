@@ -104,6 +104,8 @@ class LoadedRulModel:
     config: RulFeatureConfig
     version: str
     subset: str
+    dataset_name: str = "unknown"
+    dataset_version: str = "unknown"
 
 
 _MODEL_CACHE: dict[tuple[str, str], LoadedRulModel] = {}
@@ -126,7 +128,14 @@ def load_rul_model_cached(subset: str | None = None, version: str | None = None)
             "stored RUL model and its feature config disagree on the feature count - "
             "refusing to predict with a mismatched layout"
         )
-    loaded = LoadedRulModel(model=model, config=config, version=resolved, subset=subset)
+    loaded = LoadedRulModel(
+        model=model,
+        config=config,
+        version=resolved,
+        subset=subset,
+        dataset_name=str(metadata.get("dataset_name") or "unknown"),
+        dataset_version=str(metadata.get("dataset_version") or "unknown"),
+    )
     _MODEL_CACHE[(subset, resolved)] = loaded
     return loaded
 
@@ -188,6 +197,8 @@ def predict_from_window(
         rul_cycles=round(rul, 2),
         model_version=loaded.version,
         model_subset=loaded.subset,
+        dataset_name=loaded.dataset_name,
+        dataset_version=loaded.dataset_version,
         cycle=int(table[-1, 1]),
         window_len=int(min(len(window.snapshots), loaded.config.long_window)),
         computed_at=now,

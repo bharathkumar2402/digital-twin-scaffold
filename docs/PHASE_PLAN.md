@@ -166,7 +166,7 @@ detector. Both are *tools* called inside existing agents — the pipeline stays 
 - [x] RUL model trained on C-MAPSS with unit-level split; metrics (RMSE, NASA score) recorded
 - [x] Vibration anomaly model trained on IMS healthy period; detection lead time and false-alarm rate recorded
 - [x] Both datasets documented in `docs/DATASETS.md` (name, version, license, citation, limitations)
-- [ ] Model version + dataset recorded alongside each stored result
+- [x] Model version + dataset recorded alongside each stored result
 - [x] Both models callable as agent tools with Pydantic-validated outputs; failure path tested
 - [x] Simulator vibration parameters documented as calibrated from IMS
 - [x] Training never uses simulator output

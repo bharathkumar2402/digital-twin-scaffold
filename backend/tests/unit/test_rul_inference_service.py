@@ -71,7 +71,12 @@ def config() -> RulFeatureConfig:
 def _loaded(config: RulFeatureConfig, value: float = 50.0) -> LoadedRulModel:
     stub = StubModel(value, len(config.feature_names))
     return LoadedRulModel(
-        model=cast(Any, stub), config=config, version="20261010T000000Z-abc", subset="FD001"
+        model=cast(Any, stub),
+        config=config,
+        version="20261010T000000Z-abc",
+        subset="FD001",
+        dataset_name="NASA C-MAPSS",
+        dataset_version="cmapss_test",
     )
 
 
@@ -167,6 +172,7 @@ def test_prediction_is_clipped_validated_and_versioned(config: RulFeatureConfig)
         40,
         30,
     )
+    assert (est.dataset_name, est.dataset_version) == ("NASA C-MAPSS", "cmapss_test")
     assert (
         predict_from_window(window, _loaded(config, -20.0), asset_id=asset, now=NOW).rul_cycles
         == 0.0
@@ -184,6 +190,8 @@ def test_estimate_schema_rejects_bad_values() -> None:
         asset_id=uuid.uuid4(),
         model_version="v",
         model_subset="FD001",
+        dataset_name="NASA C-MAPSS",
+        dataset_version="cmapss_test",
         cycle=1,
         window_len=1,
         computed_at=NOW,

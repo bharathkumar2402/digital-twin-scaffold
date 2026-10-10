@@ -197,24 +197,61 @@ def _assess_asset_from_store(
     return assess_asset_channels(asset_id=asset_id, channels=channels, model_version=model_version)
 
 
-async def collect_vibration_assessments(
+async def collect_vibration_outcomes(
     tenant_id: uuid.UUID,
     asset_ids: Sequence[uuid.UUID],
     model_version: str | None = None,
-) -> list[dict[str, Any]]:
-    """Assessments for every asset with stored waveforms, ready for Agent 3's context.
+) -> dict[uuid.UUID, dict[int, VibrationOutcome]]:
+    """Per-asset, per-channel outcomes for every asset with stored waveforms.
 
     Never raises: an unreachable object store or a corrupt snapshot is logged and that asset
-    is skipped, so maintenance planning proceeds on risk scores alone.
+    is skipped, so callers proceed without vibration evidence.
     """
     import asyncio
 
     out: dict[uuid.UUID, dict[int, VibrationOutcome]] = {}
     for asset_id in asset_ids:
         try:
-            out[asset_id] = await asyncio.to_thread(
+            per_channel = await asyncio.to_thread(
                 _assess_asset_from_store, tenant_id, asset_id, model_version
             )
         except Exception as exc:  # noqa: BLE001 - object store/network/corrupt object
             logger.warning("vibration skipped for asset %s: %s", asset_id, exc)
-    return assessments_to_context(out)
+            continue
+        if per_channel:
+            out[asset_id] = per_channel
+    return out
+
+
+async def collect_vibration_assessments(
+    tenant_id: uuid.UUID,
+    asset_ids: Sequence[uuid.UUID],
+    model_version: str | None = None,
+) -> list[dict[str, Any]]:
+    """Assessments (skips dropped) ready for Agent 3's context. Never raises."""
+    return assessments_to_context(
+        await collect_vibration_outcomes(tenant_id, asset_ids, model_version)
+    )
+
+
+def vibration_factors(outcomes: dict[int, VibrationOutcome]) -> dict[str, float | int | str]:
+    """Flat, JSON-safe summary of one asset's channels for `risk_scores.factors_json`.
+
+    Records the verdict together with the model version and dataset it came from (rule 8 /
+    Phase 3b DoD). An asset whose channels were all skipped records the reason instead.
+    """
+    assessments = [o.assessment for o in outcomes.values() if o.assessment is not None]
+    if not assessments:
+        reasons = sorted({o.skip_reason for o in outcomes.values() if o.skip_reason})
+        return {"vibration_unavailable_reason": ",".join(reasons)} if reasons else {}
+    first = assessments[0]
+    return {
+        "vibration_alarm": int(any(a.alarm for a in assessments)),
+        "vibration_alarm_channels": sum(a.alarm for a in assessments),
+        "vibration_channels_scored": len(assessments),
+        "vibration_max_score": round(max(a.max_recent_score for a in assessments), 4),
+        "vibration_threshold": round(first.threshold, 4),
+        "vibration_model_version": first.model_version,
+        "vibration_dataset_name": first.dataset_name,
+        "vibration_dataset_version": first.dataset_version,
+    }

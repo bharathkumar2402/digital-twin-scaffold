@@ -1,7 +1,7 @@
 """Offline XGBoost risk-model training script (issues 3.2, 3.5).
 
 Standalone script (not part of the FastAPI app, no DB session) that loads the
-real AI4I 2020 Predictive Maintenance dataset (or synthetic fallback), extracts
+real AI4I 2020 Predictive Maintenance dataset, extracts
 the unified 238-dimensional feature representation, trains an XGBoost classifier,
 evaluates metrics against held-out ROC-AUC and PR-AUC gates, and stores versioned
 model artifacts in MinIO (`app.ml.train.save_model_to_minio`). Run with:
@@ -15,10 +15,6 @@ import argparse
 import logging
 from pathlib import Path
 
-import numpy as np
-
-from app.ml.feature_vector import vectorize
-from app.ml.synthetic_data import generate_synthetic_dataset
 from app.ml.train import (
     DEFAULT_DATASET_METADATA,
     TrainedModel,
@@ -44,17 +40,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_DATASET_PATH,
         help="Path to the real AI4I 2020 CSV dataset (default: backend/data/raw/ai4i2020.csv)",
     )
-    parser.add_argument(
-        "--synthetic",
-        action="store_true",
-        help="Train on synthetic data instead of real dataset",
-    )
-    parser.add_argument(
-        "--num-samples",
-        type=int,
-        default=5000,
-        help="Number of synthetic assets to generate (only used if --synthetic is set)",
-    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--min-test-auc",
@@ -77,23 +62,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run(args: argparse.Namespace) -> TrainedModel:
-    if args.synthetic:
-        logger.info("Generating %d synthetic samples (seed=%d)", args.num_samples, args.seed)
-        dataset = generate_synthetic_dataset(args.num_samples, seed=args.seed)
-        X = np.stack([vectorize(f) for f in dataset.features])
-        y = dataset.labels
-        metadata = None
-    else:
-        dataset_path = Path(args.dataset_path)
-        if not dataset_path.is_file():
-            raise SystemExit(
-                f"Dataset not found at {dataset_path}. Run scripts/acquire_dataset.py first."
-            )
-        logger.info("Loading AI4I 2020 dataset from %s", dataset_path)
-        records = map_ai4i2020_dataset(dataset_path)
-        logger.info("Building training features from %d mapped machine records", len(records))
-        X, y, _ = build_training_dataset_from_mapped_records(records)
-        metadata = DEFAULT_DATASET_METADATA
+    dataset_path = Path(args.dataset_path)
+    if not dataset_path.is_file():
+        raise SystemExit(
+            f"Dataset not found at {dataset_path}. Run scripts/acquire_dataset.py first."
+        )
+    logger.info("Loading AI4I 2020 dataset from %s", dataset_path)
+    records = map_ai4i2020_dataset(dataset_path)
+    logger.info("Building training features from %d mapped machine records", len(records))
+    X, y, _ = build_training_dataset_from_mapped_records(records)
+    metadata = DEFAULT_DATASET_METADATA  # real, cited dataset only (CLAUDE.md rule 8)
 
     trained = train_risk_model(X, y, seed=args.seed, dataset_metadata=metadata)
     logger.info("Trained model metrics: %s", trained.metrics)

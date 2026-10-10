@@ -476,7 +476,16 @@ def _patch_rul_model(monkeypatch: pytest.MonkeyPatch, config: Any, value: float)
     monkeypatch.setattr(
         rul_inference_service,
         "load_rul_model",
-        lambda subset, version: (stub, config, {}, {"model_version": "vrul-test"}),
+        lambda subset, version: (
+            stub,
+            config,
+            {},
+            {
+                "model_version": "vrul-test",
+                "dataset_name": "NASA C-MAPSS",
+                "dataset_version": "cmapss_test",
+            },
+        ),
     )
     monkeypatch.setattr(rul_inference_service, "_MODEL_CACHE", {})
 
@@ -521,6 +530,9 @@ async def test_score_facility_persists_rul_for_assets_with_cmapss_telemetry(
     assert engine_row.rul_cycles == pytest.approx(42.5)
     assert engine_row.factors_json["rul_model_version"] == "vrul-test"
     assert engine_row.factors_json["rul_cycle"] == 40  # the asset age in complete snapshots
+    # model AND dataset identity are stored with the result (Phase 3b DoD item 4)
+    assert engine_row.factors_json["rul_dataset_name"] == "NASA C-MAPSS"
+    assert engine_row.factors_json["rul_dataset_version"] == "cmapss_test"
     assert pump_row.rul_cycles is None
     assert "rul_model_version" not in pump_row.factors_json
 
@@ -611,3 +623,96 @@ async def test_rul_inference_never_reads_another_tenants_telemetry(
         await attacker.close()
     assert honest.estimate is None and honest.skip_reason == SKIP_NO_TELEMETRY
     assert spoofed.estimate is None and spoofed.skip_reason == SKIP_NO_TELEMETRY
+
+
+async def _score_one_asset(
+    migrated_main_db: PostgresContainer,
+    main_session_factory: async_sessionmaker,
+    timescale_session_factory: async_sessionmaker,
+) -> tuple[uuid.UUID, Any]:
+    from app.services.risk_inference_service import score_facility
+
+    tenant_id = await _make_tenant(migrated_main_db, "Tenant Vib")
+    facility_id = await _make_facility(migrated_main_db, tenant_id=tenant_id, name="Plant Vib")
+    asset_id = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump V"
+    )
+    main_session = await _scoped(main_session_factory, tenant_id)
+    timescale_session = await _scoped(timescale_session_factory, tenant_id)
+    try:
+        saved = await score_facility(
+            main_session, timescale_session, tenant_id=tenant_id, facility_id=facility_id
+        )
+    finally:
+        await main_session.close()
+        await timescale_session.close()
+    return asset_id, {row.asset_id: row for row in saved}[asset_id]
+
+
+async def test_score_facility_persists_vibration_verdict_with_model_and_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
+    main_session_factory: async_sessionmaker,
+    timescale_session_factory: async_sessionmaker,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.core.config import settings
+    from app.schemas.ml.vibration_result import VibrationAssessment
+    from app.services import risk_inference_service
+    from app.services.vibration_inference_service import VibrationOutcome
+
+    async def fake_collect(tenant_id: uuid.UUID, asset_ids: list[uuid.UUID]) -> dict:
+        assessment = VibrationAssessment(
+            asset_id=asset_ids[0],
+            channel=0,
+            alarm=True,
+            latest_score=0.9,
+            max_recent_score=0.95,
+            threshold=0.5,
+            consecutive_exceedances=6,
+            k_consecutive=5,
+            n_baseline_snapshots=20,
+            n_scored_snapshots=12,
+            model_version="vvib-test",
+            dataset_name="NASA IMS Bearing",
+            dataset_version="ims_test",
+            computed_at=datetime.now(UTC),
+        )
+        return {asset_ids[0]: {0: VibrationOutcome(assessment)}}
+
+    monkeypatch.setattr(settings, "vibration_enabled", True)
+    monkeypatch.setattr(risk_inference_service, "collect_vibration_outcomes", fake_collect)
+    _, row = await _score_one_asset(
+        migrated_main_db, main_session_factory, timescale_session_factory
+    )
+    f = row.factors_json
+    assert f["vibration_alarm"] == 1 and f["vibration_alarm_channels"] == 1
+    assert f["vibration_model_version"] == "vvib-test"
+    assert (f["vibration_dataset_name"], f["vibration_dataset_version"]) == (
+        "NASA IMS Bearing",
+        "ims_test",
+    )
+
+
+async def test_object_store_outage_does_not_break_risk_scoring(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
+    main_session_factory: async_sessionmaker,
+    timescale_session_factory: async_sessionmaker,
+) -> None:
+    from app.core.config import settings
+    from app.services import vibration_inference_service
+
+    def boom(*_: Any) -> Any:
+        raise ConnectionError("minio down")
+
+    monkeypatch.setattr(settings, "vibration_enabled", True)
+    monkeypatch.setattr(vibration_inference_service, "_assess_asset_from_store", boom)
+    _, row = await _score_one_asset(
+        migrated_main_db, main_session_factory, timescale_session_factory
+    )
+    assert 0.0 <= row.score <= 100.0  # scoring still produced a valid, persisted row
+    assert not any(k.startswith("vibration_") for k in row.factors_json)

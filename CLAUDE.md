@@ -187,8 +187,8 @@ and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra M
 
 - Next task: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
   every table in the main Postgres and TimescaleDB databases has RLS enabled and a tenant_id policy).
-  Phase 3b (tasks 3b.1-3b.8) is closed; its Definition of Done audit is in `docs/PROGRESS_LOG.md`
-  (item 4 only partly met - see that note).
+  Phase 3b (tasks 3b.1-3b.8) is closed with all Definition of Done items met; the audit and
+  the follow-up gap fixes are in `docs/PROGRESS_LOG.md`.
 
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

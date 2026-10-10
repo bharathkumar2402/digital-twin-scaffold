@@ -10,6 +10,24 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on the Phase 3b gap fixes (follow-up to 3b.8, no new issue; closes the open audit findings):
+(1) removed the `--synthetic` / `--num-samples` path from `scripts/train_risk_model.py` (rule 8);
+`app/ml/synthetic_data.py` stays as a unit-test fixture and a test fails if any non-test code under
+`app/` or `scripts/` imports it. (2) DoD item 4 is now met: `RulEstimate` carries dataset name and
+version and `score_facility` writes them into `risk_scores.factors_json`; the vibration verdict
+(alarm, alarming channels, max score, threshold, model version, dataset name/version) is persisted
+there too when `vibration_enabled` is on - no new table, so no new RLS policy. A skipped or
+unreachable object store records `vibration_unavailable_reason` or nothing and never breaks scoring.
+(3) End-to-end run, hermetic (`tests/integration/test_degradation_e2e.py`: real MinIO, Postgres and
+TimescaleDB containers; both models trained from the real data into that MinIO; calibrated
+simulator as the feed): the engine simulated to failure got RUL 3.6 cycles with a vibration alarm on
+both channels, the young engine got RUL 115.9 with no alarm, and Agent 3 lifted the failing asset
+from a 5.0 risk score to high/critical priority. The 3b.7 integration tests now pass as well
+(10 + this one). Caveats: one simulated run (seed 11), not a statistic; the healthy simulated asset
+did cross the alarm threshold briefly (max score 0.60 vs threshold 0.55, never 5 in a row), which
+fits the known mismatch between Gaussian simulated and real healthy vibration; the managed
+Postgres/Timescale services in `infra/docker/.env` were deliberately not used.
+
 Note on 3b.8 ("Simulator calibration & Phase 3b audit", issue #65): added a calibration step that
 derives all simulator parameters from the real IMS and C-MAPSS data (`sim_calibration.py`), a
 calibrated degrading-bearing waveform simulator and engine-telemetry simulator tied to one health
