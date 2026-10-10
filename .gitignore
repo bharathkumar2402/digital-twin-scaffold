@@ -31,3 +31,6 @@ build/
 backend/data/raw/cmapss/
 # Manually supplied official NASA archive (duplicate of backend/data/raw/cmapss)
 NASA dataset/
+
+# IMS bearing raw data (~6 GB); re-create with `python -m scripts.acquire_ims`
+backend/data/raw/ims/

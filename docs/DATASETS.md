@@ -233,6 +233,62 @@ the training-median predictor and a cycle-count-only model.
   the SHA-256 of its three data files, hyperparameters, seed, library versions and the
   metrics above in `metadata.json`.
 
+## IMS bearing data profile (Phase 3b, task 4)
+
+> Empirical profile of the NASA/IMS bearing run-to-failure dataset, used by Phase 3b to train
+> the vibration anomaly detector (tasks 3b.5-3b.6). Regenerate with
+> `python -m scripts.acquire_ims --profile --json-output backend/data/processed/ims/profile.json
+> --summaries-dir backend/data/processed/ims`.
+
+- **Dataset used:** NASA/IMS Bearing Run-to-Failure Dataset ("4. Bearings" in the NASA PCoE
+  repository)
+- **Source:** NASA Prognostics Center of Excellence data repository; downloaded from the PHM
+  mirror `phm-datasets.s3.amazonaws.com/NASA/4.+Bearings.zip`
+- **Citation:** Lee, J., Qiu, H., Yu, G., Lin, J., & Rexnord Technical Services (2007). IMS,
+  University of Cincinnati. Bearing Data Set. NASA Ames Prognostics Data Repository. Method
+  reference (from NASA's readme): Qiu, H., Lee, J., Lin, J. (2006). Wavelet filter-based weak
+  signature detection method and its application on roller bearing prognostics. Journal of
+  Sound and Vibration 289, 1066-1090.
+- **License / access:** NASA open data repository. *Neither the readme nor the archive states a
+  license; confirm the terms on the NASA portal page before external publication.*
+- **Version / access date:** October 2026. SHA-256 of the downloaded zip:
+  `21001ac266c465f5d345ec42d7b508c6a6328487fd9d4d7774422dd5ea10ad83`.
+- **Layout:** the zip contains `IMS.7z`, which contains `1st_test.rar`, `2nd_test.rar`,
+  `3rd_test.rar` and NASA's readme PDF (kept as `ims_readme.pdf`). The 3rd test is stored in a
+  `4th_test/txt/` folder inside its RAR; the CLI normalises it to `3rd_test/`. Raw data is
+  ~7 GB extracted and gitignored. Small per-file summaries (RMS, std, mean, peak, kurtosis per
+  channel, ~2.8 MB) are committed in `backend/data/processed/ims/`.
+- **Test rig (from NASA's readme):** four Rexnord ZA-2115 double-row bearings on one shaft,
+  constant 2000 RPM, 6000 lbs radial load, force lubricated; PCB 353B33 accelerometers. Each
+  file is a 1-second snapshot, 20,480 samples at 20 kHz, tab-separated text, one column per
+  channel. All failures occurred after the bearing's designed life (> 100 million revolutions).
+
+| Test set | Files | Channels | Window | Span (days) | Gaps (> 3x median) | Documented failure |
+|---|---|---|---|---|---|---|
+| 1st_test | 2,156 | 8 (2 per bearing) | 2003-10-22 12:06:24 to 2003-11-25 23:39:56 | 34.5 | 24 | Bearing 3 inner race (ch 5-6), bearing 4 roller element (ch 7-8) |
+| 2nd_test | 984 | 4 (1 per bearing) | 2004-02-12 10:32:39 to 2004-02-19 06:22:39 | 6.8 | 0 | Bearing 1 outer race (ch 1) |
+| 3rd_test | 6,324 | 4 (1 per bearing) | 2004-03-04 09:27:46 to 2004-04-18 02:42:55 | 44.7 | 4 | Bearing 3 outer race (ch 3) |
+
+- **Sampling interval:** every 10 minutes (the first 43 files of test 1 are 5 minutes apart).
+  The "gaps" are the experiment pausing overnight/between working days, as NASA's readme
+  describes; the largest is ~6 days in test 1 (8,906 min).
+- **Important discrepancy - the 3rd test.** NASA's readme says test 3 has **4,448 files ending
+  2004-04-04 19:01:57**. The archive holds **6,324 files running to 2004-04-18**. File 4,448
+  has exactly the readme's end timestamp, and **the bearing-3 failure signature (channel 3
+  kurtosis up to 19.7, RMS rising) appears only in the extra files after it**; the first 4,448
+  files are flat and healthy-looking (max kurtosis < 6). Use all 6,324 files as the
+  run-to-failure record. Task 3b.6 must not treat "the first 4,448 files" as a complete run.
+- **Data quality:** all 9,464 snapshot files parsed (0 unreadable, 0 NaN, every file exactly
+  20,480 rows, consistent channel counts per test).
+- **Degradation signatures in the summaries** (start = median of the first 10% of files, end =
+  last 10%): test 1 channels 5, 7, 8 reach kurtosis 59-75 (bearings 3 and 4); test 2 channel 1
+  RMS grows 2.3x with kurtosis up to 17 (bearing 1); test 3 channel 3 reaches kurtosis 19.7
+  (bearing 3). Healthy channels stay near Gaussian kurtosis (~3-4).
+- **Limitations:** a single lab rig at fixed speed and load, and only four documented failure
+  events (test 1 has two, tests 2 and 3 one each). Any lead-time claim in 3b.6 rests on a
+  handful of events and must be stated that way. The bearings are not factory assets
+  specifically; mapping to facility vibration sensors is handled in later tasks.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

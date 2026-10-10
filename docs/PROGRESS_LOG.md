@@ -137,6 +137,24 @@ a content-addressed version prefix, updating `latest.json`. Updated CLI
 `tests/unit/test_train_risk_model.py` asserting ROC-AUC > 0.90, PR-AUC > 0.70, F1 > 0.60,
 and metadata round-trip; 211/211 backend unit tests pass, ruff and mypy clean repo-wide.
 
+Note on 3b.4 ("IMS bearing acquisition & profile", issue #61): added `app/ml/ims_profile.py`
+(streaming parser with a vectorised fast path that falls back to a strict line-by-line
+validator; per-channel RMS/std/mean/peak/kurtosis; gap detection; start-vs-end degradation
+stats), `scripts/acquire_ims.py` (downloads or accepts `--local-archive`; unpacks the
+zip -> 7z -> RAR layers with `py7zr` and libarchive `bsdtar`; normalises test directories) and
+a `py7zr` dependency. The official archive is three layers deep (zip > IMS.7z > 3 RARs). Real
+data: 9,464 snapshot files, none unreadable; the profile matches NASA's readme for tests 1
+and 2, and **test 3 has 6,324 files in the archive versus 4,448 in the readme** - the failure
+signature appears only in the extra files (documented in DATASETS.md, important for 3b.6).
+Found and fixed a hole while writing the fast parser: ragged rows whose token counts cancel
+out (2+3+1 == 3x2) would have been accepted with the wrong shape; a per-line column check and
+a test now cover it. Raw data (~7 GB) is gitignored; per-file summary CSVs and the profile JSON
+(2.8 MB) are committed so tests and later tasks do not need the raw data. 24 new tests
+(synthetic parsing/profile/gap/inconsistency cases, a faked-RAR unpack test with the
+`4th_test/txt` layout and decoy folder, bsdtar discovery, and real-data checks against the
+readme and the documented failing bearings). ruff + mypy clean. License wording is still
+unverified (neither the readme nor the archive states one).
+
 Note on 3b.3 ("Train RUL model", issue #60): added `app/ml/rul_train.py` (group CV by
 engine, refit, single official-test evaluation, NASA score, median and cycle-only baselines,
 versioned MinIO save/load under `rul_model/<subset>/`) and `scripts/train_rul_model.py`

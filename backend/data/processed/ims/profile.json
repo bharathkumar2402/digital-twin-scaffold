@@ -1,0 +1,206 @@
+{
+  "dataset_name": "NASA/IMS Bearing Run-to-Failure Dataset",
+  "source": "NASA Prognostics Center of Excellence (PCoE) data repository (IMS Center, Univ. of Cincinnati)",
+  "citation": "Lee, J., Qiu, H., Yu, G., Lin, J., & Rexnord Technical Services (2007). IMS, University of Cincinnati. Bearing Data Set. NASA Ames Prognostics Data Repository, NASA Ames Research Center, Moffett Field, CA.",
+  "test_sets": [
+    {
+      "name": "1st_test",
+      "n_files": 2156,
+      "n_channels": 8,
+      "samples_per_file_min": 20480,
+      "samples_per_file_max": 20480,
+      "start": "2003-10-22T12:06:24",
+      "end": "2003-11-25T23:39:56",
+      "duration_days": 34.48162037037037,
+      "median_interval_minutes": 10.0,
+      "gap_count": 24,
+      "largest_gap_minutes": 8905.55,
+      "unreadable_files": {},
+      "unparsable_names": [],
+      "inconsistent_channel_files": [],
+      "channels": [
+        {
+          "channel": 1,
+          "rms_start": 0.130512198690347,
+          "rms_end": 0.15619121562288002,
+          "rms_ratio": 1.1967556840679623,
+          "kurtosis_start": 4.021744033420518,
+          "kurtosis_end": 3.9155473786083714,
+          "kurtosis_max": 4.699493009806449
+        },
+        {
+          "channel": 2,
+          "rms_start": 0.12146688130430547,
+          "rms_end": 0.14922381906437443,
+          "rms_ratio": 1.228514451527991,
+          "kurtosis_start": 4.292799802929505,
+          "kurtosis_end": 3.857367637078351,
+          "kurtosis_max": 6.0658835930955135
+        },
+        {
+          "channel": 3,
+          "rms_start": 0.13178814386111404,
+          "rms_end": 0.15365895236277854,
+          "rms_ratio": 1.1659542949835702,
+          "kurtosis_start": 3.174855823461716,
+          "kurtosis_end": 3.240660036152746,
+          "kurtosis_max": 3.724196543340468
+        },
+        {
+          "channel": 4,
+          "rms_start": 0.12232182388040305,
+          "rms_end": 0.14318495691852778,
+          "rms_ratio": 1.1705593685271003,
+          "kurtosis_start": 3.290074196244823,
+          "kurtosis_end": 3.3807932987505054,
+          "kurtosis_max": 3.906006901929504
+        },
+        {
+          "channel": 5,
+          "rms_start": 0.1316571957493165,
+          "rms_end": 0.17819272295432212,
+          "rms_ratio": 1.3534598085592842,
+          "kurtosis_start": 3.3659649575644996,
+          "kurtosis_end": 7.265415982773893,
+          "kurtosis_max": 74.56179057116056
+        },
+        {
+          "channel": 6,
+          "rms_start": 0.13454949617566933,
+          "rms_end": 0.17952600897697032,
+          "rms_ratio": 1.334274851111885,
+          "kurtosis_start": 3.602216518067972,
+          "kurtosis_end": 4.728978684444101,
+          "kurtosis_max": 18.884060565493115
+        },
+        {
+          "channel": 7,
+          "rms_start": 0.11322058639946136,
+          "rms_end": 0.1737043990267308,
+          "rms_ratio": 1.5342121477261415,
+          "kurtosis_start": 3.854709509622442,
+          "kurtosis_end": 4.362045241679159,
+          "kurtosis_max": 74.55425632905613
+        },
+        {
+          "channel": 8,
+          "rms_start": 0.11565591914363327,
+          "rms_end": 0.177531712152675,
+          "rms_ratio": 1.534998930164552,
+          "kurtosis_start": 4.3921340343899455,
+          "kurtosis_end": 4.29581560964661,
+          "kurtosis_max": 59.367171014060496
+        }
+      ]
+    },
+    {
+      "name": "2nd_test",
+      "n_files": 984,
+      "n_channels": 4,
+      "samples_per_file_min": 20480,
+      "samples_per_file_max": 20480,
+      "start": "2004-02-12T10:32:39",
+      "end": "2004-02-19T06:22:39",
+      "duration_days": 6.826388888888889,
+      "median_interval_minutes": 10.0,
+      "gap_count": 0,
+      "largest_gap_minutes": 0.0,
+      "unreadable_files": {},
+      "unparsable_names": [],
+      "inconsistent_channel_files": [],
+      "channels": [
+        {
+          "channel": 1,
+          "rms_start": 0.07768033669759308,
+          "rms_end": 0.17963691013310978,
+          "rms_ratio": 2.3125145663622724,
+          "kurtosis_start": 3.4484020202965664,
+          "kurtosis_end": 4.071847680508753,
+          "kurtosis_max": 17.11000923226509
+        },
+        {
+          "channel": 2,
+          "rms_start": 0.0954792615703953,
+          "rms_end": 0.1289557769511349,
+          "rms_ratio": 1.3506155664605544,
+          "kurtosis_start": 3.1960095921730094,
+          "kurtosis_end": 3.017644932221952,
+          "kurtosis_max": 5.452738748815853
+        },
+        {
+          "channel": 3,
+          "rms_start": 0.1049013207768471,
+          "rms_end": 0.13782479694329425,
+          "rms_ratio": 1.3138518745296266,
+          "kurtosis_start": 4.396677508626571,
+          "kurtosis_end": 3.1323179980061058,
+          "kurtosis_max": 6.7012458944795865
+        },
+        {
+          "channel": 4,
+          "rms_start": 0.05560689181330996,
+          "rms_end": 0.08267380123230864,
+          "rms_ratio": 1.4867545826850188,
+          "kurtosis_start": 3.137935214699299,
+          "kurtosis_end": 3.150884382930044,
+          "kurtosis_max": 4.65272160823688
+        }
+      ]
+    },
+    {
+      "name": "3rd_test",
+      "n_files": 6324,
+      "n_channels": 4,
+      "samples_per_file_min": 20480,
+      "samples_per_file_max": 20480,
+      "start": "2004-03-04T09:27:46",
+      "end": "2004-04-18T02:42:55",
+      "duration_days": 44.71885416666667,
+      "median_interval_minutes": 10.0,
+      "gap_count": 4,
+      "largest_gap_minutes": 451.95,
+      "unreadable_files": {},
+      "unparsable_names": [],
+      "inconsistent_channel_files": [],
+      "channels": [
+        {
+          "channel": 1,
+          "rms_start": 0.0736064655073981,
+          "rms_end": 0.07741137596445086,
+          "rms_ratio": 1.0516926119305419,
+          "kurtosis_start": 3.4738674026480005,
+          "kurtosis_end": 3.4498561094847635,
+          "kurtosis_max": 5.064085810126921
+        },
+        {
+          "channel": 2,
+          "rms_start": 0.08497063514704933,
+          "rms_end": 0.08122069084473123,
+          "rms_ratio": 0.9558677618941122,
+          "kurtosis_start": 3.2780323956666555,
+          "kurtosis_end": 3.1362941389778025,
+          "kurtosis_max": 3.936667255275919
+        },
+        {
+          "channel": 3,
+          "rms_start": 0.06615850817257155,
+          "rms_end": 0.08095009018194341,
+          "rms_ratio": 1.2235779254693693,
+          "kurtosis_start": 3.1345743001135977,
+          "kurtosis_end": 3.162519456956204,
+          "kurtosis_max": 19.74416882737256
+        },
+        {
+          "channel": 4,
+          "rms_start": 0.05092010467567572,
+          "rms_end": 0.05629384311711032,
+          "rms_ratio": 1.105532745379481,
+          "kurtosis_start": 3.226891289224912,
+          "kurtosis_end": 3.173547604905437,
+          "kurtosis_max": 4.016778363216963
+        }
+      ]
+    }
+  ],
+  "archive_sha256": "21001ac266c465f5d345ec42d7b508c6a6328487fd9d4d7774422dd5ea10ad83"
+}
