@@ -10,6 +10,14 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+CORRECTION (2026-10-10, found while planning the Results page): the demo-kit note below says the
+agent pipeline was "verified against the real API". That verified only that the endpoints respond and
+the run completes. The agents do not read the facility: they take their sessions, assets, dependencies
+and technicians from the run config (`config["configurable"]`), and `execute_and_record_pipeline` / the
+route pass none, so every agent falls back to hardcoded sample data (random asset ids, one sample task).
+Verified on the demo plant: the run's asset ids are not among the six real assets. Phase 4's DoD was met
+with tests that inject data; the production wiring was never built. Needs its own task.
+
 Note on the risk-model serving fix (follow-up to the demo kit; no issue): the risk model is now
 scored on the same input form it was trained on. `build_snapshot_features`
 (`feature_engineering_service.py`) takes each asset's latest simultaneous reading of the five raw AI4I

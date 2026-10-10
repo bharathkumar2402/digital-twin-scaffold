@@ -57,7 +57,7 @@ access token is held in memory only, so a hard reload logs you out).
 | 3 | API docs at `localhost:8000/docs` | Everything the UI does is a tenant-scoped API. |
 | 4 | Terminal: the health table below | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). |
 | 5 | `Compressor Engine A (aged)` vs `(new)` | Aged engine: RUL 3.6 cycles and a vibration alarm on both channels. New engine: RUL 115.9, no alarm. The telemetry is a simulator calibrated from the real datasets. |
-| 6 | Agent run (below) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated before it is used. |
+| 6 | Agent run (below) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated before it is used. **Say plainly that API-triggered runs are not yet connected to the facility's real assets - see section 4.** |
 | 7 | `pytest tests/integration/test_degradation_e2e.py -v` | The same story as an automated test on fresh containers: trains the models, simulates, scores, asserts. |
 
 Asset health table (from `demo_setup`'s output, or re-print it by re-running with
@@ -92,6 +92,14 @@ Invoke-RestMethod -Method Post "http://localhost:8000/facilities/$fac/agent-runs
 
 The pipeline needs no external API key: the agents run deterministic tools (no LLM calls).
 
+> **Known gap (found 2026-10-10): the agent run does not read your facility.** The agents take
+> their data (database sessions, assets, dependencies, technicians) from the run config, and the
+> production path (`POST /facilities/{id}/agent-runs`) does not supply it, so each agent falls back
+> to hardcoded sample data with random asset ids. The run completes and validates, but the asset
+> ids, the maintenance task and the "downtime" figures in its report are fixtures, not your six
+> demo assets. The pipeline itself is proven only by tests that inject data
+> (`tests/integration/test_agent_pipeline_e2e.py`). Wiring it to real facility data is the next task.
+
 ## 4. What to say honestly (do not skip this)
 
 - The models are trained on real, cited datasets (AI4I 2020, NASA C-MAPSS, NASA IMS). They
@@ -108,6 +116,8 @@ The pipeline needs no external API key: the agents run deterministic tools (no L
   they show the pipeline works - not accuracy on your own equipment. (A training/serving
   mismatch that made live risk scores meaningless was found and fixed while building this demo;
   details in `docs/PROGRESS_LOG.md`.)
+- The 5-agent pipeline is built and tested but, as triggered through the API, is **not yet wired
+  to the real facility** (it runs on sample data) - do not present its output as analysis of the demo plant.
 - The frontend has a map, a telemetry chart and risk colors only; RUL, vibration and the
   agent output are shown through the API and tests (a results page is planned).
 - The vibration detector does not clearly beat a plain RMS threshold, and that comparison rests
