@@ -141,6 +141,6 @@ over the cascade, not a prediction).
 | Symptom | Fix |
 |---|---|
 | `demo_setup` cannot connect | `docker compose -p twin-demo ... ps`; wait for `healthy`; confirm the env is loaded in *this* shell (`$env:POSTGRES_PORT` should be `5433`). |
-| Login says "Invalid email or password" | Use the `tenant_id` printed by the latest `demo_setup`; seed users must use a real-shaped domain (`.com`). |
+| Login fails | Read the message: "Invalid tenant ID, email or password" is a real 401 - use the `tenant_id` printed by the latest `demo_setup` (it is **new every time you wipe the stack with `down -v`**; a single wrong character gives the same message). A message about the server (HTTP 500) or "could not reach the server" is not a credentials problem: usually a stale API process still holds port 8000 (`Get-NetTCPConnection -LocalPort 8000`; kill the old `uvicorn`, then start it again) or the API terminal did not load `demo.env.example`, so it is talking to the wrong database. Seed users must use a real-shaped domain (`.com`). |
 | Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. Tiles 404 by design with the placeholder map. |
 | Anything else | Fall back to step 7: `pytest tests/integration/test_degradation_e2e.py -v` needs only Docker. |

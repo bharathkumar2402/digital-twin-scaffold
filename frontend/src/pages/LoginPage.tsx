@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../hooks/useAuth";
+import { describeLoginError } from "../lib/loginError";
 
 // Deliberately bare - this task's job is proving the map-rendering pipeline works
 // end-to-end, not building the real login UX. Just enough to obtain an access token
@@ -21,10 +22,11 @@ export function LoginPage(): React.JSX.Element {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login({ tenantId, email, password });
+      // Pasted ids/emails often carry a stray space or newline; that alone fails sign-in.
+      await login({ tenantId: tenantId.trim(), email: email.trim(), password });
       navigate(searchParams.get("next") ?? "/");
-    } catch {
-      setError("Invalid email or password");
+    } catch (caught) {
+      setError(describeLoginError(caught));
     } finally {
       setIsSubmitting(false);
     }
