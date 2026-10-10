@@ -11,6 +11,7 @@ from typing import Any
 import networkx as nx
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
 from app.agents.tools.asset_graph_tool import (
     build_asset_graph_from_records,
@@ -270,6 +271,8 @@ async def real_planner_callable(context: dict[str, Any]) -> dict[str, Any]:
         graph, summary, _ = build_asset_graph_from_records(
             context.get("assets", []), context.get("dependencies", [])
         )
+    elif context.get("require_real_data"):
+        raise MissingRealDataError("planner: no facility assets/session supplied")
     else:
         # Default mock facility topology with 2 sample nodes for standalone tests
         sample_1 = uuid.uuid4()
@@ -325,6 +328,7 @@ async def planner_node(
         "assets": configurable.get("assets"),
         "dependencies": configurable.get("dependencies"),
         "target_asset_ids": configurable.get("target_asset_ids"),
+        "require_real_data": configurable.get("require_real_data", False),
     }
 
     try:

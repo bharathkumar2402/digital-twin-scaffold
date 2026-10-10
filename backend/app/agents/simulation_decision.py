@@ -8,18 +8,18 @@ import logging
 import uuid
 from typing import Any
 
+import networkx as nx
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
-from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
-import networkx as nx
-
 from app.agents.tools.asset_graph_tool import build_asset_graph_from_records
 from app.agents.tools.cascade_simulator_tool import (
     resolve_simulation_target_asset,
     simulate_failure_cascade,
 )
 from app.agents.tools.decision_synthesizer_tool import synthesize_executive_decision
+from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.simulation_decision import SimulationDecisionOutput
 
 logger = logging.getLogger("agents.simulation_decision")
@@ -55,6 +55,8 @@ async def real_simulation_decision_callable(context: dict[str, Any]) -> dict[str
             graph, _, _ = build_asset_graph_from_records(
                 context.get("assets", []), context.get("dependencies", [])
             )
+        elif context.get("require_real_data"):
+            raise MissingRealDataError("simulation_decision: no dependency graph supplied")
         else:
             # Build representative facility topology for evaluation
             root_id = uuid.uuid4()
@@ -76,6 +78,7 @@ async def real_simulation_decision_callable(context: dict[str, Any]) -> dict[str
         graph,
         user_query=user_query,
         risk_scores=risk_scores,
+        strict=bool(context.get("require_real_data")),
     )
 
     # 3. Simulate failure cascade propagation
@@ -144,6 +147,7 @@ async def simulation_decision_node(
         "graph": configurable.get("graph"),
         "assets": configurable.get("assets"),
         "dependencies": configurable.get("dependencies"),
+        "require_real_data": configurable.get("require_real_data", False),
     }
 
     try:

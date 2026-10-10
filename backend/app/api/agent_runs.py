@@ -20,9 +20,9 @@ from app.schemas.requests.agent_runs import (
     AgentRunTriggerRequest,
 )
 from app.services.agent_run_service import (
-    execute_and_record_pipeline,
     get_agent_run,
     list_agent_runs,
+    run_pipeline_for_facility,
 )
 
 router = APIRouter(tags=["agent_runs"])
@@ -41,8 +41,12 @@ async def trigger_agent_run(
     context: TenantContext = Depends(require_roles(*RUN_ROLES)),
     session: AsyncSession = Depends(get_tenant_scoped_session),
 ) -> AgentRunDetailResponse:
-    """Triggers the full 5-agent LangGraph pipeline and persists the result to agent_runs."""
-    _, run = await execute_and_record_pipeline(
+    """Runs the 5-agent pipeline on this facility's real assets and records the result.
+
+    404 if the facility is not the caller's tenant's. A run whose agents cannot answer (e.g. a
+    what-if naming an unknown asset) is recorded as `halted_for_escalation` with the reason.
+    """
+    _, run = await run_pipeline_for_facility(
         session,
         tenant_id=context.tenant_id,
         facility_id=facility_id,

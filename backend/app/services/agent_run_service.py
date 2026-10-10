@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.graph import run_facility_twin_pipeline
 from app.agents.state import FacilityTwinState, create_initial_state
 from app.models.agent_run import AgentRun
+from app.services.agent_context_service import real_pipeline_config
 
 logger = logging.getLogger("services.agent_runs")
 
@@ -159,3 +160,30 @@ async def execute_and_record_pipeline(
     )
 
     return final_state, run
+
+
+async def run_pipeline_for_facility(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    trigger: str = "scheduled",
+    user_query: str | None = None,
+) -> tuple[FacilityTwinState, AgentRun]:
+    """The production entry point: run the pipeline on the facility's REAL assets and record it.
+
+    Builds the real-data config first (404 for another tenant's facility, before any agent
+    runs), then runs with `require_real_data` so no agent can fall back to sample fixtures. An
+    agent that cannot answer (unknown asset in a what-if, empty facility, scoring failure)
+    halts the run for escalation and the reason is recorded - it never fabricates a result.
+    `session` is only used to record the run; the agents use their own dedicated sessions.
+    """
+    async with real_pipeline_config(tenant_id=tenant_id, facility_id=facility_id) as config:
+        return await execute_and_record_pipeline(
+            session,
+            tenant_id=tenant_id,
+            facility_id=facility_id,
+            trigger=trigger,
+            user_query=user_query,
+            config=config,
+        )

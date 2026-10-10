@@ -11,6 +11,7 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
 from app.agents.tools.inventory_tool import evaluate_inventory_gaps_tool
 from app.agents.tools.maintenance_scheduler import generate_constraint_schedule
@@ -96,6 +97,8 @@ async def real_maintenance_inventory_callable(context: dict[str, Any]) -> dict[s
     )
 
     scored_assets = context.get("risk_scores")
+    if scored_assets is None and context.get("require_real_data"):
+        raise MissingRealDataError("maintenance_inventory: no risk scores from upstream")
     if scored_assets is None:
         # Fallback to single critical asset for skeleton compatibility
         scored_assets = [
@@ -175,6 +178,7 @@ async def maintenance_inventory_node(
         "asset_graph": state.get("asset_graph"),
         "custom_on_hand": configurable.get("custom_on_hand"),
         "vibration_assessments": configurable.get("vibration_assessments"),
+        "require_real_data": configurable.get("require_real_data", False),
         "daily_tech_hours": configurable.get("daily_tech_hours", 16.0),
         "start_date": configurable.get("start_date"),
     }

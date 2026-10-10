@@ -10,6 +10,31 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on wiring the agents to the real facility (follow-up to the correction below; no issue): the
+production path now runs the 5-agent pipeline on the facility's real data. `run_pipeline_for_facility`
+(`agent_run_service.py`, used by `POST /facilities/{id}/agent-runs` and `demo_setup`) builds the run
+config in `agent_context_service.real_pipeline_config`: the facility's real assets and dependencies, and
+dedicated RLS-scoped sessions per agent (the risk agent's `score_facility` commits, which drops the
+SET LOCAL tenant GUC, so sharing the request session would break the final `record_agent_run` insert),
+plus `require_real_data=True`. In that mode every agent refuses its sample-fixture fallback
+(`MissingRealDataError`), a "what if X fails" query naming an asset that is not in the facility raises
+`UnknownAssetError` (listing the known assets) instead of simulating some other asset, an empty facility
+raises `NoAssetsError` instead of inventing a root asset, and the longest asset-name match wins
+("Pump 70" over "Pump 7"). The risk agent now asks for the latest published model (the old
+"xgboost-ai4i-v1.0" default would have been passed to MinIO as a version and failed) and labels its
+output with the stored rows' version. A failure in any agent halts the run with the reason recorded;
+other tenants' facilities 404 before anything runs. Tests: 22 unit tests (every agent refuses fixtures in
+real mode, still works outside it, resolver cases) and 5 integration tests on real Postgres/Timescale
+under RLS (all asset ids in the output belong to the facility and the cascade names the real downstream
+assets; unknown asset halts with the reason; empty facility halts with no invented ids; cross-tenant 404
+and no run recorded; scoring failure halts and is still recorded). With the wiring reverted, 4 of the 5
+fail (invented ids, "completed" for each failure case). Verified through the HTTP API on the demo plant.
+Also fixed in `demo_setup`: dependency links had the wrong direction for this repo's convention (a
+parent depends on its child, so the child's failure cascades to the parent). Known loose ends: a halted
+run still shows the confidence of the last agent that set one; `app/agents/runner.py`, referenced by
+`docker-compose.yml`'s `agent-runner`, does not exist; the technician roster and the downtime heuristic
+are built-in demo values.
+
 CORRECTION (2026-10-10, found while planning the Results page): the demo-kit note below says the
 agent pipeline was "verified against the real API". That verified only that the endpoints respond and
 the run completes. The agents do not read the facility: they take their sessions, assets, dependencies

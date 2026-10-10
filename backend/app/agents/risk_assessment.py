@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
 from app.agents.tools.risk_scoring_tool import (
     score_assets_from_records_tool,
@@ -227,7 +228,10 @@ async def real_risk_assessment_callable(context: dict[str, Any]) -> dict[str, An
     tenant_id = (
         uuid.UUID(tenant_id_raw) if isinstance(tenant_id_raw, str) else tenant_id_raw
     )
-    model_version = str(context.get("model_version", "xgboost-ai4i-v1.0"))
+    # None = "latest published model" for the real scoring path; the label below is only
+    # used for the fixture paths (the real path labels output with the stored rows' version).
+    requested_version = context.get("model_version")
+    model_version = str(requested_version or "xgboost-ai4i-v1.0")
 
     main_session = context.get("main_session")
     timescale_session = context.get("timescale_session")
@@ -238,8 +242,10 @@ async def real_risk_assessment_callable(context: dict[str, Any]) -> dict[str, An
             timescale_session,
             tenant_id=tenant_id,
             facility_id=facility_id,
-            model_version=model_version,
+            model_version=str(requested_version) if requested_version else None,
         )
+        if raw_scores:
+            model_version = str(raw_scores[0].get("model_version") or model_version)
     elif context.get("scored_assets") is not None:
         raw_scores = context.get("scored_assets", [])
     elif context.get("assets") is not None:
@@ -247,6 +253,8 @@ async def real_risk_assessment_callable(context: dict[str, Any]) -> dict[str, An
             context.get("assets", []),
             model_version=model_version,
         )
+    elif context.get("require_real_data"):
+        raise MissingRealDataError("risk_assessment: no scoring sessions/assets supplied")
     else:
         # Default mock asset scoring for standalone pipeline execution
         mock_asset_1 = uuid.uuid4()
@@ -308,7 +316,8 @@ async def risk_assessment_node(
         "timescale_session": configurable.get("timescale_session"),
         "scored_assets": configurable.get("scored_assets"),
         "assets": configurable.get("assets"),
-        "model_version": configurable.get("model_version", "xgboost-ai4i-v1.0"),
+        "model_version": configurable.get("model_version"),
+        "require_real_data": configurable.get("require_real_data", False),
     }
 
     try:

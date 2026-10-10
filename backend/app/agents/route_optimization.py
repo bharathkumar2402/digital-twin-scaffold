@@ -10,10 +10,11 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
-from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.agents.tools.distance_matrix_tool import extract_asset_coordinates_map
 from app.agents.tools.route_solver_tool import solve_cvrp_routes
+from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.route_optimization import RouteOptimizationOutput
 
 logger = logging.getLogger("agents.route_optimization")
@@ -27,6 +28,8 @@ async def real_route_optimization_callable(context: dict[str, Any]) -> dict[str,
     )
 
     tasks = context.get("maintenance_schedule")
+    if tasks is None and context.get("require_real_data"):
+        raise MissingRealDataError("route_optimization: no maintenance schedule from upstream")
     if tasks is None:
         # Fallback to single task for standalone/skeleton test compatibility
         tasks = [
@@ -99,6 +102,7 @@ async def route_optimization_node(
         "technicians": configurable.get("technicians"),
         "asset_coordinates": configurable.get("asset_coordinates"),
         "time_limit_seconds": configurable.get("time_limit_seconds", 5.0),
+        "require_real_data": configurable.get("require_real_data", False),
     }
 
     try:

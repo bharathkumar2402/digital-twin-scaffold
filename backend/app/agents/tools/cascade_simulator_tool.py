@@ -8,12 +8,13 @@ subsystems, calculates topological cascade depth, and projects downtime.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Any
 
 import networkx as nx
 
-from app.agents.tools.asset_graph_tool import build_asset_graph_from_records
+from app.agents.errors import NoAssetsError, UnknownAssetError
 from app.schemas.agent_outputs.simulation_decision import CascadeImpactReport
 
 logger = logging.getLogger("agents.tools.cascade_simulator")
@@ -94,21 +95,64 @@ def simulate_failure_cascade(
     )
 
 
+# "what if <subject> fails" - the subject names the asset the operator wants simulated.
+_WHAT_IF_RE = re.compile(
+    r"what[\s-]*if\s+(?:the\s+)?(?P<subject>.+?)\s+"
+    r"(?:fails?|failed|breaks?|broke|goes?\s+down|shuts?\s+down|trips?|stops?|is\s+offline)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_what_if_subject(user_query: str | None) -> str | None:
+    """The asset phrase of a \"what if X fails\" query, or None if the query is not that shape."""
+    if not user_query:
+        return None
+    match = _WHAT_IF_RE.search(user_query)
+    return match.group("subject").strip() if match else None
+
+
+def _match_query_asset(graph: nx.DiGraph, user_query: str) -> str | None:
+    """Node whose name (longest wins) or id appears in the query, or None."""
+    query_lower = user_query.lower()
+    best: tuple[int, str] | None = None
+    for node_id, data in graph.nodes(data=True):
+        if not _is_valid_uuid(node_id):
+            continue
+        name = str(data.get("name", "")).lower()
+        if node_id.lower() in query_lower:
+            return str(node_id)
+        if name and name in query_lower and (best is None or len(name) > best[0]):
+            best = (len(name), str(node_id))
+    return best[1] if best else None
+
+
 def resolve_simulation_target_asset(
     graph: nx.DiGraph,
     *,
     user_query: str | None = None,
     risk_scores: list[dict[str, Any]] | None = None,
     default_asset_id: uuid.UUID | None = None,
+    strict: bool = False,
 ) -> uuid.UUID:
-    """Identifies the root-cause asset to simulate from query, risk scores, or graph."""
+    """Identifies the root-cause asset to simulate from query, risk scores, or graph.
+
+    `strict` (real-data mode) never invents an answer: a \"what if X fails\" query whose X is
+    not in the facility raises `UnknownAssetError` instead of silently simulating some other
+    asset, and an empty facility raises `NoAssetsError` instead of fabricating a root id.
+    """
     if user_query:
-        query_lower = user_query.lower()
-        for node_id, data in graph.nodes(data=True):
-            name = str(data.get("name", "")).lower()
-            if (name and name in query_lower) or (node_id.lower() in query_lower):
-                if _is_valid_uuid(node_id):
-                    return uuid.UUID(node_id)
+        matched = _match_query_asset(graph, user_query)
+        if matched is not None:
+            return uuid.UUID(matched)
+        subject = parse_what_if_subject(user_query)
+        if strict and subject is not None:
+            known = sorted(str(d.get("name", "")) for _, d in graph.nodes(data=True))
+            raise UnknownAssetError(
+                f"asset {subject!r} was not found in this facility (known assets: "
+                f"{', '.join(known) or 'none'})"
+            )
+    if strict and graph.number_of_nodes() == 0:
+        raise NoAssetsError("the facility has no assets to simulate")
 
     if risk_scores:
         # Pick highest risk asset

@@ -51,7 +51,7 @@ from app.models.facility_map_upload import FacilityMapUpload, UploadStatus
 from app.models.risk_score import RiskScore
 from app.schemas.requests.telemetry import SensorReadingIn
 from app.services import waveform_store
-from app.services.agent_run_service import execute_and_record_pipeline
+from app.services.agent_run_service import run_pipeline_for_facility
 from app.services.asset_dependency_service import create_dependency
 from app.services.asset_service import create_asset
 from app.services.risk_inference_service import score_facility
@@ -90,11 +90,13 @@ ENGINES: list[tuple[str, str, float, float]] = [
     ("Compressor Engine A (aged)", "engine", 900.0, 3000.0),
     ("Compressor Engine B (new)", "engine", 2800.0, 3000.0),
 ]
-# parent -> child (a failure at the parent cascades to the child)
+# (parent, child): the PARENT depends on the CHILD, so a failure of the child cascades to the
+# parent (the repo's convention, see app/agents/tools/asset_graph_tool.py). A pump failure
+# therefore reaches the heat exchanger and the fan, and through the exchanger the turbine.
 DEPENDENCIES: list[tuple[str, str]] = [
-    ("Primary Feed Pump 7", "Heat Exchanger Alpha"),
-    ("Heat Exchanger Alpha", "Turbine Gen 1"),
-    ("Primary Feed Pump 7", "Cooling Fan 2"),
+    ("Heat Exchanger Alpha", "Primary Feed Pump 7"),
+    ("Turbine Gen 1", "Heat Exchanger Alpha"),
+    ("Cooling Fan 2", "Primary Feed Pump 7"),
 ]
 
 
@@ -286,7 +288,7 @@ async def score_and_run_pipeline(
     if run_pipeline:
         async with async_session_factory() as session:
             await scope_session_to_tenant(session, tenant_id)
-            _, run = await execute_and_record_pipeline(
+            _, run = await run_pipeline_for_facility(
                 session, tenant_id=tenant_id, facility_id=facility_id, trigger="user_query",
                 user_query="What if Primary Feed Pump 7 fails?",
             )  # fmt: skip
