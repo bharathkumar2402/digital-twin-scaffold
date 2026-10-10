@@ -163,13 +163,13 @@ detector. Both are *tools* called inside existing agents — the pipeline stays 
 8. **Simulator calibration & Phase 3b audit** — Calibrate generator vibration/degradation behavior from the real data; full Definition of Done audit.
 
 **Definition of Done**
-- [ ] RUL model trained on C-MAPSS with unit-level split; metrics (RMSE, NASA score) recorded
-- [ ] Vibration anomaly model trained on IMS healthy period; detection lead time and false-alarm rate recorded
-- [ ] Both datasets documented in `docs/DATASETS.md` (name, version, license, citation, limitations)
+- [x] RUL model trained on C-MAPSS with unit-level split; metrics (RMSE, NASA score) recorded
+- [x] Vibration anomaly model trained on IMS healthy period; detection lead time and false-alarm rate recorded
+- [x] Both datasets documented in `docs/DATASETS.md` (name, version, license, citation, limitations)
 - [ ] Model version + dataset recorded alongside each stored result
-- [ ] Both models callable as agent tools with Pydantic-validated outputs; failure path tested
-- [ ] Simulator vibration parameters documented as calibrated from IMS
-- [ ] Training never uses simulator output
+- [x] Both models callable as agent tools with Pydantic-validated outputs; failure path tested
+- [x] Simulator vibration parameters documented as calibrated from IMS
+- [x] Training never uses simulator output
 
 ---
 

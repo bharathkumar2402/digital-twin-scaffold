@@ -1,0 +1,238 @@
+{
+  "calibration_version": 1,
+  "engines": {
+    "channels": {
+      "op_setting_1": {
+        "between_engine_std": 0.00034620115913335545,
+        "end_shift": -2.593312968617447e-05,
+        "level": 1.082601588494303e-05,
+        "within_engine_std": 0.0021146432293416774
+      },
+      "op_setting_2": {
+        "between_engine_std": 6.438156921101633e-05,
+        "end_shift": -4.3143265445148275e-06,
+        "level": 2.431790645438191e-07,
+        "within_engine_std": 0.00028785608475177517
+      },
+      "op_setting_3": {
+        "between_engine_std": 0.0,
+        "end_shift": 0.0,
+        "level": 100.0,
+        "within_engine_std": 0.0
+      },
+      "sensor_1": {
+        "between_engine_std": 1.0237498158724271e-12,
+        "end_shift": 0.0,
+        "level": 518.6699999999988,
+        "within_engine_std": 1.1937117960769684e-13
+      },
+      "sensor_10": {
+        "between_engine_std": 1.506470781896449e-15,
+        "end_shift": 0.0,
+        "level": 1.2999999999999983,
+        "within_engine_std": 2.8199664825478977e-16
+      },
+      "sensor_11": {
+        "between_engine_std": 0.14350018046920557,
+        "end_shift": 0.7466975728754974,
+        "level": 47.35848437636806,
+        "within_engine_std": 0.099459287995952
+      },
+      "sensor_12": {
+        "between_engine_std": 0.4023581671479916,
+        "end_shift": -1.9818028599522677,
+        "level": 521.8986299028032,
+        "within_engine_std": 0.29813281260403746
+      },
+      "sensor_13": {
+        "between_engine_std": 0.045986812066976995,
+        "end_shift": 0.16462108568202893,
+        "level": 2388.0579033223034,
+        "within_engine_std": 0.029395281979325723
+      },
+      "sensor_14": {
+        "between_engine_std": 7.395698656388684,
+        "end_shift": 27.80283315231827,
+        "level": 8137.371488311653,
+        "within_engine_std": 3.0924780400047944
+      },
+      "sensor_15": {
+        "between_engine_std": 0.017488363709242213,
+        "end_shift": 0.09712363554463899,
+        "level": 8.418715879478002,
+        "within_engine_std": 0.0196231607582062
+      },
+      "sensor_16": {
+        "between_engine_std": 5.098552679375463e-17,
+        "end_shift": 0.0,
+        "level": 0.02999999999999995,
+        "within_engine_std": 2.498001805406602e-18
+      },
+      "sensor_17": {
+        "between_engine_std": 0.6542342026425297,
+        "end_shift": 3.7715535519058676,
+        "level": 392.2810247562239,
+        "within_engine_std": 0.9149227948755816
+      },
+      "sensor_18": {
+        "between_engine_std": 0.0,
+        "end_shift": 0.0,
+        "level": 2388.0,
+        "within_engine_std": 0.0
+      },
+      "sensor_19": {
+        "between_engine_std": 0.0,
+        "end_shift": 0.0,
+        "level": 100.0,
+        "within_engine_std": 0.0
+      },
+      "sensor_2": {
+        "between_engine_std": 0.22780780354046962,
+        "end_shift": 1.2129606806810216,
+        "level": 642.3900128084198,
+        "within_engine_std": 0.29519458915750607
+      },
+      "sensor_20": {
+        "between_engine_std": 0.08377752940567786,
+        "end_shift": -0.46432683116353246,
+        "level": 38.93082171705379,
+        "within_engine_std": 0.09712939133568554
+      },
+      "sensor_21": {
+        "between_engine_std": 0.050484686960879065,
+        "end_shift": -0.2768100574890795,
+        "level": 23.35866845009411,
+        "within_engine_std": 0.059807450644046384
+      },
+      "sensor_3": {
+        "between_engine_std": 2.369605607014743,
+        "end_shift": 14.525754583874914,
+        "level": 1586.9625661671969,
+        "within_engine_std": 3.910473491785695
+      },
+      "sensor_4": {
+        "between_engine_std": 4.399175238887199,
+        "end_shift": 24.690033701409448,
+        "level": 1402.8777735329413,
+        "within_engine_std": 3.8875076193399702
+      },
+      "sensor_5": {
+        "between_engine_std": 2.8879323112494564e-14,
+        "end_shift": 0.0,
+        "level": 14.61999999999997,
+        "within_engine_std": 5.506706202140776e-16
+      },
+      "sensor_6": {
+        "between_engine_std": 0.0006019764886021374,
+        "end_shift": 0.0004266074952283816,
+        "level": 21.609573392504736,
+        "within_engine_std": 0.0013009676434578691
+      },
+      "sensor_7": {
+        "between_engine_std": 0.4739576238718088,
+        "end_shift": -2.322515481555456,
+        "level": 553.935096116272,
+        "within_engine_std": 0.4022440067525392
+      },
+      "sensor_8": {
+        "between_engine_std": 0.0456248795715403,
+        "end_shift": 0.16155212903777283,
+        "level": 2388.0595943118255,
+        "within_engine_std": 0.03021543503848169
+      },
+      "sensor_9": {
+        "between_engine_std": 7.256635238555045,
+        "end_shift": 39.484868194400406,
+        "level": 9056.122754392552,
+        "within_engine_std": 4.168595664313399
+      }
+    },
+    "life_cycles_quantiles": {
+      "0": 128.0,
+      "10": 154.9,
+      "100": 362.0,
+      "15": 158.0,
+      "20": 167.6,
+      "25": 177.0,
+      "30": 183.8,
+      "35": 188.0,
+      "40": 192.6,
+      "45": 195.0,
+      "5": 147.0,
+      "50": 199.0,
+      "55": 201.45,
+      "60": 207.4,
+      "65": 213.0,
+      "70": 214.3,
+      "75": 229.25,
+      "80": 234.0,
+      "85": 257.15,
+      "90": 275.1,
+      "95": 287.29999999999995
+    },
+    "n_engines": 100,
+    "n_informative_sensors": 14,
+    "progress_curve": [
+      0.0,
+      0.11328072526554708,
+      0.17754132721499255,
+      0.29556710512001294,
+      0.41342304481019304,
+      0.6382577042568042,
+      0.7979911764743719,
+      1.0
+    ],
+    "progress_fractions": [
+      0.0,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      0.95,
+      1.0
+    ],
+    "source": "NASA C-MAPSS Turbofan Engine Degradation Simulation - train_FD001.txt",
+    "subset": "FD001"
+  },
+  "vibration": {
+    "baseline_fraction_rule": "first max(10, 15 %) of each channel's snapshots",
+    "growth_fractions": [
+      0.0,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      0.95,
+      1.0
+    ],
+    "healthy_kurtosis_median": 3.4256669057515854,
+    "healthy_rms_log_spread_across_channels": 0.34958446757453887,
+    "healthy_rms_median": 0.11471103128720386,
+    "healthy_rms_within_channel_cv": 0.0539071609808678,
+    "kurtosis_growth_ratio": [
+      0.9998889981880581,
+      0.9831276441375512,
+      0.9998710687289026,
+      1.055218025527863,
+      1.1033031448664334,
+      1.1345588008728473,
+      1.0974718077369867,
+      1.204598256460229
+    ],
+    "n_channels": 16,
+    "n_failing_channels": 6,
+    "rms_growth_ratio": [
+      0.8975306234796991,
+      1.0838868735401674,
+      1.1002225532348748,
+      1.1313947989604367,
+      1.243182068262736,
+      1.2741170665982133,
+      1.2957614470188523,
+      1.6255693235709683
+    ],
+    "source": "NASA IMS Bearing Dataset - 1st_test, 2nd_test, 3rd_test"
+  }
+}

@@ -10,6 +10,24 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on 3b.8 ("Simulator calibration & Phase 3b audit", issue #65): added a calibration step that
+derives all simulator parameters from the real IMS and C-MAPSS data (`sim_calibration.py`), a
+calibrated degrading-bearing waveform simulator and engine-telemetry simulator tied to one health
+trajectory per asset, `--degradation` (opt-in) in the generator, a tenant-prefixed MinIO waveform
+store, and `collect_vibration_assessments`, which Agent 3 calls when `vibration_enabled` is set
+(default off). This closes the 3b.7 waveform-source gap. Non-circularity is now enforced by tests
+that scan imports. Phase 3b DoD audit against repo state: items 1, 2, 3, 5, 6, 7 met; item 4 only
+partly - RUL stores `rul_model_version` in `factors_json` but not the dataset name (it lives in the
+model's metadata), and vibration assessments carry model and dataset identity but are not persisted
+anywhere (persisting them needs a new tenant table: RLS + cross-tenant test). Other findings:
+(a) `scripts/train_risk_model.py` still has a `--synthetic` path backed by invented data
+(`app/ml/synthetic_data.py`), which sits badly with rule 8 - left as is, recommend removing or
+gating it; (b) the Isolation Forest does not clearly beat an RMS threshold (4 events); (c) C-MAPSS
+and IMS license wording is unverified; (d) the live pipeline with `--degradation`, MinIO and the
+trained vibration model was not run end to end, and the 3b.7 integration tests were not run
+(need Docker); (e) `mypy` has one error in `agent_run_service.py:124`, present before this phase's
+changes.
+
 Note on 3b.7 ("Inference services & agent tools", issue #64): added RUL inference
 (`rul_inference_service.py`, nullable `risk_scores.rul_cycles` via migration 0011, surfaced in the
 Risk agent output with `rul_model_version`) and vibration inference

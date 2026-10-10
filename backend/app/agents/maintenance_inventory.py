@@ -16,7 +16,9 @@ from app.agents.tools.inventory_tool import evaluate_inventory_gaps_tool
 from app.agents.tools.maintenance_scheduler import generate_constraint_schedule
 from app.agents.tools.vibration_priority_tool import apply_vibration_signals
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
+from app.core.config import settings
 from app.schemas.agent_outputs.maintenance_inventory import MaintenanceInventoryOutput
+from app.services.vibration_inference_service import collect_vibration_assessments
 
 logger = logging.getLogger("agents.maintenance_inventory")
 
@@ -116,13 +118,20 @@ async def real_maintenance_inventory_callable(context: dict[str, Any]) -> dict[s
     daily_tech_hours = float(context.get("daily_tech_hours", 16.0))
     custom_on_hand = context.get("custom_on_hand")
 
+    vibration_assessments = context.get("vibration_assessments")
+    if vibration_assessments is None and settings.vibration_enabled and context.get("tenant_id"):
+        vibration_assessments = await collect_vibration_assessments(
+            uuid.UUID(str(context["tenant_id"])),
+            [uuid.UUID(str(a["asset_id"])) for a in scored_assets if a.get("asset_id")],
+        )
+
     output = plan_maintenance_and_inventory(
         facility_id=facility_id,
         scored_assets=scored_assets,
         start_date=start_date,
         daily_tech_hours=daily_tech_hours,
         custom_on_hand=custom_on_hand,
-        vibration_assessments=context.get("vibration_assessments"),
+        vibration_assessments=vibration_assessments,
     )
 
     return output.model_dump(mode="json")

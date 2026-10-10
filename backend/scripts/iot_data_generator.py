@@ -30,9 +30,11 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypedDict
 
 import httpx
+import numpy as np
 
 logger = logging.getLogger("iot_data_generator")
 
@@ -179,6 +181,39 @@ def generate_batch(
     return readings
 
 
+def degradation_readings(
+    asset_id: uuid.UUID, engine_values: dict[str, float], now: datetime
+) -> list[ReadingPayload]:
+    """The 24 C-MAPSS channels as one complete snapshot (all sharing `now`)."""
+    from app.ml.engine_sim import channel_telemetry
+
+    readings: list[ReadingPayload] = []
+    for column, value in engine_values.items():
+        sensor_type, unit = channel_telemetry(column)
+        readings.append(
+            {
+                "asset_id": str(asset_id),
+                "sensor_type": sensor_type,
+                "value": float(value),
+                "unit": unit,
+                "timestamp": now.isoformat(),
+            }
+        )
+    return readings
+
+
+def store_waveforms(
+    tenant_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    waveforms: dict[int, np.ndarray],
+    now: datetime,
+) -> None:
+    from app.services import waveform_store
+
+    for channel, waveform in waveforms.items():
+        waveform_store.put_snapshot(tenant_id, asset_id, channel, now, waveform)
+
+
 def chunk_readings(
     readings: list[ReadingPayload], batch_size: int
 ) -> list[list[ReadingPayload]]:
@@ -319,6 +354,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--duration", type=float, default=None, help="Seconds to run for; omit to run until Ctrl+C"
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed, for reproducible runs")
+    parser.add_argument(
+        "--degradation",
+        action="store_true",
+        help=(
+            "Also simulate asset degradation: the 24 C-MAPSS channels (for RUL) drift toward "
+            "failure and accelerometer waveforms (for vibration anomaly) are written to MinIO. "
+            "Calibrated from real C-MAPSS/IMS data; see docs/DATASETS.md. Off by default."
+        ),
+    )
+    parser.add_argument(
+        "--calibration",
+        type=Path,
+        default=None,
+        help="sim_calibration.json from scripts.calibrate_simulator (used with --degradation)",
+    )
+    parser.add_argument(
+        "--vibration-channels", type=int, default=2, help="Accelerometer channels per asset"
+    )
     parsed = parser.parse_args(argv)
     if parsed.sensor_types is None:
         if parsed.profile_set == "ai4i":
@@ -344,6 +397,17 @@ async def run(args: argparse.Namespace) -> None:
         email=args.email,
         password=args.password,
     )
+    degradation = None
+    if args.degradation:
+        from app.ml.degradation_sim import DegradationSimulator
+        from app.ml.sim_calibration import load_calibration
+        from scripts.calibrate_simulator import DEFAULT_OUT
+
+        degradation = DegradationSimulator(
+            load_calibration(args.calibration or DEFAULT_OUT),
+            seed=args.seed,
+            n_channels=args.vibration_channels,
+        )
     interval_s = 1.0 / args.rate if args.rate > 0 else 0.0
     tick_s = 0.0
     start = time.monotonic()
@@ -376,6 +440,17 @@ async def run(args: argparse.Namespace) -> None:
                 anomaly_rate=args.anomaly_rate,
                 rng=rng,
             )
+            if degradation is not None:
+                now = datetime.now(UTC)
+                for asset_id in asset_ids:
+                    tick = degradation.tick(asset_id)
+                    readings.extend(degradation_readings(asset_id, tick.engine_values, now))
+                    try:
+                        await asyncio.to_thread(
+                            store_waveforms, args.tenant_id, asset_id, tick.waveforms, now
+                        )
+                    except Exception as exc:  # noqa: BLE001 - object store down: telemetry goes on
+                        logger.warning("Waveform store failed, will retry next tick: %s", exc)
             for chunk in chunk_readings(readings, args.batch_size):
                 try:
                     accepted = await client.post_batch(chunk)

@@ -387,6 +387,46 @@ detected 4 satisfy them with margin on detection; false-alarm fraction sits at 0
 **Limitations:** one lab rig at fixed speed and load; four documented failure events; lead time
 measured against the end of the recording; threshold and lead times are seed-dependent as above.
 
+### Degradation simulator calibration (Phase 3b, task 8)
+
+Code: `backend/app/ml/sim_calibration.py` (+ `scripts/calibrate_simulator.py`), `vibration_sim.py`,
+`engine_sim.py`, `degradation_sim.py`; enabled in the generator with `--degradation` (off by
+default). `python -m scripts.calibrate_simulator` reads only the real IMS feature files and the
+C-MAPSS training files and writes `backend/data/processed/sim_calibration.json`, which records the
+source of every block. Nothing in it is hand-picked.
+
+**Vibration (calibrated from IMS, 16 channels, 6 on the documented failing bearings):**
+- healthy RMS level (median 0.115 across channel baselines, in the dataset's own units), its log-spread across channels
+  (0.35, used to give each simulated channel its own level) and its within-channel CV (0.054);
+- the median RMS and kurtosis growth, relative to each channel's own healthy baseline, at fixed
+  fractions of the run for the failing channels: RMS x1.63 and kurtosis x1.20 at the end of the run.
+  Growth is late: RMS is only ~x1.24 at 80 % of the run.
+- A snapshot is Gaussian noise at the healthy RMS plus a fault component (noise confined to the
+  2-8 kHz envelope band, amplitude-modulated at the BPFO frequency). Total RMS follows the
+  calibrated growth curve; the modulation depth is solved so kurtosis follows its curve.
+
+**Engine telemetry (calibrated from C-MAPSS FD001 training engines):** engine life distribution
+(128-362 cycles, median 199), per-channel healthy level, between-engine and within-engine spread,
+end-of-life shift, and the shared progress curve of the drift (14 informative sensors). One
+simulated asset ages one cycle per tick, so its vibration and engine channels degrade together.
+
+**Checks in `tests/unit/test_sim_calibration.py`:** simulated healthy RMS is within 3 % of the
+calibrated level, simulated end-of-run RMS and kurtosis ratios are within 5 % / 8 % of the
+calibrated ratios, the BPFO envelope feature rises with degradation, and a late-stage snapshot is
+> 4 sigma from its own channel baseline while healthy snapshots are not.
+
+**Known limits.** Healthy simulated vibration is Gaussian (kurtosis 3.0, real median 3.43); only
+an outer-race defect is simulated; the real growth curve rests on four failure events, so the
+simulated curve inherits that uncertainty; engine channels are independent (real sensors are
+correlated) and only the FD001 single operating regime is simulated. Not validated against the
+trained Isolation Forest in a live run in this session.
+
+**Non-circularity.** `test_no_training_code_imports_the_simulator` fails if any module in
+`app/ml` (other than the simulator modules) or any `scripts/train_*.py` imports simulator code,
+and a second test fails if the simulator modules import training or model libraries. Waveforms
+live in the `vibration-waveforms` bucket under `<tenant_id>/<asset_id>/<channel>/`, a prefix that
+is always built from the caller's tenant, never read by training code.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

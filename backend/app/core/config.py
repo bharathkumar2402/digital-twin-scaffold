@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # Holds versioned, trained risk-model artifacts (issue 3.2) - model file, feature
     # names, and metrics per version, plus a `latest.json` pointer inference (3.3) reads.
     minio_models_bucket: str = "ml-models"
+    minio_waveforms_bucket: str = "vibration-waveforms"
+    # Vibration snapshots per channel: earliest N form the healthy baseline, latest M are scored.
+    vibration_baseline_snapshots: int = 20
+    vibration_recent_snapshots: int = 12
+    vibration_enabled: bool = False
 
     # Which C-MAPSS-trained RUL model the live inference path loads (Phase 3b). FD001 is
     # the primary, single-operating-condition model; FD002-FD004 are separate experiments.

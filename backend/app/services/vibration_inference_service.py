@@ -177,3 +177,44 @@ def assessments_to_context(
         for o in per_channel.values()
         if o.assessment is not None
     ]
+
+
+def _assess_asset_from_store(
+    tenant_id: uuid.UUID, asset_id: uuid.UUID, model_version: str | None
+) -> dict[int, VibrationOutcome]:
+    from app.core.config import settings
+    from app.services import waveform_store
+
+    channels: dict[int, tuple[Sequence[np.ndarray], Sequence[np.ndarray]]] = {}
+    for channel in waveform_store.list_channels(tenant_id, asset_id):
+        channels[channel] = waveform_store.load_channel_window(
+            tenant_id,
+            asset_id,
+            channel,
+            n_baseline=settings.vibration_baseline_snapshots,
+            n_recent=settings.vibration_recent_snapshots,
+        )
+    return assess_asset_channels(asset_id=asset_id, channels=channels, model_version=model_version)
+
+
+async def collect_vibration_assessments(
+    tenant_id: uuid.UUID,
+    asset_ids: Sequence[uuid.UUID],
+    model_version: str | None = None,
+) -> list[dict[str, Any]]:
+    """Assessments for every asset with stored waveforms, ready for Agent 3's context.
+
+    Never raises: an unreachable object store or a corrupt snapshot is logged and that asset
+    is skipped, so maintenance planning proceeds on risk scores alone.
+    """
+    import asyncio
+
+    out: dict[uuid.UUID, dict[int, VibrationOutcome]] = {}
+    for asset_id in asset_ids:
+        try:
+            out[asset_id] = await asyncio.to_thread(
+                _assess_asset_from_store, tenant_id, asset_id, model_version
+            )
+        except Exception as exc:  # noqa: BLE001 - object store/network/corrupt object
+            logger.warning("vibration skipped for asset %s: %s", asset_id, exc)
+    return assessments_to_context(out)
