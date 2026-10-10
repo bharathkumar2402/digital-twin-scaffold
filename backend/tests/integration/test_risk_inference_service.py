@@ -16,6 +16,7 @@ import sys
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 import numpy as np
@@ -213,6 +214,14 @@ def fake_model(monkeypatch: pytest.MonkeyPatch):
         "_resolve_and_load_model",
         lambda model_version: (_FakeModel(), list(FEATURE_NAMES), "vtest-fixed"),
     )
+    # No RUL model is published in these tests: scoring must still work, with no RUL.
+    from app.services import rul_inference_service
+
+    def _no_rul_model(*args, **kwargs):
+        raise KeyError("no RUL model in this test")
+
+    monkeypatch.setattr(rul_inference_service, "load_rul_model", _no_rul_model)
+    monkeypatch.setattr(rul_inference_service, "_MODEL_CACHE", {})
 
 
 async def _scoped(session_factory: async_sessionmaker, tenant_id: uuid.UUID) -> AsyncSession:
@@ -402,3 +411,203 @@ async def test_get_latest_risk_scores_returns_only_the_newest_row_per_asset(
         await timescale_session.close()
 
     assert len(latest) == 1
+
+
+# ---- Remaining Useful Life (Phase 3b, task 3b.7a) ----------------------------------------------
+
+
+class _StubRulModel:
+    def __init__(self, value: float, n_features: int) -> None:
+        self.value = value
+        self.n_features_in_ = n_features
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return np.full(X.shape[0], self.value)
+
+
+def _cmapss_rows(n_cycles: int) -> tuple[Any, list[tuple]]:
+    """A fitted feature config plus (timestamp, sensor_type, value, unit) telemetry rows."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.ml.cmapss_profile import COLUMNS
+    from app.ml.rul_features import fit_config
+    from app.services.ml.dataset_mapping import map_cmapss_rows_to_readings
+
+    rng = np.random.default_rng(0)
+
+    def engine(n: int) -> np.ndarray:
+        t = np.zeros((n, len(COLUMNS)))
+        t[:, 0] = 1
+        t[:, 1] = np.arange(1, n + 1)
+        t[:, 4] = 100.0
+        t[:, 5] = 518.67
+        for c in range(6, 26):
+            t[:, c] = rng.normal(10 * c, 1, n)
+        return t
+
+    config = fit_config(np.vstack([engine(80), engine(90)]))
+    readings = map_cmapss_rows_to_readings(
+        "FD001", engine(n_cycles), datetime(2026, 1, 1, tzinfo=UTC), timedelta(hours=1)
+    )
+    return config, [(r.timestamp, r.sensor_type, r.value, r.unit) for r in readings]
+
+
+async def _insert_telemetry(
+    timescale: PostgresContainer, *, tenant_id: uuid.UUID, asset_id: uuid.UUID, rows: list[tuple]
+) -> None:
+    conn = await asyncpg.connect(
+        _dsn(timescale, user=timescale.username, password=timescale.password, driver="postgresql")
+    )
+    try:
+        await conn.executemany(
+            "INSERT INTO sensor_readings "
+            "(tenant_id, asset_id, sensor_type, value, unit, timestamp) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            [(tenant_id, asset_id, kind, value, unit, stamp) for stamp, kind, value, unit in rows],
+        )
+    finally:
+        await conn.close()
+
+
+def _patch_rul_model(monkeypatch: pytest.MonkeyPatch, config: Any, value: float) -> None:
+    from app.services import rul_inference_service
+
+    stub = _StubRulModel(value, len(config.feature_names))
+    monkeypatch.setattr(
+        rul_inference_service,
+        "load_rul_model",
+        lambda subset, version: (stub, config, {}, {"model_version": "vrul-test"}),
+    )
+    monkeypatch.setattr(rul_inference_service, "_MODEL_CACHE", {})
+
+
+async def test_score_facility_persists_rul_for_assets_with_cmapss_telemetry(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
+    main_session_factory: async_sessionmaker,
+    timescale_session_factory: async_sessionmaker,
+) -> None:
+    from app.models.risk_score import RiskScore
+    from app.services.risk_inference_service import score_facility
+
+    config, rows = _cmapss_rows(40)
+    _patch_rul_model(monkeypatch, config, 42.5)
+
+    tenant_id = await _make_tenant(migrated_main_db, "Tenant RUL")
+    facility_id = await _make_facility(migrated_main_db, tenant_id=tenant_id, name="Plant RUL")
+    with_telemetry = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Engine 1"
+    )
+    without_telemetry = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump 1"
+    )
+    await _insert_telemetry(
+        migrated_timescale_db, tenant_id=tenant_id, asset_id=with_telemetry, rows=rows
+    )
+
+    main_session = await _scoped(main_session_factory, tenant_id)
+    timescale_session = await _scoped(timescale_session_factory, tenant_id)
+    try:
+        saved = await score_facility(
+            main_session, timescale_session, tenant_id=tenant_id, facility_id=facility_id
+        )
+    finally:
+        await main_session.close()
+        await timescale_session.close()
+
+    by_asset = {row.asset_id: row for row in saved}
+    engine_row, pump_row = by_asset[with_telemetry], by_asset[without_telemetry]
+    assert engine_row.rul_cycles == pytest.approx(42.5)
+    assert engine_row.factors_json["rul_model_version"] == "vrul-test"
+    assert engine_row.factors_json["rul_cycle"] == 40  # the asset age in complete snapshots
+    assert pump_row.rul_cycles is None
+    assert "rul_model_version" not in pump_row.factors_json
+
+    verify = await _scoped(main_session_factory, tenant_id)
+    try:
+        result = await verify.execute(select(RiskScore).where(RiskScore.facility_id == facility_id))
+        persisted = result.scalars().all()
+    finally:
+        await verify.close()
+    stored = {r.asset_id: r.rul_cycles for r in persisted}
+    assert stored[with_telemetry] == pytest.approx(42.5)
+    assert stored[without_telemetry] is None
+
+
+async def test_negative_rul_is_rejected_by_the_database_check_constraint(
+    migrated_main_db: PostgresContainer,
+) -> None:
+    tenant_id = await _make_tenant(migrated_main_db, "Tenant RUL check")
+    facility_id = await _make_facility(migrated_main_db, tenant_id=tenant_id, name="Plant check")
+    asset_id = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump check"
+    )
+    conn = await asyncpg.connect(
+        _dsn(
+            migrated_main_db,
+            user=migrated_main_db.username,
+            password=migrated_main_db.password,
+            driver="postgresql",
+        )
+    )
+    try:
+        with pytest.raises(asyncpg.exceptions.CheckViolationError):
+            await conn.execute(
+                "INSERT INTO risk_scores (tenant_id, facility_id, asset_id, score, rul_cycles, "
+                "model_version, factors_json) VALUES ($1, $2, $3, 10, -1, 'm', '{}')",
+                tenant_id,
+                facility_id,
+                asset_id,
+            )
+    finally:
+        await conn.close()
+
+
+async def test_rul_inference_never_reads_another_tenants_telemetry(
+    migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
+    timescale_session_factory: async_sessionmaker,
+) -> None:
+    """Tenant B cannot get an RUL for tenant A asset - not by asking for it, and not by
+    lying about the tenant id in the query parameters (RLS on the session is the backstop)."""
+    from datetime import UTC, datetime
+
+    from app.services.rul_inference_service import (
+        SKIP_NO_TELEMETRY,
+        LoadedRulModel,
+        predict_asset_rul,
+    )
+
+    config, rows = _cmapss_rows(35)
+    tenant_a = await _make_tenant(migrated_main_db, "Tenant RUL A")
+    tenant_b = await _make_tenant(migrated_main_db, "Tenant RUL B")
+    asset_a = uuid.uuid4()
+    await _insert_telemetry(migrated_timescale_db, tenant_id=tenant_a, asset_id=asset_a, rows=rows)
+    loaded = LoadedRulModel(
+        model=_StubRulModel(10.0, len(config.feature_names)),  # type: ignore[arg-type]
+        config=config,
+        version="v",
+        subset="FD001",
+    )
+    now = datetime.now(UTC)
+
+    own = await _scoped(timescale_session_factory, tenant_a)
+    try:
+        ok = await predict_asset_rul(own, loaded, tenant_id=tenant_a, asset_id=asset_a, now=now)
+    finally:
+        await own.close()
+    assert ok.estimate is not None  # sanity: the telemetry really is readable by its owner
+
+    attacker = await _scoped(timescale_session_factory, tenant_b)
+    try:
+        honest = await predict_asset_rul(
+            attacker, loaded, tenant_id=tenant_b, asset_id=asset_a, now=now
+        )
+        spoofed = await predict_asset_rul(
+            attacker, loaded, tenant_id=tenant_a, asset_id=asset_a, now=now
+        )
+    finally:
+        await attacker.close()
+    assert honest.estimate is None and honest.skip_reason == SKIP_NO_TELEMETRY
+    assert spoofed.estimate is None and spoofed.skip_reason == SKIP_NO_TELEMETRY

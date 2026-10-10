@@ -27,6 +27,7 @@ from app.models.risk_score import RiskScore
 from app.schemas.ml.asset_features import AssetFeatureSet
 from app.schemas.ml.risk_score import RiskScoreResult
 from app.services.feature_engineering_service import build_facility_features
+from app.services.rul_inference_service import predict_facility_rul
 
 # Loaded lazily and cached per (version-string) - a Celery worker process scores many
 # facilities over its lifetime, and re-fetching the ~small XGBoost artifact from MinIO
@@ -124,19 +125,38 @@ async def score_facility(
         main_session, timescale_session, tenant_id=tenant_id, facility_id=facility_id, now=now
     )
 
+    # Remaining Useful Life (Phase 3b). Never allowed to break risk scoring: an asset with
+    # no C-MAPSS-style telemetry, or a facility with no published RUL model, gets no RUL.
+    rul_outcomes = await predict_facility_rul(
+        timescale_session,
+        tenant_id=tenant_id,
+        asset_ids=[f.asset_id for f in feature_sets],
+        now=now,
+    )
+
     saved: list[RiskScore] = []
     for features in feature_sets:
         vector = vectorize(features).reshape(1, -1)
         probability = float(model.predict_proba(vector)[0, 1])
         score = max(0.0, min(100.0, probability * 100.0))
 
+        factors = _build_factors(features)
+        rul = rul_outcomes[features.asset_id]
+        if rul.estimate is not None:
+            factors["rul_model_version"] = rul.estimate.model_version
+            factors["rul_model_subset"] = rul.estimate.model_subset
+            factors["rul_cycle"] = rul.estimate.cycle
+        elif rul.skip_reason not in (None, "no_cmapss_telemetry"):
+            factors["rul_unavailable_reason"] = rul.skip_reason
+
         result = RiskScoreResult(
             asset_id=features.asset_id,
             tenant_id=features.tenant_id,
             facility_id=features.facility_id,
             score=score,
+            rul_cycles=rul.estimate.rul_cycles if rul.estimate is not None else None,
             model_version=resolved_version,
-            factors=_build_factors(features),
+            factors=factors,
             computed_at=now,
         )
 
@@ -145,6 +165,7 @@ async def score_facility(
             facility_id=result.facility_id,
             asset_id=result.asset_id,
             score=result.score,
+            rul_cycles=result.rul_cycles,
             model_version=result.model_version,
             factors_json=result.factors,
             computed_at=result.computed_at,

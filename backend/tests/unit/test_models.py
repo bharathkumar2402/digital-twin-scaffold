@@ -198,7 +198,9 @@ def test_risk_score_columns_and_fks():
         "model_version",
         "factors_json",
         "computed_at",
+        "rul_cycles",
     }
+    assert cols["rul_cycles"].nullable  # RUL is optional (3b.7): no model/telemetry -> NULL
     assert not cols["tenant_id"].nullable
     assert not cols["facility_id"].nullable
     assert not cols["asset_id"].nullable

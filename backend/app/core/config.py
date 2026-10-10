@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # names, and metrics per version, plus a `latest.json` pointer inference (3.3) reads.
     minio_models_bucket: str = "ml-models"
 
+    # Which C-MAPSS-trained RUL model the live inference path loads (Phase 3b). FD001 is
+    # the primary, single-operating-condition model; FD002-FD004 are separate experiments.
+    rul_model_subset: str = "FD001"
+
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"

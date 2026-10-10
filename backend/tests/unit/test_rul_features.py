@@ -10,7 +10,11 @@ from app.ml.cmapss_profile import COLUMNS, SENSOR_COLUMNS, parse_cmapss_table, p
 from app.ml.rul_dataset import build_test_dataset, build_train_dataset
 from app.ml.rul_features import RulFeatureConfig, fit_config, window_features
 from app.schemas.ml.rul_features import RulSnapshot, RulWindowIn
-from app.services.ml.dataset_mapping import CMAPSS_SENSOR_MAP, map_cmapss_rows_to_readings
+from app.services.ml.dataset_mapping import (
+    CMAPSS_SENSOR_MAP,
+    CMAPSS_TELEMETRY_TYPES,
+    map_cmapss_rows_to_readings,
+)
 from scripts.acquire_cmapss import DEFAULT_OUTPUT_DIR
 
 
@@ -186,8 +190,8 @@ def test_mapping_produces_schema_valid_readings_and_rejects_nan() -> None:
     rows = _engine(7, 3, 1)
     start = datetime(2026, 1, 1, tzinfo=UTC)
     readings = map_cmapss_rows_to_readings("FD001", rows, start)
-    assert len(readings) == 3 * 21
-    assert readings[0].to_schema_in().sensor_type == "cmapss_s1"
+    assert len(readings) == 3 * 24  # 3 operating settings + 21 sensors per cycle
+    assert {r.sensor_type for r in readings} == set(CMAPSS_TELEMETRY_TYPES)
     assert readings[-1].timestamp > readings[0].timestamp
     assert len({r.asset_id for r in readings}) == 1
     rows[1, 10] = np.nan

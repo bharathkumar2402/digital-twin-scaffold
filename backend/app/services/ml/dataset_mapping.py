@@ -410,6 +410,18 @@ CMAPSS_SENSOR_MAP: dict[str, CmapssSensorInfo] = {
 }
 
 
+# The three operating settings are telemetry channels too: the RUL model normalises sensors
+# per operating regime, so serving needs them. (Task 3b.2 originally dropped them.)
+CMAPSS_OP_SETTING_TYPES: dict[str, str] = {
+    "op_setting_1": "cmapss_op1",
+    "op_setting_2": "cmapss_op2",
+    "op_setting_3": "cmapss_op3",
+}
+CMAPSS_OP_SETTING_UNIT = "setting"
+CMAPSS_SENSOR_TYPES: tuple[str, ...] = tuple(i.sensor_type for i in CMAPSS_SENSOR_MAP.values())
+CMAPSS_TELEMETRY_TYPES: tuple[str, ...] = (*CMAPSS_OP_SETTING_TYPES.values(), *CMAPSS_SENSOR_TYPES)
+
+
 def deterministic_cmapss_asset_id(subset: str, unit: int) -> uuid.UUID:
     """Stable asset identity for engine `unit` of subset `subset` (e.g. FD001, 7)."""
     return uuid.uuid5(CMAPSS_ASSET_NAMESPACE, f"{subset}:{unit}")
@@ -423,8 +435,8 @@ def map_cmapss_rows_to_readings(
 ) -> list[MappedSensorReading]:
     """Map an (n, 26) C-MAPSS table onto `sensor_readings` records.
 
-    Each cycle becomes one snapshot `cycle_interval` after the previous one; every
-    sensor column becomes one reading with its physical unit.
+    Each cycle becomes one snapshot `cycle_interval` after the previous one; every sensor
+    column and every operating setting becomes one reading (24 per cycle).
     """
     from app.ml.cmapss_profile import COLUMNS
 
@@ -434,6 +446,19 @@ def map_cmapss_rows_to_readings(
         cycle = int(row[COLUMNS.index("cycle")])
         stamp = start_time + cycle_interval * (cycle - 1)
         asset_id = deterministic_cmapss_asset_id(subset, unit)
+        for col, sensor_type in CMAPSS_OP_SETTING_TYPES.items():
+            value = float(row[COLUMNS.index(col)])
+            if not math.isfinite(value):
+                raise ValueError(f"non-finite value in {col} for unit {unit} cycle {cycle}")
+            readings.append(
+                MappedSensorReading(
+                    asset_id=asset_id,
+                    sensor_type=sensor_type,
+                    value=value,
+                    unit=CMAPSS_OP_SETTING_UNIT,
+                    timestamp=stamp,
+                )
+            )
         for col, info in CMAPSS_SENSOR_MAP.items():
             value = float(row[COLUMNS.index(col)])
             if not math.isfinite(value):

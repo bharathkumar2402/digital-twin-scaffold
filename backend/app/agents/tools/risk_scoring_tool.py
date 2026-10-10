@@ -27,7 +27,7 @@ async def score_facility_assets_tool(
     """Runs Phase 3 inference service against TimescaleDB telemetry and XGBoost model.
 
     Returns a list of scored asset dictionaries containing:
-    asset_id, risk_score, factors, and model_version.
+    asset_id, risk_score, rul_cycles (None when unavailable), factors, and model_version.
     """
     logger.info(
         "Invoking score_facility tool: tenant_id=%s, facility_id=%s, model_version=%s",
@@ -49,6 +49,7 @@ async def score_facility_assets_tool(
             {
                 "asset_id": row.asset_id,
                 "risk_score": float(row.score),
+                "rul_cycles": float(row.rul_cycles) if row.rul_cycles is not None else None,
                 "factors": dict(row.factors_json or {}),
                 "model_version": row.model_version,
                 "computed_at": row.computed_at or datetime.now(UTC),

@@ -48,9 +48,12 @@ def _parse_fast(text: str, lines: list[str], n_channels: int) -> np.ndarray | No
     """Vectorised parse; returns None unless every row is complete and every value finite."""
     if any(len(ln.split()) != n_channels for ln in lines):
         return None  # ragged rows whose token counts happen to cancel out must not slip through
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        flat = np.fromstring(text, dtype=np.float64, sep=" ")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            flat = np.fromstring(text, dtype=np.float64, sep=" ")
+    except ValueError:  # newer numpy raises instead of returning a partial parse
+        return None
     if flat.size != len(lines) * n_channels or not np.isfinite(flat).all():
         return None
     return flat.reshape(len(lines), n_channels)

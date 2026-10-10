@@ -10,6 +10,18 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on 3b.7 ("Inference services & agent tools", issue #64): added RUL inference
+(`rul_inference_service.py`, nullable `risk_scores.rul_cycles` via migration 0011, surfaced in the
+Risk agent output with `rul_model_version`) and vibration inference
+(`vibration_inference_service.py`, `VibrationAssessment` schema, `vibration_priority_tool.py`
+wired into Agent 3: a sustained alarm lifts the effective risk score to >= 50, or >= 67 when
+RUL <= 30 cycles; scores are never lowered). Both services fail closed with a reason code and
+validate output with Pydantic. Known gap: raw 20,480-sample waveforms are not stored in
+`sensor_readings`, so nothing in the live pipeline yet supplies vibration snapshots - 3b.8
+(simulator calibration) must provide a waveform source. Unit tests use a stub scorer; the
+integration tests need Docker and were not run in this session. `ruff --fix` over the whole repo
+touched nine unrelated files; they were deliberately left out of the commit.
+
 Note on 4.9 ("End-to-end integration test and Phase 4 DoD", issue #31): implemented comprehensive
 end-to-end pipeline integration testing in `backend/tests/integration/test_agent_pipeline_e2e.py`.
 Verified complete 5-agent sequential DAG under realistic industrial incident scenarios ("Pump failure

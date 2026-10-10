@@ -151,10 +151,24 @@ def prioritize_and_explain_risks(
             if "anomaly_count" in k and isinstance(v, (int, float))
         )
 
+        rul_raw = record.get("rul_cycles")
+        rul_cycles = round(float(rul_raw), 1) if rul_raw is not None else None
+        if rul_cycles is not None:
+            primary_factors = [
+                *primary_factors,
+                f"Estimated remaining useful life: {rul_cycles:g} cycles",
+            ]
+
         ranked_assets.append(
             ScoredAsset(
                 asset_id=asset_id,
                 risk_score=round(score, 1),
+                rul_cycles=rul_cycles,
+                rul_model_version=(
+                    str(factors["rul_model_version"])
+                    if rul_cycles is not None and factors.get("rul_model_version")
+                    else None
+                ),
                 urgency_rank=rank_idx,
                 risk_tier=tier,
                 predicted_failure_mode=pred_mode,

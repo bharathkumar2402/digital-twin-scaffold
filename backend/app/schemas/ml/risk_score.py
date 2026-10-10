@@ -20,6 +20,7 @@ class RiskScoreResult(BaseModel):
     tenant_id: uuid.UUID
     facility_id: uuid.UUID
     score: float = Field(ge=0.0, le=100.0)
+    rul_cycles: float | None = Field(default=None, ge=0.0)
     model_version: str
     factors: dict[str, float | int | str | None]
     computed_at: datetime

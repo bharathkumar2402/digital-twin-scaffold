@@ -23,6 +23,9 @@ class RiskScore(UUIDPKMixin, Base):
     __tablename__ = "risk_scores"
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="ck_risk_scores_score_range"),
+        CheckConstraint(
+            "rul_cycles IS NULL OR rul_cycles >= 0", name="ck_risk_scores_rul_cycles_nonnegative"
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -35,6 +38,9 @@ class RiskScore(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
     )
     score: Mapped[float] = mapped_column(Float, nullable=False)
+    # Remaining Useful Life in cycles (Phase 3b); NULL when the asset has no usable RUL
+    # telemetry or no RUL model is published. Its model version lives in `factors_json`.
+    rul_cycles: Mapped[float | None] = mapped_column(Float, nullable=True)
     model_version: Mapped[str] = mapped_column(String(255), nullable=False)
     factors_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(

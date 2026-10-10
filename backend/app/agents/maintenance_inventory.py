@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
 from app.agents.tools.inventory_tool import evaluate_inventory_gaps_tool
 from app.agents.tools.maintenance_scheduler import generate_constraint_schedule
+from app.agents.tools.vibration_priority_tool import apply_vibration_signals
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.maintenance_inventory import MaintenanceInventoryOutput
 
@@ -27,8 +28,10 @@ def plan_maintenance_and_inventory(
     start_date: date | None = None,
     daily_tech_hours: float = 16.0,
     custom_on_hand: dict[str, int] | None = None,
+    vibration_assessments: list[dict[str, Any]] | None = None,
 ) -> MaintenanceInventoryOutput:
     """Generates a constraint-respecting 30-day maintenance schedule and evaluates parts demand."""
+    scored_assets = apply_vibration_signals(scored_assets, vibration_assessments)
     scheduled_items = generate_constraint_schedule(
         scored_assets,
         start_date=start_date,
@@ -119,6 +122,7 @@ async def real_maintenance_inventory_callable(context: dict[str, Any]) -> dict[s
         start_date=start_date,
         daily_tech_hours=daily_tech_hours,
         custom_on_hand=custom_on_hand,
+        vibration_assessments=context.get("vibration_assessments"),
     )
 
     return output.model_dump(mode="json")
@@ -161,6 +165,7 @@ async def maintenance_inventory_node(
         "risk_scores": state.get("risk_scores"),
         "asset_graph": state.get("asset_graph"),
         "custom_on_hand": configurable.get("custom_on_hand"),
+        "vibration_assessments": configurable.get("vibration_assessments"),
         "daily_tech_hours": configurable.get("daily_tech_hours", 16.0),
         "start_date": configurable.get("start_date"),
     }

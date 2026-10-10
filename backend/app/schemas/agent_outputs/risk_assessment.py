@@ -21,6 +21,16 @@ class ScoredAsset(BaseModel):
         le=100.0,
         description="Predictive failure risk score from 0.0 (safe) to 100.0 (critical)",
     )
+    rul_cycles: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Estimated remaining useful life in cycles; None when no RUL is available",
+    )
+    rul_model_version: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Version of the RUL model that produced rul_cycles",
+    )
     urgency_rank: int = Field(
         ...,
         ge=1,
