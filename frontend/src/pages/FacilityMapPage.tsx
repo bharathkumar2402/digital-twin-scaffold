@@ -1,6 +1,6 @@
 import type maplibregl from "maplibre-gl";
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { AlertToast } from "../components/AlertToast";
 import { AssetLayer } from "../components/AssetLayer";
@@ -127,6 +127,13 @@ export function FacilityMapPage(): React.JSX.Element {
     <div style={{ width: "100vw", height: "100vh", display: "flex", background: "var(--color-bg)" }}>
       <div style={{ flex: 1, position: "relative" }}>
         <AlertToast alerts={alerts} onDismiss={dismiss} />
+        <Link
+          to={`/facilities/${facilityId}/results?upload=${uploadId}`}
+          className="btn btn-sm"
+          style={{ position: "absolute", top: 12, left: 12, zIndex: 5 }}
+        >
+          Results
+        </Link>
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
         <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
         <AssetLayer

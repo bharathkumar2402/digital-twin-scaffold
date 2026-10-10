@@ -11,6 +11,9 @@ class RiskScoreResponse(BaseModel):
     facility_id: uuid.UUID
     asset_id: uuid.UUID
     score: float
+    # Remaining useful life in cycles (Phase 3b); null when the asset has no usable RUL
+    # telemetry or no RUL model is published. Its model/dataset live in `factors_json`.
+    rul_cycles: float | None = None
     model_version: str
     factors_json: dict[str, float | int | str | None]
     computed_at: datetime

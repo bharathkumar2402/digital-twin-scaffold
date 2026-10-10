@@ -215,6 +215,47 @@ async def test_list_returns_scores_for_own_facility(
     assert len(body) == 1
     assert body[0]["score"] == 77.0
     assert body[0]["model_version"] == "v1"
+    assert body[0]["rul_cycles"] is None  # exposed, and null when there is no RUL
+
+
+async def test_list_exposes_rul_cycles_when_present(
+    client: httpx.AsyncClient,
+    tenant_and_facility: tuple[uuid.UUID, uuid.UUID],
+    migrated_db: PostgresContainer,
+) -> None:
+    """rul_cycles is stored on risk_scores but used to be dropped from the API response."""
+    tenant_id, facility_id = tenant_and_facility
+    conn = await asyncpg.connect(_dsn(migrated_db, driver="postgresql"))
+    try:
+        asset_id = uuid.uuid4()
+        await conn.execute(
+            "INSERT INTO assets (id, tenant_id, facility_id, name, type, x, y, status) "
+            "VALUES ($1, $2, $3, 'Engine 1', 'engine', 1.0, 1.0, 'operational')",
+            asset_id,
+            tenant_id,
+            facility_id,
+        )
+        await conn.execute(
+            "INSERT INTO risk_scores "
+            "(tenant_id, facility_id, asset_id, score, rul_cycles, model_version, "
+            "factors_json, computed_at) VALUES ($1, $2, $3, $4, $5, 'v1', '{}', $6)",
+            tenant_id,
+            facility_id,
+            asset_id,
+            12.0,
+            3.6,
+            datetime.now(UTC),
+        )
+    finally:
+        await conn.close()
+
+    token = _token(tenant_id=tenant_id, role="viewer")
+    resp = await client.get(
+        f"/facilities/{facility_id}/risk-scores", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 200, resp.text
+    by_asset = {row["asset_id"]: row for row in resp.json()}
+    assert by_asset[str(asset_id)]["rul_cycles"] == 3.6
 
 
 async def test_compute_for_another_tenants_facility_does_not_leak_ownership_check(

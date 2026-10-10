@@ -16,6 +16,7 @@ const riskScore: RiskScore = {
   facility_id: "f1",
   asset_id: "a1",
   score: 72.5,
+  rul_cycles: null,
   model_version: "1",
   factors_json: {},
   computed_at: "2026-01-01T00:00:00Z",

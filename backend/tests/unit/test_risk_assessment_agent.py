@@ -303,3 +303,31 @@ async def test_risk_assessment_node_within_compiled_pipeline() -> None:
     assert final_state["risk_scores"][0]["urgency_rank"] == 1
     assert final_state["risk_scores"][0]["risk_tier"] == "critical"
     assert final_state["iteration_count"] == 5
+
+
+# ---- explanation text must match the rule that actually fired --------------------------------
+
+
+def test_heat_dissipation_reason_names_the_true_trigger() -> None:
+    from app.agents.risk_assessment import _diagnose_failure_mode
+
+    # trigger 1: low temperature difference
+    mode, reasons = _diagnose_failure_mode(90.0, {"temperature_difference_30d_latest_value": 7.9})
+    assert mode == "HDF" and "temp delta=7.9K < 8.6K limit" in reasons[0]
+
+    # trigger 2: normal temperature difference, repeated air-temperature anomalies. The message
+    # used to claim "temp delta=10.3K < 8.6K limit" here, which is false on its face.
+    mode, reasons = _diagnose_failure_mode(
+        90.0,
+        {"temperature_difference_30d_latest_value": 10.3, "air_temperature_30d_anomaly_count": 13},
+    )
+    assert mode == "HDF"
+    assert "< 8.6K" not in reasons[0]
+    assert "air-temperature anomalies" in reasons[0] and "(13)" in reasons[0]
+
+
+def test_low_risk_asset_gets_the_normal_message_regardless_of_history() -> None:
+    from app.agents.risk_assessment import _diagnose_failure_mode
+
+    mode, reasons = _diagnose_failure_mode(5.0, {"air_temperature_30d_anomaly_count": 13})
+    assert mode is None and "within normal" in reasons[0]

@@ -54,10 +54,10 @@ access token is held in memory only, so a hard reload logs you out).
 |---|---|---|
 | 1 | Map page, assets, dependency lines | A private spatial map of the facility; assets are nodes with dependencies. The background is a placeholder: a real floor plan goes through the sandboxed upload worker (needs the extra sandbox container). |
 | 2 | Click an asset: telemetry chart | Live telemetry per asset, stored in TimescaleDB under row-level security per tenant. |
-| 3 | API docs at `localhost:8000/docs` | Everything the UI does is a tenant-scoped API. |
-| 4 | Terminal: the health table below | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). |
-| 5 | `Compressor Engine A (aged)` vs `(new)` | Aged engine: RUL 3.6 cycles and a vibration alarm on both channels. New engine: RUL 115.9, no alarm. The telemetry is a simulator calibrated from the real datasets. |
-| 6 | Agent run (below) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated before it is used. Run it on the demo plant and read out real asset names. |
+| 3 | Click **Results** (top-left of the map) | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
+| 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. |
+| 5 | Click `Compressor Engine A (aged)`, then compare `(new)` | Aged engine: RUL 3.6 cycles and a vibration alarm on both channels. New engine: RUL 115.9, no alarm. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
+| 6 | Results > Agent analysis: type `What if Primary Feed Pump 7 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
 | 7 | `pytest tests/integration/test_degradation_e2e.py -v` | The same story as an automated test on fresh containers: trains the models, simulates, scores, asserts. |
 
 Asset health table (from `demo_setup`'s output, or re-print it by re-running with
@@ -129,8 +129,10 @@ over the cascade, not a prediction).
 - The agents are deterministic tools, not an LLM: scheduling, routing and the cascade are rule-based
   / solver-based (OR-Tools, NetworkX). Downtime is a heuristic and the technician roster is a built-in
   demo roster.
-- The frontend has a map, a telemetry chart and risk colors only; RUL, vibration and the
-  agent output are shown through the API and tests (a results page is planned).
+- The Results page shows model outputs and the agent run; "About these models" carries the
+  headline metrics as static text copied from `docs/DATASETS.md` (dated), not live numbers. The
+  "why" text beside each risk priority is a rule-based explanation over recent telemetry, not the
+  model's own reasoning.
 - The vibration detector does not clearly beat a plain RMS threshold, and that comparison rests
   on four failure events (`docs/DATASETS.md`).
 

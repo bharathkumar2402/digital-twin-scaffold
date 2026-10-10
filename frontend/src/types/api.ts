@@ -101,7 +101,118 @@ export interface RiskScore {
   facility_id: string;
   asset_id: string;
   score: number;
+  // Remaining useful life in cycles; null when the asset has no usable RUL telemetry or no
+  // RUL model is published (not 0 - 0 would mean "fails now").
+  rul_cycles: number | null;
   model_version: string;
   factors_json: Record<string, number | string | null>;
   computed_at: string;
+}
+
+// ---- Agent runs (mirrors backend/app/schemas/requests/agent_runs.py and the agent output
+// schemas in backend/app/schemas/agent_outputs/) -------------------------------------------
+
+export type AgentRunTrigger = "scheduled" | "user_query" | "alert";
+
+export interface AgentRunSummary {
+  id: string;
+  tenant_id: string;
+  facility_id: string | null;
+  trigger: string;
+  // "completed" | "halted_for_escalation" | "failed"
+  status: string;
+  duration_ms: number;
+  validation_errors_json: string[];
+  decision_report: string | null;
+  confidence: number | null;
+  created_at: string;
+}
+
+export type RiskTier = "low" | "medium" | "high" | "critical";
+
+export interface ScoredAssetOutput {
+  asset_id: string;
+  risk_score: number;
+  rul_cycles: number | null;
+  rul_model_version: string | null;
+  urgency_rank: number;
+  risk_tier: RiskTier;
+  predicted_failure_mode: string | null;
+  primary_risk_factors: string[];
+  recommended_action: string;
+}
+
+export interface RequiredPart {
+  part_id: string;
+  part_name: string;
+  quantity: number;
+}
+
+export interface MaintenanceItem {
+  item_id: string;
+  asset_id: string;
+  scheduled_date: string;
+  priority: RiskTier;
+  estimated_duration_hours: number;
+  required_technician_skills: string[];
+  required_parts: RequiredPart[];
+}
+
+export interface InventoryGap {
+  part_id: string;
+  part_name: string;
+  needed_quantity: number;
+  available_quantity: number;
+  shortage_count: number;
+  lead_time_days: number;
+  impacted_asset_ids: string[];
+}
+
+export interface RouteStop {
+  stop_number: number;
+  asset_id: string;
+  task_id: string;
+  estimated_arrival_minutes: number;
+  service_duration_minutes: number;
+  travel_time_from_previous_minutes: number;
+}
+
+export interface DispatchRoute {
+  technician_id: string;
+  technician_name: string;
+  assigned_stops: RouteStop[];
+  total_travel_minutes: number;
+  total_service_minutes: number;
+  total_route_duration_minutes: number;
+}
+
+export interface CascadeResult {
+  root_cause_asset_id: string;
+  directly_affected_asset_ids: string[];
+  downstream_shutoff_asset_ids: string[];
+  total_affected_assets: number;
+  critical_subsystems_interrupted: string[];
+  estimated_downtime_hours: number;
+  cascade_depth: number;
+}
+
+export interface AgentRunState {
+  risk_scores: ScoredAssetOutput[] | null;
+  maintenance_schedule: MaintenanceItem[] | null;
+  inventory_gaps: InventoryGap[] | null;
+  dispatch_routes: DispatchRoute[] | null;
+  simulation_result: CascadeResult | null;
+  halted_for_escalation?: boolean;
+  escalation_reason?: string | null;
+  errors?: string[];
+  user_query?: string | null;
+}
+
+export interface AgentRunDetail extends AgentRunSummary {
+  state_snapshot_json: AgentRunState;
+}
+
+export interface AgentRunRequest {
+  trigger: AgentRunTrigger;
+  user_query: string | null;
 }

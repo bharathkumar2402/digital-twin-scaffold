@@ -54,10 +54,18 @@ def _diagnose_failure_mode(
 
     predicted_mode: str | None = None
 
-    if temp_diff < 8.6 or air_temp_anom >= 2:
+    if temp_diff < 8.6:
         predicted_mode = "HDF"
         reasons.append(
             f"Heat dissipation deficit detected (temp delta={temp_diff:.1f}K < 8.6K limit)."
+        )
+    elif air_temp_anom >= 2:
+        # Same failure mode, different trigger: the message must say which one fired (it used
+        # to always claim a low temperature difference, even when that reading was normal).
+        predicted_mode = "HDF"
+        reasons.append(
+            f"Repeated air-temperature anomalies in the last 30 days ({air_temp_anom}) "
+            "suggest a heat-dissipation problem."
         )
     elif tool_wear_anom >= 2 or float(factors.get("tool_wear_30d_latest_value", 0.0)) > 200.0:
         predicted_mode = "TWF"

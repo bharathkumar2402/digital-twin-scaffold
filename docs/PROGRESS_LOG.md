@@ -10,6 +10,27 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on the Results page (follow-up to the agent wiring; no issue): new route
+`/facilities/:facilityId/results` (linked from the map; `?upload=` carries the map upload id for the
+back link). Asset health table (risk with the map's colour bands, RUL, vibration verdict; unscored assets
+say "not scored", missing RUL is a dash and never 0), a detail drawer (model + dataset behind each number,
+plus the existing telemetry chart), an Agent analysis panel (optional what-if question, run gated to
+superadmin / tenant_admin / facility_manager, history, five stage cards with asset names instead of ids,
+validation errors always rendered, halted runs shown with the reason and the confidence hidden because it
+belongs to the last agent that set one), and dated static model cards. Backend: `rul_cycles` added to
+`RiskScoreResponse` (it was stored but dropped from the API) with a route test. Tests: 117 frontend
+(vitest; includes helpers, hooks, table, result view, panel, cards, page, role gating, unknown-id and
+missing-stage tolerance), `tsc` and `eslint` clean. Checked in a real browser against the demo plant
+(login, table, drawer, a what-if run, the unknown-asset halt), console clean apart from two React Router
+future-flag warnings. That browser run found two things, both fixed: the risk agent's heat-dissipation
+explanation always claimed "temp delta=10.3K < 8.6K limit" even when it fired on repeated
+air-temperature anomalies (the message now names the trigger that fired; regression test added), and the
+backend's executive-summary text names assets by raw UUID (the UI now substitutes asset names, leaving
+any id that is not one of the facility's assets visible). Also added automatic Testing Library cleanup
+to `src/test/setup.ts` (vitest runs without globals, so rendered components leaked between tests).
+Limits: no facility picker (reach the page from the map or by URL); the "why" text is rule-based, not the
+model's reasoning; model-card numbers are static copies of docs/DATASETS.md.
+
 Note on wiring the agents to the real facility (follow-up to the correction below; no issue): the
 production path now runs the 5-agent pipeline on the facility's real data. `run_pipeline_for_facility`
 (`agent_run_service.py`, used by `POST /facilities/{id}/agent-runs` and `demo_setup`) builds the run
