@@ -65,10 +65,18 @@ Asset health table (from `demo_setup`'s output, or re-print it by re-running wit
 
 ```
 asset                            risk  RUL (cycles)  vibration alarm
-Compressor Engine A (aged)       99.8           3.6              YES
-Compressor Engine B (new)        99.8         115.9               no
-...
+Primary Feed Pump 7              98.7             -                -
+Compressor Engine A (aged)       95.8           3.6              YES
+Turbine Gen 1                     0.8             -                -
+Cooling Fan 2                     0.7             -                -
+Compressor Engine B (new)         0.4         115.9               no
+Heat Exchanger Alpha              0.2             -                -
 ```
+
+Where the risk numbers come from: each asset's latest snapshot is a **real AI4I 2020 record that
+the risk model never trained on** (the rows its own train/test split held out). Pump 7 and the aged
+engine replay real failure records (overstrain); the rest replay healthy ones. The model scores
+that snapshot. On all 2,000 held-out rows it reaches ROC-AUC 0.97.
 
 Agent run through the API (PowerShell):
 
@@ -88,16 +96,18 @@ The pipeline needs no external API key: the agents run deterministic tools (no L
 
 - The models are trained on real, cited datasets (AI4I 2020, NASA C-MAPSS, NASA IMS). They
   classify risk, estimate remaining life and flag anomalies - they do **not** forecast sensor values.
-- They accept specific sensor schemas, not arbitrary data. RUL needs exactly the 24 C-MAPSS
-  channels; vibration needs 20 kHz accelerometer waveforms; both decline (no result) otherwise.
+- They accept specific sensor schemas, not arbitrary data. Risk needs the five AI4I channels; RUL
+  needs exactly the 24 C-MAPSS channels; vibration needs 20 kHz accelerometer waveforms. All three
+  decline (no result) otherwise.
 - The datasets are turbofan engines, a lab bearing rig and a synthetic-but-published machine
   dataset - not factory equipment. Nothing here shows accuracy on a real facility.
 - The live feed is calibrated simulation, because no real facility feed exists.
-- **Known issue: the risk score is not trustworthy in the live demo.** The risk model was
-  trained on single-snapshot AI4I rows but is served on windows of many readings (a
-  training/serving mismatch), and assets without the AI4I sensors are zero-filled. That is why
-  both engines show a risk of 99.8 and the plant assets show about 0.3 regardless of their
-  telemetry. RUL and vibration are not affected. See `docs/PROGRESS_LOG.md`.
+- The risk model scores one simultaneous snapshot of an asset's five AI4I sensors (that is what
+  it was trained on). An asset without those sensors, or with an inconsistent snapshot, gets **no
+  score** (grey on the map) instead of a guess. The demo's snapshots are replayed real records, so
+  they show the pipeline works - not accuracy on your own equipment. (A training/serving
+  mismatch that made live risk scores meaningless was found and fixed while building this demo;
+  details in `docs/PROGRESS_LOG.md`.)
 - The frontend has a map, a telemetry chart and risk colors only; RUL, vibration and the
   agent output are shown through the API and tests (a results page is planned).
 - The vibration detector does not clearly beat a plain RMS threshold, and that comparison rests

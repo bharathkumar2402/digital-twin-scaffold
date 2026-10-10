@@ -10,6 +10,7 @@ service's own logic (feature -> vector -> validated row -> RLS-scoped persistenc
 not re-proving the MinIO round trip.
 """
 
+import functools
 import os
 import subprocess
 import sys
@@ -250,6 +251,8 @@ async def test_score_facility_creates_one_row_per_asset_with_valid_bounds(
     asset_2 = await _make_asset(
         migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump 2"
     )
+    for asset in (asset_1, asset_2):  # only assets with an AI4I snapshot are scoreable
+        await _insert_ai4i_snapshot(migrated_timescale_db, tenant_id=tenant_id, asset_id=asset)
 
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
@@ -279,14 +282,15 @@ async def test_score_facility_creates_one_row_per_asset_with_valid_bounds(
         await verify_session.close()
 
 
-async def test_score_facility_handles_asset_with_no_telemetry(
+async def test_asset_without_an_ai4i_snapshot_is_not_scored_and_does_not_break_scoring(
     migrated_main_db: PostgresContainer,
     migrated_timescale_db: PostgresContainer,
     main_session_factory: async_sessionmaker,
     timescale_session_factory: async_sessionmaker,
 ) -> None:
-    """An asset with zero sensor readings (all windows empty) must still score
-    without crashing - feature_vector.vectorize zero-fills missing windows."""
+    """The model needs the AI4I sensors. An asset without them used to be zero-filled and
+    scored (a confident, meaningless number); it must now get no score at all."""
+    from app.models.risk_score import RiskScore
     from app.services.risk_inference_service import score_facility
 
     tenant_id = await _make_tenant(migrated_main_db, "Tenant B")
@@ -294,6 +298,10 @@ async def test_score_facility_handles_asset_with_no_telemetry(
     await _make_asset(
         migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Lonely Pump"
     )
+    scoreable = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump With Data"
+    )
+    await _insert_ai4i_snapshot(migrated_timescale_db, tenant_id=tenant_id, asset_id=scoreable)
 
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
@@ -305,8 +313,16 @@ async def test_score_facility_handles_asset_with_no_telemetry(
         await main_session.close()
         await timescale_session.close()
 
-    assert len(saved) == 1
+    assert [row.asset_id for row in saved] == [scoreable]
     assert saved[0].factors_json["dependency_neighbor_count"] == 0
+    assert saved[0].factors_json["scored_on_snapshot_at"]
+
+    verify = await _scoped(main_session_factory, tenant_id)
+    try:
+        rows = (await verify.execute(select(RiskScore))).scalars().all()
+        assert {r.asset_id for r in rows} == {scoreable}  # nothing persisted for the other
+    finally:
+        await verify.close()
 
 
 async def test_score_facility_for_another_tenants_facility_id_raises_404(
@@ -382,7 +398,10 @@ async def test_get_latest_risk_scores_returns_only_the_newest_row_per_asset(
 
     tenant_id = await _make_tenant(migrated_main_db, "Tenant E")
     facility_id = await _make_facility(migrated_main_db, tenant_id=tenant_id, name="Plant E")
-    await _make_asset(migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump E")
+    pump_e = await _make_asset(
+        migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump E"
+    )
+    await _insert_ai4i_snapshot(migrated_timescale_db, tenant_id=tenant_id, asset_id=pump_e)
 
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
@@ -469,6 +488,42 @@ async def _insert_telemetry(
         await conn.close()
 
 
+@functools.lru_cache(maxsize=1)
+def _heldout_ai4i_rows() -> list[dict[str, str]]:
+    from app.ml.ai4i_replay import heldout_rows
+
+    csv_path = BACKEND_DIR / "data" / "raw" / "ai4i2020.csv"
+    if not csv_path.exists():
+        pytest.skip("AI4I dataset not present")
+    return heldout_rows(csv_path)
+
+
+async def _insert_ai4i_snapshot(
+    timescale: PostgresContainer,
+    *,
+    tenant_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    failure: bool = False,
+    nth: int = 0,
+    stamp: Any = None,
+) -> None:
+    """Give an asset a real held-out AI4I record as its latest snapshot (it is what makes an
+    asset scoreable: the risk model needs the AI4I sensors)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.ml.ai4i_replay import pick_row, replay_readings
+
+    row = pick_row(_heldout_ai4i_rows(), failure=failure, nth=nth)
+    when = stamp or datetime.now(UTC) - timedelta(minutes=1)
+    readings = replay_readings(row, asset_id, when)
+    await _insert_telemetry(
+        timescale,
+        tenant_id=tenant_id,
+        asset_id=asset_id,
+        rows=[(r.timestamp, r.sensor_type, r.value, r.unit) for r in readings],
+    )
+
+
 def _patch_rul_model(monkeypatch: pytest.MonkeyPatch, config: Any, value: float) -> None:
     from app.services import rul_inference_service
 
@@ -514,6 +569,8 @@ async def test_score_facility_persists_rul_for_assets_with_cmapss_telemetry(
     await _insert_telemetry(
         migrated_timescale_db, tenant_id=tenant_id, asset_id=with_telemetry, rows=rows
     )
+    for asset in (with_telemetry, without_telemetry):  # both scoreable; only one has RUL data
+        await _insert_ai4i_snapshot(migrated_timescale_db, tenant_id=tenant_id, asset_id=asset)
 
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
@@ -627,6 +684,7 @@ async def test_rul_inference_never_reads_another_tenants_telemetry(
 
 async def _score_one_asset(
     migrated_main_db: PostgresContainer,
+    migrated_timescale_db: PostgresContainer,
     main_session_factory: async_sessionmaker,
     timescale_session_factory: async_sessionmaker,
 ) -> tuple[uuid.UUID, Any]:
@@ -637,6 +695,7 @@ async def _score_one_asset(
     asset_id = await _make_asset(
         migrated_main_db, tenant_id=tenant_id, facility_id=facility_id, name="Pump V"
     )
+    await _insert_ai4i_snapshot(migrated_timescale_db, tenant_id=tenant_id, asset_id=asset_id)
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
     try:
@@ -685,7 +744,7 @@ async def test_score_facility_persists_vibration_verdict_with_model_and_dataset(
     monkeypatch.setattr(settings, "vibration_enabled", True)
     monkeypatch.setattr(risk_inference_service, "collect_vibration_outcomes", fake_collect)
     _, row = await _score_one_asset(
-        migrated_main_db, main_session_factory, timescale_session_factory
+        migrated_main_db, migrated_timescale_db, main_session_factory, timescale_session_factory
     )
     f = row.factors_json
     assert f["vibration_alarm"] == 1 and f["vibration_alarm_channels"] == 1
@@ -712,7 +771,7 @@ async def test_object_store_outage_does_not_break_risk_scoring(
     monkeypatch.setattr(settings, "vibration_enabled", True)
     monkeypatch.setattr(vibration_inference_service, "_assess_asset_from_store", boom)
     _, row = await _score_one_asset(
-        migrated_main_db, main_session_factory, timescale_session_factory
+        migrated_main_db, migrated_timescale_db, main_session_factory, timescale_session_factory
     )
     assert 0.0 <= row.score <= 100.0  # scoring still produced a valid, persisted row
     assert not any(k.startswith("vibration_") for k in row.factors_json)

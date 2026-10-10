@@ -25,8 +25,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 
+from app.services import risk_inference_service
 from tests.integration.test_risk_inference_service import (  # noqa: F401 - fixtures
     _dsn,
+    _insert_ai4i_snapshot,
     _make_asset,
     _make_facility,
     _make_tenant,
@@ -51,6 +53,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
+# Captured at import, before the imported autouse `fake_model` fixture patches it out.
+_REAL_RESOLVE_AND_LOAD_MODEL = risk_inference_service._resolve_and_load_model
 
 
 @pytest.fixture(scope="module")
@@ -75,13 +79,19 @@ def real_minio(minio_container: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     # The imported autouse `fake_model` stubs the RUL loader out; this test needs the real one.
     monkeypatch.setattr(rul_inference_service, "load_rul_model", rul_train.load_rul_model)
     monkeypatch.setattr(rul_inference_service, "_MODEL_CACHE", {})
+    monkeypatch.setattr(
+        risk_inference_service, "_resolve_and_load_model", _REAL_RESOLVE_AND_LOAD_MODEL
+    )
+    monkeypatch.setattr(risk_inference_service, "_MODEL_CACHE", {})
     monkeypatch.setattr(vibration_inference_service, "_MODEL_CACHE", {})
 
 
 @pytest.fixture
 def trained_models(real_minio: None) -> dict[str, str]:
     """Train and publish both models from the real datasets, as an operator would."""
-    from scripts import train_rul_model, train_vibration_model
+    from scripts import train_risk_model, train_rul_model, train_vibration_model
+
+    train_risk_model.run(train_risk_model.parse_args(["--seed", "0"]))
 
     rul = train_rul_model.run(train_rul_model.parse_args(["--subset", "FD001"]))
     vib = train_vibration_model.run(train_vibration_model.parse_args([]))
@@ -166,6 +176,14 @@ async def test_simulated_degradation_flows_through_rul_vibration_and_agent3(
     )
     await _insert_rows(migrated_timescale_db, tenant_id, failing, rows_failing)
     await _insert_rows(migrated_timescale_db, tenant_id, healthy, rows_healthy)
+    # Latest AI4I snapshot: a real held-out failure record for the worn engine, a healthy one
+    # for the new engine. This is what the (real, trained) risk model scores.
+    await _insert_ai4i_snapshot(
+        migrated_timescale_db, tenant_id=tenant_id, asset_id=failing, failure=True, nth=0
+    )
+    await _insert_ai4i_snapshot(
+        migrated_timescale_db, tenant_id=tenant_id, asset_id=healthy, failure=False, nth=3
+    )
 
     main_session = await _scoped(main_session_factory, tenant_id)
     timescale_session = await _scoped(timescale_session_factory, tenant_id)
@@ -178,6 +196,9 @@ async def test_simulated_degradation_flows_through_rul_vibration_and_agent3(
         await timescale_session.close()
     by_asset = {row.asset_id: row for row in saved}
     old, new = by_asset[failing], by_asset[healthy]
+
+    # Risk: the real model, on real held-out AI4I records, separates failure from healthy.
+    assert old.score > 50.0 and new.score < 20.0
 
     # RUL: the worn engine is predicted much closer to failure than the new one, and every
     # stored result names its model and dataset.

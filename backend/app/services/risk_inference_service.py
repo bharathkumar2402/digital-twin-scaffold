@@ -10,6 +10,7 @@ Risk Assessment agent will wrap this same function as one of its tools.
 """
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -26,9 +27,14 @@ from app.models.facility import Facility
 from app.models.risk_score import RiskScore
 from app.schemas.ml.asset_features import AssetFeatureSet
 from app.schemas.ml.risk_score import RiskScoreResult
-from app.services.feature_engineering_service import build_facility_features
+from app.services.feature_engineering_service import (
+    build_facility_features,
+    build_snapshot_features,
+)
 from app.services.rul_inference_service import predict_facility_rul
 from app.services.vibration_inference_service import collect_vibration_outcomes, vibration_factors
+
+logger = logging.getLogger("services.risk_inference")
 
 # Loaded lazily and cached per (version-string) - a Celery worker process scores many
 # facilities over its lifetime, and re-fetching the ~small XGBoost artifact from MinIO
@@ -126,6 +132,22 @@ async def score_facility(
         main_session, timescale_session, tenant_id=tenant_id, facility_id=facility_id, now=now
     )
 
+    # The model is trained on single-snapshot AI4I rows, so it is scored on each asset's latest
+    # simultaneous snapshot - not on the windowed stats in `feature_sets`, which stay the
+    # explainability context. An asset without a coherent snapshot gets no score at all
+    # rather than a number the model cannot meaningfully produce.
+    snapshots = await build_snapshot_features(
+        timescale_session, tenant_id=tenant_id, base_features=feature_sets
+    )
+    for features in feature_sets:
+        if snapshots[features.asset_id].features is None:
+            logger.warning(
+                "asset %s not scored: %s",
+                features.asset_id,
+                snapshots[features.asset_id].skip_reason,
+            )
+    feature_sets = [f for f in feature_sets if snapshots[f.asset_id].features is not None]
+
     # Remaining Useful Life (Phase 3b). Never allowed to break risk scoring: an asset with
     # no C-MAPSS-style telemetry, or a facility with no published RUL model, gets no RUL.
     rul_outcomes = await predict_facility_rul(
@@ -145,11 +167,16 @@ async def score_facility(
 
     saved: list[RiskScore] = []
     for features in feature_sets:
-        vector = vectorize(features).reshape(1, -1)
+        snapshot = snapshots[features.asset_id]
+        assert snapshot.features is not None  # filtered above
+        vector = vectorize(snapshot.features).reshape(1, -1)
         probability = float(model.predict_proba(vector)[0, 1])
         score = max(0.0, min(100.0, probability * 100.0))
 
         factors = _build_factors(features)
+        factors["scored_on_snapshot_at"] = (
+            snapshot.snapshot_at.isoformat() if snapshot.snapshot_at else None
+        )
         rul = rul_outcomes[features.asset_id]
         if rul.estimate is not None:
             factors["rul_model_version"] = rul.estimate.model_version

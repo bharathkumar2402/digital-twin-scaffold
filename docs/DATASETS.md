@@ -427,6 +427,19 @@ and a second test fails if the simulator modules import training or model librar
 live in the `vibration-waveforms` bucket under `<tenant_id>/<asset_id>/<channel>/`, a prefix that
 is always built from the caller's tenant, never read by training code.
 
+### Risk model serving input (Phase 3 fix, found during the demo build)
+
+Each AI4I 2020 row is one simultaneous snapshot of one machine, so the risk model was trained on
+feature sets where every sensor window has count 1, stddev 0 and anomaly count 0. It is therefore
+**served on the same form**: the asset's latest simultaneous reading of the five raw sensors (air and
+process temperature, rotational speed, torque, tool wear), with temperature difference and mechanical
+power recomputed from them as in training. Windowed 30/90/365-day statistics are not valid model input
+(the model never saw a window with more than one reading) and are used only for explainability. An asset
+missing a raw sensor, with readings more than 5 minutes apart, or with a non-finite value is not scored.
+Check: held-out ROC-AUC computed through the serving path is 0.9738 (stored test AUC 0.974).
+`app/ml/ai4i_replay.py` replays the held-out rows (the exact split `train_risk_model` uses) as live
+snapshots for demos and end-to-end tests; it is demo-feed code and never an input to training.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

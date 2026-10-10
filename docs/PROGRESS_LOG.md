@@ -10,6 +10,31 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on the risk-model serving fix (follow-up to the demo kit; no issue): the risk model is now
+scored on the same input form it was trained on. `build_snapshot_features`
+(`feature_engineering_service.py`) takes each asset's latest simultaneous reading of the five raw AI4I
+sensors, recomputes temperature difference and mechanical power from them exactly as
+`map_ai4i2020_row` does (reported derived channels are ignored), and builds the feature set through
+the same `build_asset_features_from_readings` training uses; `score_facility` vectorizes that, while
+the windowed features still back the explainability factors (and `GET /features`, unchanged). An asset
+missing any raw sensor, with readings more than 5 minutes apart, or with a non-finite value is NOT
+scored (no `risk_scores` row, reason logged), instead of being zero-filled; RUL and vibration verdicts
+live on that row, so an asset needs the AI4I sensors to appear in risk scoring at all. No retraining:
+the published model already learned this form. Evidence: (a) bit-identical parity between the serving
+and training vectors for all 339 failure records + 1,500 others (`tests/unit/test_snapshot_features.py`);
+(b) held-out AUC computed through the SERVING path is 0.9738 against the stored 0.974, healthy rows
+median 0.6, failing rows median 98.2; (c) DB-backed tests (`tests/integration/test_snapshot_scoring.py`)
+with 60 hours of noisy history and spoofed derived channels, skips for missing/incoherent snapshots, two
+cross-tenant attacks, and a recording model proving the input has count=1/stddev=0 while the factors still
+show the real history; restoring the old windowed input makes (c) fail with `80.0 == 1.0`. Existing
+tests that assumed every asset gets a score were changed on purpose. The demo and the end-to-end test
+now give every asset a REAL held-out AI4I record (`app/ml/ai4i_replay.py`, the exact rows the model's own
+train/test split set aside, checked by a test against the real `train_risk_model` split) as its latest
+snapshot, and the end-to-end test trains and uses the real risk model. Demo result: troubled pump 98.7,
+aged engine 95.8 (RUL 3.6, vibration alarm), new engine 0.4 (RUL 115.9), others 0.2-0.8.
+Still true: AI4I is a published machine dataset, not factory equipment, and the replayed records show
+the pipeline works, not accuracy on a real facility.
+
 Note on the demo kit (docs/DEMO.md, `scripts/demo_setup.py`, `docker-compose.demo.yml`; no issue): a
 self-contained local stack (Postgres, TimescaleDB, Redis, MinIO) and a one-command idempotent
 bootstrap that trains the three models from the real data, seeds a tenant/facility/6 assets,
@@ -20,8 +45,8 @@ after `commit()`; the RLS GUC is SET LOCAL, so under the real `app_role` the ref
 `POST /facilities/{id}/agent-runs` would have returned an error even though the row was saved.
 Earlier tests did not run as the RLS-enforced role. The new test
 (`tests/integration/test_agent_run_persistence_rls.py`) fails with the exact production error when
-the refresh is restored, and also checks tenant B cannot read tenant A's runs. (2) An UNFIXED defect
-in the risk model's live serving: it was trained on single-snapshot AI4I rows (every window has
+the refresh is restored, and also checks tenant B cannot read tenant A's runs. (2) A defect
+in the risk model's live serving (FIXED in the next note up; kept here as the record of what was found): it was trained on single-snapshot AI4I rows (every window has
 count=1, stddev=0, anomaly_count=0) but is served on real windows (e.g. count=90, stddev=11,
 anomaly_count=13 for the same sensor), and an asset without the AI4I sensors is zero-filled. In the
 demo this gives both engines a risk of 99.8 (including the new one) and the plant assets ~0.3

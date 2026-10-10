@@ -1,5 +1,7 @@
+import math
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,7 +15,17 @@ from app.models.asset import Asset
 from app.models.asset_dependency import AssetDependency
 from app.models.facility import Facility
 from app.schemas.ml.asset_features import AssetFeatureSet, SensorWindowStats
-from app.services.ml.dataset_mapping import MappedMachineRecord
+from app.services.ml.dataset_mapping import (
+    SENSOR_AIR_TEMP_K,
+    SENSOR_MECHANICAL_POWER,
+    SENSOR_PROC_TEMP_K,
+    SENSOR_ROTATIONAL_SPEED,
+    SENSOR_TEMP_DIFF,
+    SENSOR_TOOL_WEAR,
+    SENSOR_TORQUE,
+    MappedMachineRecord,
+    calculate_mechanical_power,
+)
 
 # Threshold for the window-local anomaly count in SensorWindowStats - see that
 # schema's docstring for why this is a separate concept from task 3.4's live detector.
@@ -148,9 +160,7 @@ def compute_window_stats_from_readings(
         latest_val: float | None = latest_reading[0]
 
         if std_val is not None and std_val > 0.0:
-            anomaly_cnt = sum(
-                1 for v in vals if abs(v - mean_val) > (anomaly_threshold * std_val)
-            )
+            anomaly_cnt = sum(1 for v in vals if abs(v - mean_val) > (anomaly_threshold * std_val))
         else:
             anomaly_cnt = 0
 
@@ -471,3 +481,129 @@ async def build_facility_features(
         )
         for asset_id in asset_ids
     ]
+
+
+# ---- Latest-snapshot features: what the risk model was actually trained on ------------------
+#
+# The risk model is trained on AI4I 2020 rows, and each row is ONE simultaneous snapshot of
+# one machine (every sensor window has count=1, stddev=0, anomaly_count=0). Serving it the
+# 30/90/365-day windowed stats of a live asset (count=90, stddev=11, ...) feeds it values it
+# has never seen, so the score is meaningless. Scoring therefore builds its input from the
+# asset's latest simultaneous reading of the model's sensors, through the very same
+# `build_asset_features_from_readings` that training uses. The windowed features
+# (`build_asset_features`) are unchanged and still back the explainability factors.
+
+SNAPSHOT_RAW_SENSORS: tuple[str, ...] = (
+    SENSOR_AIR_TEMP_K,
+    SENSOR_PROC_TEMP_K,
+    SENSOR_ROTATIONAL_SPEED,
+    SENSOR_TORQUE,
+    SENSOR_TOOL_WEAR,
+)
+# AI4I readings are simultaneous; live channels are posted in one batch. Anything further
+# apart than this is not one snapshot of the machine.
+SNAPSHOT_MAX_SPREAD = timedelta(minutes=5)
+
+SNAPSHOT_MISSING_SENSORS = "missing_sensors"
+SNAPSHOT_INCOHERENT = "snapshot_timestamps_too_far_apart"
+SNAPSHOT_INVALID = "non_finite_value"
+
+_LATEST_READINGS_SQL = text(
+    """
+    SELECT DISTINCT ON (asset_id, sensor_type) asset_id, sensor_type, value, timestamp
+    FROM sensor_readings
+    WHERE tenant_id = :tenant_id
+      AND asset_id = ANY(CAST(:asset_ids AS uuid[]))
+      AND sensor_type = ANY(:sensor_types)
+    ORDER BY asset_id, sensor_type, timestamp DESC
+    """
+)
+
+
+@dataclass(frozen=True)
+class SnapshotOutcome:
+    """Either the model-input feature set for the asset's latest snapshot, or why not."""
+
+    features: AssetFeatureSet | None
+    snapshot_at: datetime | None = None
+    skip_reason: str | None = None
+
+
+def snapshot_readings(
+    latest: dict[str, tuple[float, datetime]],
+) -> tuple[list[dict[str, Any]], datetime] | str:
+    """Seven AI4I readings (5 raw + 2 derived, all at the snapshot time), or a skip reason.
+
+    The derived channels are recomputed from the raw five exactly as `map_ai4i2020_row` does
+    for training, never taken from telemetry: a live feed that reports them independently can
+    be physically inconsistent, and the model was trained only on consistent rows.
+    """
+    missing = [t for t in SNAPSHOT_RAW_SENSORS if t not in latest]
+    if missing:
+        return f"{SNAPSHOT_MISSING_SENSORS}:{','.join(missing)}"
+    values = {t: latest[t][0] for t in SNAPSHOT_RAW_SENSORS}
+    if not all(math.isfinite(v) for v in values.values()):
+        return SNAPSHOT_INVALID
+    stamps = [_normalize_dt(latest[t][1]) for t in SNAPSHOT_RAW_SENSORS]
+    if max(stamps) - min(stamps) > SNAPSHOT_MAX_SPREAD:
+        return SNAPSHOT_INCOHERENT
+    at = max(stamps)
+    values[SENSOR_TEMP_DIFF] = round(values[SENSOR_PROC_TEMP_K] - values[SENSOR_AIR_TEMP_K], 2)
+    values[SENSOR_MECHANICAL_POWER] = calculate_mechanical_power(
+        values[SENSOR_TORQUE], values[SENSOR_ROTATIONAL_SPEED]
+    )
+    return [{"sensor_type": t, "value": v, "timestamp": at} for t, v in values.items()], at
+
+
+async def build_snapshot_features(
+    timescale_session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    base_features: Sequence[AssetFeatureSet],
+) -> dict[uuid.UUID, SnapshotOutcome]:
+    """Model-input features for each asset's latest simultaneous snapshot.
+
+    `base_features` supplies the non-sensor context (status, age, neighbors) so those columns
+    carry the asset's real values. One query for all assets; the timescale session must be
+    RLS-scoped to `tenant_id`, and the query filters on it too (defense in depth).
+    """
+    if not base_features:
+        return {}
+    result = await timescale_session.execute(
+        _LATEST_READINGS_SQL,
+        {
+            "tenant_id": tenant_id,
+            "asset_ids": [f.asset_id for f in base_features],
+            "sensor_types": list(SNAPSHOT_RAW_SENSORS),
+        },
+    )
+    latest_by_asset: dict[uuid.UUID, dict[str, tuple[float, datetime]]] = {}
+    for row in result.all():
+        latest_by_asset.setdefault(row.asset_id, {})[row.sensor_type] = (
+            float(row.value),
+            row.timestamp,
+        )
+
+    outcomes: dict[uuid.UUID, SnapshotOutcome] = {}
+    for base in base_features:
+        built = snapshot_readings(latest_by_asset.get(base.asset_id, {}))
+        if isinstance(built, str):
+            outcomes[base.asset_id] = SnapshotOutcome(None, None, built)
+            continue
+        readings, at = built
+        outcomes[base.asset_id] = SnapshotOutcome(
+            build_asset_features_from_readings(
+                base.asset_id,
+                readings,
+                tenant_id=base.tenant_id,
+                facility_id=base.facility_id,
+                computed_at=at,
+                asset_status=base.asset_status,
+                asset_age_days=base.asset_age_days,
+                dependency_neighbor_count=base.dependency_neighbor_count,
+                dependency_neighbor_offline_count=base.dependency_neighbor_offline_count,
+                dependency_neighbor_maintenance_count=base.dependency_neighbor_maintenance_count,
+            ),
+            at,
+        )
+    return outcomes

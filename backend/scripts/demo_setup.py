@@ -13,8 +13,9 @@ every run; the asset/telemetry/waveform backfill only runs while the facility ha
   2. publish the risk, RUL and vibration models to MinIO (trained from the real datasets)
   3. seed the demo tenant, admin user and facility
   4. create assets with a dependency chain, and a placeholder (TILED) floor-plan row
-  5. backfill telemetry: AI4I-calibrated scalars for the plant assets, plus two engines from
-     the calibrated degradation simulator (one run to failure, one new) with waveforms
+  5. backfill telemetry: AI4I-calibrated scalar history for the plant assets, two engines from
+     the calibrated degradation simulator (one run to failure, one new) with waveforms, and for
+     every asset a real held-out AI4I record as its latest snapshot (what the risk model scores)
   6. score the facility (risk + RUL + vibration verdict), then run the 5-agent pipeline once
 
 Everything simulated here is calibrated from the real IMS / C-MAPSS / AI4I data
@@ -41,6 +42,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.db import async_session_factory, timescale_session_factory
 from app.core.tenant_context import scope_session_to_tenant
+from app.ml.ai4i_replay import heldout_rows, pick_row, replay_readings
 from app.ml.degradation_sim import DegradationSimulator
 from app.ml.engine_sim import channel_telemetry
 from app.ml.sim_calibration import calibrate, load_calibration, save_calibration
@@ -62,6 +64,18 @@ logger = logging.getLogger("demo_setup")
 BACKEND = Path(__file__).resolve().parents[1]
 SIM_SEED = 11  # the seed verified in tests/integration/test_degradation_e2e.py
 HISTORY_TICKS_PLANT = 90
+AI4I_CSV = BACKEND / "data" / "raw" / "ai4i2020.csv"
+# Each asset's latest snapshot is a REAL held-out AI4I record (rows the risk model never
+# fitted): (failure?, nth matching row). The troubled pump and the aged engine replay real
+# failure records; everything else replays healthy ones.
+SNAPSHOT_RECORDS: dict[str, tuple[bool, int]] = {
+    "Primary Feed Pump 7": (True, 1),
+    "Heat Exchanger Alpha": (False, 0),
+    "Turbine Gen 1": (False, 1),
+    "Cooling Fan 2": (False, 2),
+    "Compressor Engine A (aged)": (True, 0),
+    "Compressor Engine B (new)": (False, 3),
+}
 NEW_ENGINE_TICKS = 40
 BATCH = 1000
 
@@ -202,6 +216,18 @@ async def backfill_plant_telemetry(
     await _ingest(tenant_id, readings)
 
 
+async def backfill_snapshots(
+    tenant_id: uuid.UUID, ids: dict[str, uuid.UUID], end: datetime
+) -> None:
+    """Latest AI4I snapshot per asset: the input the risk model is scored on."""
+    rows = heldout_rows(AI4I_CSV)
+    stamp = end - timedelta(minutes=1)
+    readings: list[SensorReadingIn] = []
+    for name, (failure, nth) in SNAPSHOT_RECORDS.items():
+        readings.extend(replay_readings(pick_row(rows, failure=failure, nth=nth), ids[name], stamp))
+    await _ingest(tenant_id, readings)
+
+
 def _simulate_engine(
     sim: DegradationSimulator, asset_id: uuid.UUID, until_failure: bool
 ) -> tuple[list[dict[str, float]], list[dict[int, np.ndarray]]]:
@@ -328,6 +354,7 @@ async def main_async(args: argparse.Namespace) -> None:
         ids = await create_assets_and_map(tenant_id, facility_id)
         await backfill_plant_telemetry(tenant_id, ids, end)
         await backfill_engines(tenant_id, ids, cal, end)
+        await backfill_snapshots(tenant_id, ids, end)
     await score_and_run_pipeline(tenant_id, facility_id, not args.no_pipeline)
     await summarize(tenant_id, facility_id, {v: k for k, v in ids.items()})
 
