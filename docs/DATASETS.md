@@ -328,6 +328,65 @@ Consequences for task 3b.6: false-alarm rates must be measured only on the pre-f
 and the set 3 drift reported rather than hidden; detection on "healthy" channels late in a run
 is not a false alarm; and lead-time results rest on four failure events.
 
+### Vibration anomaly model training and results (Phase 3b, task 6)
+
+Code: `backend/app/ml/vibration_train.py`, `backend/scripts/train_vibration_model.py`
+(`python -m scripts.train_vibration_model`). Isolation Forest (200 trees) fitted on healthy,
+per-channel baseline-normalised features (task 3b.5 features, **all 17, fixed up front and not
+selected on failure outcomes**). The forest is stored as `.npz` tree arrays and scored by a numpy
+re-implementation (`ForestScorer`) that is tested to match scikit-learn's `score_samples` to
+1e-12 - no pickle is deserialised from the model store.
+
+**Protocol (leave-one-test-out).** For each of the three IMS tests, the forest and alarm
+threshold are fitted on the healthy baseline windows (first 15 % of each channel) of the *other
+two* tests - 70 % of each window fits the forest, the remaining 30 % calibrates the threshold
+(99.5th percentile) - and the held-out test is judged. A channel alarms after 5 consecutive
+snapshots (50 min) above threshold. Everything after the baseline window is used only for
+evaluation. The deployed model is refitted on all three tests' baseline windows. Two baselines run
+with the identical rule: a threshold on RMS z-score and on kurtosis z-score.
+
+**Metrics.** *False alarm*: a sustained alarm between the end of the baseline window and 40 % of
+the run (the "early-life" window). *Detection*: the first sustained alarm on any channel of a
+documented failing bearing after the baseline window (flagged if it falls inside the early-life
+window, in which case it is a false alarm, not a detection). *Lead time*: from that alarm to the end
+of the recording, which is when the test was stopped, **not** a labelled failure instant.
+
+| Detector (seed 0) | Failing bearings detected | Median lead | Early-life false-alarm channels | Median alarm persistence |
+|---|---|---|---|---|
+| **Isolation Forest** | 4 / 4 | 115 h (39 % of run left) | 2 / 16 | 0.98 |
+| RMS threshold | 4 / 4 | 101 h | 3 / 16 | 0.98 |
+| Kurtosis threshold | 2 / 4 outside early life (set 1's two alarms fall inside it) | 41 h | 3 / 16 | 0.63 |
+
+Per bearing, lead hours (Isolation Forest / RMS threshold): set 1 bearing 3: 276 / 49; set 1
+bearing 4: 156 / 127; set 2 bearing 1: 74 / 74; set 3 bearing 3: 59 / 511.
+
+**Read these numbers carefully.**
+- **The forest does not clearly beat a plain RMS threshold.** It wins on set 1 bearing 3, ties on
+  set 2, and loses on set 3 on the face of it. With four events this is not a statistically
+  meaningful comparison.
+- **Lead time can be inflated by spurious alarms.** The RMS threshold's 511 h on set 3 comes from
+  a brief blip (z ~2.5, 27 March) that falls back to ~1 until the real rise in the last days; it is
+  not early warning. Lead time alone cannot tell a true early detection from a mid-run false alarm,
+  because there is no ground-truth degradation onset in this dataset. The *persistence* column (share
+  of snapshots after the first alarm that stay above threshold) was added after seeing this as a
+  post-hoc diagnostic; it is not used for any threshold or gate.
+- **Seed sensitivity.** Over 12 seeds: all four bearings detected in 11 of 12 (seed 4 detected 3);
+  early-life false-alarm channels 2-4 of 16; median lead 74-174 h. The swing is almost entirely
+  set 1 bearing 4 (about 157 h or about 270 h depending on the seed, because the 99.5th-percentile
+  threshold is estimated from a few hundred healthy points). Sets 2 (74 h) and 3 (~58 h) are stable.
+  Treat the headline lead time as a range, not a number.
+- **Cross-talk:** on sets 2 and 3 the non-failing channels also alarm late in the run (the failing
+  bearing's vibration reaches them); those alarms are not counted as false alarms.
+- **Set 3 baseline drift** (healthy channels 2 and 4) is inside the false-alarm accounting only up to
+  40 % of the run.
+
+**Publish gates (CLI defaults):** at least 3 of 4 failing bearings detected and at most 25 % of
+channels with an early-life false alarm (held-out evaluation). Seed 0 and the 11 seeds that
+detected 4 satisfy them with margin on detection; false-alarm fraction sits at 0.12-0.25.
+
+**Limitations:** one lab rig at fixed speed and load; four documented failure events; lead time
+measured against the end of the recording; threshold and lead times are seed-dependent as above.
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

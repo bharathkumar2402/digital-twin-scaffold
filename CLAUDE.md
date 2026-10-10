@@ -185,7 +185,7 @@ rather than building it — that scope boundary is deliberate and documented in
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine),
 and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra ML models) is next, then Phase 5.
 
-- Next task: **Phase 3b, task 6: Train vibration anomaly model** (3b.1-3b.5 closed) (extra models inserted before Phase 5; see `docs/PHASE_PLAN.md`). After Phase 3b: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
+- Next task: **Phase 3b, task 7: Inference services & agent tools** (3b.1-3b.6 closed) (extra models inserted before Phase 5; see `docs/PHASE_PLAN.md`). After Phase 3b: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
   every table in the main Postgres and TimescaleDB databases has RLS enabled and a tenant_id policy).
 
 Detailed per-task session notes (what was built, gaps found, how each task was
