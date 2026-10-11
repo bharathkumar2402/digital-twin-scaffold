@@ -11,7 +11,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useLatestPlan } from "../hooks/useLatestPlan";
 import { canRunAnalyses } from "../lib/roles";
-import { buildWorkPlan, formatMinutes, planAge } from "../lib/work";
+import { buildWorkPlan, formatDay, formatMinutes, groupLaterByDay, planAge } from "../lib/work";
 
 // What to do today: the latest completed analysis turned into ordered stops per technician.
 // Read-only for everyone. The roster is not linked to user accounts yet, so every technician's route
@@ -71,7 +71,7 @@ export function FacilityWorkPage(): React.JSX.Element {
         </EmptyState>
       );
     }
-    if (work.technicians.length === 0 && work.unassigned.length === 0) {
+    if (work.technicians.length === 0 && work.unassigned.length === 0 && work.later.length === 0) {
       return (
         <div className="all-clear" role="status">
           <strong>Nothing to do.</strong> The latest analysis scheduled no maintenance.
@@ -100,7 +100,8 @@ export function FacilityWorkPage(): React.JSX.Element {
         {work.unassigned.length > 0 && (
           <Section title="Not assigned">
             <p className="scope-note">
-              These scheduled jobs did not fit anyone&rsquo;s route. They will not happen unless someone takes them.
+              These jobs are due for this shift but did not fit anyone&rsquo;s route (or no one has the
+              skill). They will not happen unless someone takes them.
             </p>
             <ul>
               {work.unassigned.map((task) => (
@@ -109,6 +110,22 @@ export function FacilityWorkPage(): React.JSX.Element {
                 </li>
               ))}
             </ul>
+          </Section>
+        )}
+        {work.later.length > 0 && (
+          <Section title="Scheduled for later">
+            <details className="how-decided">
+              <summary>
+                {work.later.length} more {work.later.length === 1 ? "job" : "jobs"} on later days
+                {work.later[0] ? ` (next: ${formatDay(work.later[0].scheduledDate)})` : ""}
+              </summary>
+              {groupLaterByDay(work.later).map((group) => (
+                <p key={group.date} style={{ fontSize: 13, margin: "6px 0" }}>
+                  <strong>{formatDay(group.date)}:</strong>{" "}
+                  {group.tasks.map((t) => `${t.assetName} (${t.priority})`).join(", ")}
+                </p>
+              ))}
+            </details>
           </Section>
         )}
       </>
@@ -124,7 +141,8 @@ export function FacilityWorkPage(): React.JSX.Element {
         </div>
         {plan.run && age && (
           <p className={age.stale ? "stale-plan" : "scope-note"} role={age.stale ? "alert" : undefined}>
-            Plan from {new Date(plan.run.created_at).toLocaleString()}.
+            Plan from {new Date(plan.run.created_at).toLocaleString()}
+            {work?.dispatchDate ? `, for the shift of ${formatDay(work.dispatchDate)}` : ""}.
             {age.stale && " This plan is more than a day old and may be out of date."}
           </p>
         )}

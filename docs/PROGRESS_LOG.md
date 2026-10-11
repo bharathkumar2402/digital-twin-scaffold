@@ -62,7 +62,7 @@ plant (old /results URL redirects via sign-in to /overview; floor card -> /asset
 reason, next action, Details (opens Assets with `?asset=<id>`, which clears itself) and Show on map; an all-clear state
 that says how many assets were never scored. Tests: 276 frontend; checked live. U5 (done): Work tab (technician landing; `lib/work.ts` turns the latest completed run into ordered stops, parts-to-bring with
 shortage flags, and a "Not assigned" list; read-only; every technician's route is shown because accounts are not linked to
-technician ids yet). FOUND BY U5 (open, not fixed): the Route Optimization agent is priority-blind - `route_solver_tool.py`
+technician ids yet). FOUND BY U5 (FIXED, see the routing note below): the Route Optimization agent was priority-blind - `route_solver_tool.py`
 uses one flat drop penalty (1,000,000) for every task and one technician has a 480-minute shift, so on the Meridian demo
 run it routed 3 LOW-priority jobs and left 41 tasks unassigned, including the critical Air Compressor AC-1 and three
 high-priority ones. Fix needs priority-weighted drop penalties plus a test (Phase 4 agent change; extra scrutiny).
@@ -86,6 +86,19 @@ so AC-1 climbs 7.7 -> 73.3 -> 95.8 and healthy machines stay flat; the Phase 3 s
 Open scalability note: `get_latest_risk_scores` loads ALL history rows into memory to keep the newest per asset; switch it to the same
 window/DISTINCT ON approach before history grows. Planned next:
 U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
+
+Note on the routing fix (found by the Work tab in U5; no issue): two causes. (1) `route_solver_tool.py` gave every task the same
+drop penalty, so one 8 h shift filled with the MOST jobs (short low-priority inspections) and left the critical AC-1 out. Now drop
+penalties are priority-weighted (low 1e5, medium 1e6, high 1e7, critical 1e8: each 10x the last, the lowest above any route cost, so
+work that fits is never dropped; a critical outweighs two highs; unknown/missing priority = medium). (2) The agent routed the whole
+30-day schedule into ONE shift, so most jobs were reported "unassigned" although they were scheduled for later days. Now
+`select_due_tasks` routes only tasks due on or before the EARLIEST scheduled date (a missing/unreadable date counts as due, never
+silently dropped); `unassigned_task_ids` therefore means only due-but-did-not-fit. The Work tab mirrors this: "Not assigned" = due
+but unrouted; a collapsed "Scheduled for later" section groups the rest by day. Tests: 33 new solver/selection/agent tests (real
+OR-Tools, input orders rotated; mutation-checked: restoring the flat penalty and the route-everything behaviour fails 16 of them),
+frontend work.ts/page tests (401 total). Demo re-run: AC-1 (critical) is today's one stop, 43 jobs scheduled later. NOT changed,
+deliberately (product decisions): the maintenance agent still schedules a routine task for every asset, so the parts demand counts
+all of them ("need 41, have 6"); only one technician is on the demo roster.
 
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence

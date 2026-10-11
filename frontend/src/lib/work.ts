@@ -43,10 +43,26 @@ export interface UnassignedTask {
   priority: RiskTier;
 }
 
-export interface WorkPlan {
-  technicians: TechnicianPlan[];
-  unassigned: UnassignedTask[];
+export interface LaterTask extends UnassignedTask {
+  scheduledDate: string;
 }
+
+export interface WorkPlan {
+  // The day of the shift being planned: the earliest date in the schedule (normally today).
+  dispatchDate: string | null;
+  technicians: TechnicianPlan[];
+  // Due on or before the shift date but not in any route (did not fit, or no one has the skill).
+  unassigned: UnassignedTask[];
+  // Scheduled for a later day. Not a problem: the maintenance schedule spreads work over weeks.
+  later: LaterTask[];
+}
+
+// "2026-10-12" from an ISO date or datetime string; null when it is not one.
+function isoDay(value: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
+}
+
+const PRIORITY_ORDER: Record<RiskTier, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 // The newest run that finished normally. The API returns newest first; a failed or halted run has no
 // trustworthy plan, so it is skipped rather than shown.
@@ -91,18 +107,56 @@ export function buildWorkPlan(state: AgentRunState, assetsById: Map<string, Asse
       }),
   }));
 
-  // A scheduled task nobody is routed to is work that would silently never happen.
+  // The shift is the earliest scheduled day. Mirrors the backend: only work due on or before it is
+  // routed, so a job on a later day is "scheduled later", never "unassigned". A date that cannot
+  // be read counts as due, so nothing is quietly hidden.
+  const days = schedule.map((task) => isoDay(task.scheduled_date));
+  const known = days.filter((d): d is string => d !== null).sort();
+  const dispatchDate = known.length > 0 ? known[0] : null;
+
   const routed = new Set(technicians.flatMap((t) => t.stops.map((s) => s.taskId)));
-  const unassigned = schedule
-    .filter((task) => !routed.has(task.item_id))
-    .map((task) => ({
+  const unassigned: UnassignedTask[] = [];
+  const later: LaterTask[] = [];
+  schedule.forEach((task, i) => {
+    if (routed.has(task.item_id)) return;
+    const entry = {
       taskId: task.item_id,
       assetId: task.asset_id,
       assetName: assetsById.get(task.asset_id)?.name ?? "Unknown asset",
       priority: task.priority,
-    }));
+    };
+    const day = days[i];
+    if (dispatchDate !== null && day !== null && day > dispatchDate) {
+      later.push({ ...entry, scheduledDate: day });
+    } else {
+      unassigned.push(entry);
+    }
+  });
+  later.sort(
+    (a, b) =>
+      a.scheduledDate.localeCompare(b.scheduledDate) ||
+      PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+      a.assetName.localeCompare(b.assetName)
+  );
 
-  return { technicians, unassigned };
+  return { dispatchDate, technicians, unassigned, later };
+}
+
+// The later jobs grouped by day, in date order (they arrive sorted by date already).
+export function groupLaterByDay(later: LaterTask[]): { date: string; tasks: LaterTask[] }[] {
+  const groups: { date: string; tasks: LaterTask[] }[] = [];
+  for (const task of later) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === task.scheduledDate) last.tasks.push(task);
+    else groups.push({ date: task.scheduledDate, tasks: [task] });
+  }
+  return groups;
+}
+
+// "Oct 14" from "2026-10-14", read as a calendar day (no timezone shift).
+export function formatDay(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 export function formatMinutes(minutes: number): string {

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from datetime import date
 from typing import Any
 
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
@@ -36,6 +37,56 @@ DEFAULT_TECHNICIANS: list[dict[str, Any]] = [
         "depot": (0.0, 0.0),
     },
 ]
+
+# What it costs the solver to leave a task out, by the task's priority. Each level is 10x the one
+# below, so one critical job outweighs a pile of lower ones, and the lowest level is far above the
+# most a route can cost (a 480-minute shift plus slack is ~54,000 solver units), so a task that fits
+# is never dropped just to save travel. Without this every task cost the same to drop and the solver
+# simply maximised the NUMBER of jobs, filling a shift with short low-priority work and leaving
+# the critical job out.
+PRIORITY_DROP_PENALTY: dict[str, int] = {
+    "low": 100_000,
+    "medium": 1_000_000,
+    "high": 10_000_000,
+    "critical": 100_000_000,
+}
+DEFAULT_PRIORITY = "medium"
+
+
+def drop_penalty_for(task: dict[str, Any]) -> int:
+    """The penalty for not serving `task`. A missing or unknown priority counts as medium."""
+    priority = str(task.get("priority") or DEFAULT_PRIORITY).lower()
+    return PRIORITY_DROP_PENALTY.get(priority, PRIORITY_DROP_PENALTY[DEFAULT_PRIORITY])
+
+
+def _as_date(value: Any) -> date | None:
+    """A schedule date as a `date`, or None if it is missing or unreadable."""
+    if isinstance(value, date):
+        return value.date() if hasattr(value, "date") else value
+    if isinstance(value, str) and len(value) >= 10:
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def select_due_tasks(tasks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], date | None]:
+    """The tasks to dispatch in the next shift, and that shift's date.
+
+    The maintenance schedule deliberately spreads work over 30 days, so only the tasks due on or
+    before the EARLIEST scheduled date belong in one shift; the rest are scheduled for later days
+    (they are not "unassigned"). A task whose date is missing or unreadable counts as due, so
+    work is never silently dropped. Order is preserved.
+    """
+    dates = [_as_date(t.get("scheduled_date")) for t in tasks]
+    known = [d for d in dates if d is not None]
+    if not known:
+        return list(tasks), None
+    dispatch_date = min(known)
+    due = [t for t, d in zip(tasks, dates, strict=True) if d is None or d <= dispatch_date]
+    return due, dispatch_date
+
 
 MULTI_TECHNICIAN_ROSTER: list[dict[str, Any]] = [
     {
@@ -163,10 +214,12 @@ def solve_cvrp_routes(
         name="Time",
     )
 
-    # 5. Allow dropping tasks with penalty so solver finds best partial solution if overloaded
-    drop_penalty = 1_000_000
+    # 5. Allow dropping tasks, but at a cost that grows with priority, so when the shift is too
+    # short it is the least urgent work that gets left out, never the critical job.
     for node_idx in range(1, num_locations):
-        routing.AddDisjunction([manager.NodeToIndex(node_idx)], drop_penalty)
+        routing.AddDisjunction(
+            [manager.NodeToIndex(node_idx)], drop_penalty_for(tasks[node_idx - 1])
+        )
 
     # 6. Apply Technician Skill Matching
     for node_idx in range(1, num_locations):

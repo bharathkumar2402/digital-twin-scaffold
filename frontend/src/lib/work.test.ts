@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentRunState, AgentRunSummary, Asset } from "../types/api";
-import { buildWorkPlan, formatMinutes, latestCompletedRun, planAge } from "./work";
+import {
+  buildWorkPlan,
+  formatDay,
+  formatMinutes,
+  groupLaterByDay,
+  latestCompletedRun,
+  planAge,
+} from "./work";
 
 const asset = (id: string, name: string): Asset => ({
   id,
@@ -43,11 +50,17 @@ function state(over: Partial<AgentRunState>): AgentRunState {
   };
 }
 
-const task = (id: string, assetId: string, parts: { part_id: string; part_name: string; quantity: number }[] = []) => ({
+const task = (
+  id: string,
+  assetId: string,
+  parts: { part_id: string; part_name: string; quantity: number }[] = [],
+  scheduledDate = "2026-10-12",
+  priority: "low" | "medium" | "high" | "critical" = "high"
+) => ({
   item_id: id,
   asset_id: assetId,
-  scheduled_date: "2026-10-12",
-  priority: "high" as const,
+  scheduled_date: scheduledDate,
+  priority,
   estimated_duration_hours: 2,
   required_technician_skills: [],
   required_parts: parts,
@@ -175,12 +188,126 @@ describe("buildWorkPlan", () => {
   });
 
   it("copes with a snapshot that has no routes, schedule or gaps (null fields)", () => {
-    expect(buildWorkPlan(state({}), assetsById)).toEqual({ technicians: [], unassigned: [] });
+    expect(buildWorkPlan(state({}), assetsById)).toEqual({
+      dispatchDate: null,
+      technicians: [],
+      unassigned: [],
+      later: [],
+    });
   });
 
   it("keeps a stop whose task is missing from the schedule, without a priority", () => {
     const plan = buildWorkPlan(state({ dispatch_routes: [route([stop(1, "a1", "unknown-task")])] }), assetsById);
     expect(plan.technicians[0].stops[0]).toMatchObject({ priority: null, scheduledDate: null, parts: [] });
+  });
+});
+
+describe("buildWorkPlan: due now versus scheduled for later", () => {
+  const route1 = route([stop(1, "a1", "t1")]);
+
+  it("treats the earliest scheduled day as the shift and splits the rest into 'later'", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [
+          task("t1", "a1", [], "2026-10-12"),
+          task("due-not-routed", "a2", [], "2026-10-12"),
+          task("future", "a2", [], "2026-10-14", "low"),
+        ],
+        dispatch_routes: [route1],
+      }),
+      assetsById
+    );
+    expect(plan.dispatchDate).toBe("2026-10-12");
+    expect(plan.unassigned.map((t) => t.taskId)).toEqual(["due-not-routed"]);
+    expect(plan.later.map((t) => [t.taskId, t.scheduledDate])).toEqual([["future", "2026-10-14"]]);
+  });
+
+  it("never calls a future job 'unassigned', so the shift page does not cry wolf", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [
+          task("t1", "a1", [], "2026-10-12"),
+          ...Array.from({ length: 30 }, (_, i) => task(`low-${i}`, "a2", [], "2026-10-26", "low")),
+        ],
+        dispatch_routes: [route1],
+      }),
+      assetsById
+    );
+    expect(plan.unassigned).toEqual([]);
+    expect(plan.later).toHaveLength(30);
+  });
+
+  it("includes the shift day itself and anything earlier (overdue) as due, not later", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [task("overdue", "a1", [], "2026-10-10"), task("today", "a2", [], "2026-10-12")],
+        dispatch_routes: [],
+      }),
+      assetsById
+    );
+    expect(plan.dispatchDate).toBe("2026-10-10");
+    expect(plan.unassigned.map((t) => t.taskId)).toEqual(["overdue"]);
+    expect(plan.later.map((t) => t.taskId)).toEqual(["today"]);
+  });
+
+  it("orders later jobs by day, then priority, then name", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [
+          task("first", "a1", [], "2026-10-12"),
+          task("z-low", "a2", [], "2026-10-15", "low"),
+          task("b-high", "a2", [], "2026-10-14", "high"),
+          task("a-low", "a1", [], "2026-10-14", "low"),
+          task("c-crit", "a2", [], "2026-10-14", "critical"),
+        ],
+        dispatch_routes: [route1],
+      }),
+      assetsById
+    );
+    expect(plan.later.map((t) => t.taskId)).toEqual(["c-crit", "b-high", "a-low", "z-low"]);
+  });
+
+  it("keeps a job with an unreadable date in 'unassigned' (due) rather than hiding it as later", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [task("t1", "a1", [], "2026-10-12"), task("weird", "a2", [], "soon")],
+        dispatch_routes: [route1],
+      }),
+      assetsById
+    );
+    expect(plan.unassigned.map((t) => t.taskId)).toEqual(["weird"]);
+    expect(plan.later).toEqual([]);
+  });
+
+  it("accepts a datetime string as a date", () => {
+    const plan = buildWorkPlan(
+      state({
+        maintenance_schedule: [task("t1", "a1", [], "2026-10-12T08:00:00Z"), task("n", "a2", [], "2026-10-13T00:00:00Z")],
+        dispatch_routes: [route1],
+      }),
+      assetsById
+    );
+    expect(plan.dispatchDate).toBe("2026-10-12");
+    expect(plan.later.map((t) => t.taskId)).toEqual(["n"]);
+  });
+});
+
+describe("groupLaterByDay / formatDay", () => {
+  it("groups consecutive jobs on the same day, keeping order", () => {
+    const later = [
+      { taskId: "a", assetId: "x", assetName: "A", priority: "high" as const, scheduledDate: "2026-10-14" },
+      { taskId: "b", assetId: "x", assetName: "B", priority: "low" as const, scheduledDate: "2026-10-14" },
+      { taskId: "c", assetId: "x", assetName: "C", priority: "low" as const, scheduledDate: "2026-10-15" },
+    ];
+    const groups = groupLaterByDay(later);
+    expect(groups.map((g) => [g.date, g.tasks.length])).toEqual([["2026-10-14", 2], ["2026-10-15", 1]]);
+    expect(groupLaterByDay([])).toEqual([]);
+  });
+
+  it("formats a calendar day without a timezone shift", () => {
+    expect(formatDay("2026-10-14")).toMatch(/Oct/);
+    expect(formatDay("2026-10-14")).toMatch(/14/);
+    expect(formatDay("2026-01-01")).toMatch(/1/);
   });
 });
 

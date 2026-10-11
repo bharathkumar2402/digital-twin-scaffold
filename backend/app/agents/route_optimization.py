@@ -16,7 +16,7 @@ from app.agents.tools.distance_matrix_tool import (
     extract_asset_coordinates_map,
     extract_asset_floors_map,
 )
-from app.agents.tools.route_solver_tool import solve_cvrp_routes
+from app.agents.tools.route_solver_tool import select_due_tasks, solve_cvrp_routes
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.route_optimization import RouteOptimizationOutput
 
@@ -45,6 +45,11 @@ async def real_route_optimization_callable(context: dict[str, Any]) -> dict[str,
                 "required_technician_skills": ["mechanical"],
             }
         ]
+
+    # One shift's worth: the schedule spans weeks, only what is due now is routed.
+    tasks, dispatch_date = select_due_tasks(tasks)
+    if dispatch_date is not None:
+        logger.info("dispatching %d task(s) due on or before %s", len(tasks), dispatch_date)
 
     asset_coordinates = context.get("asset_coordinates")
     if not asset_coordinates and context.get("asset_graph"):

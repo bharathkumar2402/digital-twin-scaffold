@@ -158,9 +158,49 @@ describe("FacilityWorkPage", () => {
     const alex = screen.getByRole("region", { name: "Alex" });
     expect(alex).toHaveTextContent("1 stop");
     expect(within(alex).getByRole("listitem", { name: "Stop 1: Feed Pump" })).toBeInTheDocument();
-    const unassigned = screen.getByRole("region", { name: "Not assigned" });
-    expect(unassigned).toHaveTextContent("Press B (low priority)");
+    // t2 is scheduled a day after t1, so it is "later", not "unassigned"
+    expect(screen.queryByRole("region", { name: "Not assigned" })).not.toBeInTheDocument();
+    const later = screen.getByRole("region", { name: "Scheduled for later" });
+    expect(later).toHaveTextContent("1 more job on later days");
+    expect(later).toHaveTextContent("Press B (low)");
+    const shift = screen.getByText(/for the shift of/);
+    expect(shift).toHaveTextContent(/12/);
+    expect(shift).toHaveTextContent(/Oct/);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("calls out a job that was due this shift but not routed", () => {
+    const withDueLeftover: Partial<AgentRunState> = {
+      ...goodState,
+      maintenance_schedule: [
+        ...(goodState.maintenance_schedule ?? []),
+        {
+          item_id: "t3",
+          asset_id: "a2",
+          scheduled_date: "2026-10-12",
+          priority: "high",
+          estimated_duration_hours: 3,
+          required_technician_skills: [],
+          required_parts: [],
+        },
+      ],
+    };
+    vi.mocked(useAgentRun).mockReturnValue(
+      q<ReturnType<typeof useAgentRun>>({ data: detail("good", recent(), withDueLeftover) })
+    );
+    renderPage();
+    const unassigned = screen.getByRole("region", { name: "Not assigned" });
+    expect(unassigned).toHaveTextContent("Press B (high priority)");
+    expect(unassigned).toHaveTextContent("due for this shift");
+  });
+
+  it("lists later jobs grouped by day in a section that starts collapsed", () => {
+    renderPage();
+    const details = screen.getByRole("region", { name: "Scheduled for later" }).querySelector("details");
+    expect(details).not.toBeNull();
+    expect((details as HTMLDetailsElement).open).toBe(false);
+    // day formats follow the viewer's locale ("Oct 13" or "13 Oct"), so check the parts
+    expect(details).toHaveTextContent(/(13 Oct|Oct 13): Press B \(low\)/);
   });
 
   it("warns when the plan is more than a day old", () => {
