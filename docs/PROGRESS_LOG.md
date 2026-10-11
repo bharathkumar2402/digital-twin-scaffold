@@ -60,7 +60,14 @@ floor filter, state in the URL), Analysis (facility-wide, hidden for technician/
 `/results` redirects (to Assets when a `?floor=` is present). Tests: 254 frontend. Checked in a real browser on the Meridian
 plant (old /results URL redirects via sign-in to /overview; floor card -> /assets?floor=0; quick filter; Analysis tab). U4 (done): Overview "Needs attention" - up to 5 cards ranked by status, risk, then remaining life, each with the
 reason, next action, Details (opens Assets with `?asset=<id>`, which clears itself) and Show on map; an all-clear state
-that says how many assets were never scored. Tests: 276 frontend; checked live. Planned next: U5 technician Work view,
+that says how many assets were never scored. Tests: 276 frontend; checked live. U5 (done): Work tab (technician landing; `lib/work.ts` turns the latest completed run into ordered stops, parts-to-bring with
+shortage flags, and a "Not assigned" list; read-only; every technician's route is shown because accounts are not linked to
+technician ids yet). FOUND BY U5 (open, not fixed): the Route Optimization agent is priority-blind - `route_solver_tool.py`
+uses one flat drop penalty (1,000,000) for every task and one technician has a 480-minute shift, so on the Meridian demo
+run it routed 3 LOW-priority jobs and left 41 tasks unassigned, including the critical Air Compressor AC-1 and three
+high-priority ones. Fix needs priority-weighted drop penalties plus a test (Phase 4 agent change; extra scrutiny).
+Also the maintenance agent schedules a task for every asset (44), which inflates the parts demand ("need 41, have 6").
+Planned next:
 U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
 
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;

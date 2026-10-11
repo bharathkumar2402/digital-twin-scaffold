@@ -28,7 +28,18 @@ function renderPage() {
 
 describe("FacilitiesPage", () => {
   beforeEach(() => {
-    vi.mocked(useAuth).mockReturnValue({ logout: vi.fn() } as unknown as ReturnType<typeof useAuth>);
+    vi.mocked(useAuth).mockReturnValue({ role: "facility_manager", logout: vi.fn() } as unknown as ReturnType<
+      typeof useAuth
+    >);
+  });
+
+  it("opens a technician's facility on Work instead of Overview", () => {
+    vi.mocked(useAuth).mockReturnValue({ role: "technician", logout: vi.fn() } as unknown as ReturnType<typeof useAuth>);
+    setFacilities({ data: [{ id: "f1", name: "Demo", latest_map_upload_id: "u1", asset_count: 6, floors: [] }] });
+    renderPage();
+    const demo = screen.getByRole("article", { name: "Demo" });
+    expect(within(demo).getByRole("link", { name: "Work" })).toHaveAttribute("href", "/facilities/f1/work");
+    expect(within(demo).queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   });
 
   it("lists each facility with links to its map and overview", () => {

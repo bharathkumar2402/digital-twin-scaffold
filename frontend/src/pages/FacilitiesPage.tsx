@@ -1,17 +1,21 @@
 import { Link } from "react-router-dom";
 
 import { AppShell } from "../components/AppShell";
+import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { landingTab, TAB_LABEL } from "../lib/navigation";
 
 export function FacilitiesPage(): React.JSX.Element {
   const { data, isPending, isError } = useFacilities();
+  const { role } = useAuth();
+  const landing = landingTab(role);
 
   return (
     <AppShell>
       <div className="page">
         <div className="page-head">
           <h2>Your facilities</h2>
-          <p>Pick a facility to open its map or its overview.</p>
+          <p>Pick a facility to open its map or its {TAB_LABEL[landing].toLowerCase()}.</p>
         </div>
 
         {isPending && <p>Loading facilities...</p>}
@@ -45,8 +49,8 @@ export function FacilitiesPage(): React.JSX.Element {
                     Open map
                   </span>
                 )}
-                <Link className="btn" to={`/facilities/${facility.id}/overview`}>
-                  Overview
+                <Link className="btn" to={`/facilities/${facility.id}/${landing}`}>
+                  {TAB_LABEL[landing]}
                 </Link>
               </div>
             </article>

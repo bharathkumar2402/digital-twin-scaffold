@@ -28,21 +28,31 @@ function renderShell(role: string | null, path = "/facilities/f1/overview", inFa
 
 const tabNames = () =>
   within(screen.getByRole("navigation", { name: "Facility" }))
-    .getAllByText(/^(Overview|Map|Assets|Analysis)$/)
+    .getAllByText(/^(Overview|Work|Map|Assets|Analysis)$/)
     .map((el) => el.textContent);
 
 describe("AppShell tabs", () => {
   beforeEach(() => setFacility("u9"));
 
-  it.each(["facility_manager", "tenant_admin", "superadmin"])("%s sees Overview, Map, Assets and Analysis", (role) => {
+  it.each(["facility_manager", "tenant_admin", "superadmin"])("%s sees every tab", (role) => {
     renderShell(role);
-    expect(tabNames()).toEqual(["Overview", "Map", "Assets", "Analysis"]);
+    expect(tabNames()).toEqual(["Overview", "Map", "Assets", "Work", "Analysis"]);
   });
 
-  it.each(["technician", "viewer", null])("%s does not see the Analysis tab", (role) => {
-    renderShell(role);
-    expect(tabNames()).toEqual(["Overview", "Map", "Assets"]);
+  it("puts a technician's Work first and hides Analysis", () => {
+    renderShell("technician");
+    expect(tabNames()).toEqual(["Work", "Map", "Assets", "Overview"]);
     expect(screen.queryByRole("link", { name: "Analysis" })).not.toBeInTheDocument();
+  });
+
+  it("gives a viewer the read-only tabs, without Analysis", () => {
+    renderShell("viewer");
+    expect(tabNames()).toEqual(["Overview", "Map", "Assets", "Work"]);
+  });
+
+  it("gives an unknown role the least-privileged tabs", () => {
+    renderShell(null);
+    expect(tabNames()).toEqual(["Overview", "Map", "Assets"]);
   });
 
   it("points each tab at its route, with the map's real upload id, and marks the current one", () => {

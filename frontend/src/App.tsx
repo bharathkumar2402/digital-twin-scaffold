@@ -9,6 +9,7 @@ import { AboutPage } from "./pages/AboutPage";
 import { FacilityAnalysisPage } from "./pages/FacilityAnalysisPage";
 import { FacilityAssetsPage } from "./pages/FacilityAssetsPage";
 import { FacilityOverviewPage } from "./pages/FacilityOverviewPage";
+import { FacilityWorkPage } from "./pages/FacilityWorkPage";
 
 export function App(): React.JSX.Element {
   return (
@@ -28,6 +29,14 @@ export function App(): React.JSX.Element {
           element={
             <RequireAuth>
               <FacilityOverviewPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/facilities/:facilityId/work"
+          element={
+            <RequireAuth>
+              <FacilityWorkPage />
             </RequireAuth>
           }
         />
