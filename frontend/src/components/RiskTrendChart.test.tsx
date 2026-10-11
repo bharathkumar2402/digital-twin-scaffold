@@ -13,7 +13,7 @@ const day = (d: number, score: number, rul: number | null = null): RiskHistoryPo
 describe("RiskTrendChart", () => {
   it("describes the whole series for screen readers and shows labelled ends and the three zones", () => {
     const { container } = render(<RiskTrendChart points={[day(0, 10), day(1, 40), day(2, 85)]} />);
-    expect(screen.getByRole("group", { name: "Risk over the last 3 scores: from 10.0 to 85.0" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /^Risk over the last 3 scores: from 10\.0 to 85\.0\./ })).toBeInTheDocument();
     const text = container.querySelector("svg")?.textContent ?? "";
     for (const label of ["10.0", "85.0", "34", "67"]) expect(text).toContain(label);
     expect(container.querySelectorAll("rect").length).toBe(3); // low / medium / high zones
@@ -21,18 +21,86 @@ describe("RiskTrendChart", () => {
     expect(screen.getByText(/Zones:/)).toHaveTextContent("low under 34, medium 34–66, high 67 and above.");
   });
 
-  it("makes every dot focusable with its own time-and-score label", () => {
+  it("labels every dot with its own time and score", () => {
     render(<RiskTrendChart points={[day(0, 10), day(1, 40), day(2, 85)]} />);
     const dots = screen.getAllByRole("img");
     expect(dots).toHaveLength(3);
-    for (const dot of dots) {
-      expect(dot).toHaveAttribute("tabindex", "0");
-      expect(dot.getAttribute("aria-label")).toMatch(/risk \d+\.\d/);
-    }
+    for (const dot of dots) expect(dot.getAttribute("aria-label")).toMatch(/risk \d+\.\d/);
     expect(dots[1].getAttribute("aria-label")).toContain("risk 40.0");
   });
 
-  it("shows a tooltip on hover and on keyboard focus, and hides it afterwards", () => {
+  it("is a single tab stop, not one per dot", () => {
+    const { container } = render(
+      <RiskTrendChart points={[day(0, 10), day(1, 40), day(2, 85), day(3, 90)]} />
+    );
+    const tabbable = Array.from(container.querySelectorAll("[tabindex]")).filter(
+      (el) => el.getAttribute("tabindex") === "0"
+    );
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toBe(screen.getByRole("group", { name: /Risk over the last 4 scores/ }));
+  });
+
+  it("explains the keyboard controls in its accessible name", () => {
+    render(<RiskTrendChart points={[day(0, 10), day(1, 40)]} />);
+    expect(screen.getByRole("group", { name: /arrow keys/ })).toBeInTheDocument();
+  });
+
+  describe("keyboard", () => {
+    const points = [day(0, 10), day(1, 40), day(2, 85)];
+    const chart = () => screen.getByRole("group", { name: /Risk over the last 3 scores/ });
+    const live = () => screen.getByTestId("chart-live");
+
+    it("starts on the latest score when focused, and announces it", () => {
+      render(<RiskTrendChart points={points} />);
+      fireEvent.focus(chart());
+      expect(live()).toHaveTextContent("risk 85.0");
+      expect(screen.getByTestId("chart-tooltip")).toHaveTextContent("risk 85.0");
+    });
+
+    it("moves with the arrow keys, announces each point, and stops at the ends", () => {
+      render(<RiskTrendChart points={points} />);
+      fireEvent.focus(chart());
+      fireEvent.keyDown(chart(), { key: "ArrowLeft" });
+      expect(live()).toHaveTextContent("risk 40.0");
+      fireEvent.keyDown(chart(), { key: "ArrowLeft" });
+      expect(live()).toHaveTextContent("risk 10.0");
+      fireEvent.keyDown(chart(), { key: "ArrowLeft" }); // already at the first point
+      expect(live()).toHaveTextContent("risk 10.0");
+      fireEvent.keyDown(chart(), { key: "ArrowRight" });
+      expect(live()).toHaveTextContent("risk 40.0");
+      fireEvent.keyDown(chart(), { key: "ArrowRight" });
+      fireEvent.keyDown(chart(), { key: "ArrowRight" }); // already at the last point
+      expect(live()).toHaveTextContent("risk 85.0");
+    });
+
+    it("jumps with Home and End and lets go with Escape", () => {
+      render(<RiskTrendChart points={points} />);
+      fireEvent.focus(chart());
+      fireEvent.keyDown(chart(), { key: "Home" });
+      expect(live()).toHaveTextContent("risk 10.0");
+      fireEvent.keyDown(chart(), { key: "End" });
+      expect(live()).toHaveTextContent("risk 85.0");
+      fireEvent.keyDown(chart(), { key: "Escape" });
+      expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
+      expect(live()).toBeEmptyDOMElement();
+    });
+
+    it("ignores other keys, so Tab and typing behave normally", () => {
+      render(<RiskTrendChart points={points} />);
+      fireEvent.focus(chart());
+      expect(fireEvent.keyDown(chart(), { key: "Tab" })).toBe(true); // not prevented
+      expect(live()).toHaveTextContent("risk 85.0");
+    });
+
+    it("clears the highlight when focus leaves the chart", () => {
+      render(<RiskTrendChart points={points} />);
+      fireEvent.focus(chart());
+      fireEvent.blur(chart());
+      expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a tooltip on hover and hides it afterwards", () => {
     render(<RiskTrendChart points={[day(0, 10), day(1, 40), day(2, 85)]} />);
     const dots = screen.getAllByRole("img");
     expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
@@ -42,10 +110,7 @@ describe("RiskTrendChart", () => {
     fireEvent.mouseLeave(dots[1]);
     expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
 
-    fireEvent.focus(dots[2]);
-    expect(screen.getByTestId("chart-tooltip")).toHaveTextContent("risk 85.0");
-    fireEvent.blur(dots[2]);
-    expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
+    // (keyboard users get the same tooltip through arrow keys: see the "keyboard" tests)
   });
 
   it("marks where the asset crossed into high risk and says when", () => {

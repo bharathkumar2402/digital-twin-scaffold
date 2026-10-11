@@ -41,7 +41,7 @@ export function AssetBrowser({
   return (
     <div>
       <div style={{ marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15 }}>Assets</h3>
+        <h2 style={{ fontSize: 15 }}>Assets</h2>
         <p style={{ fontSize: 12.5, margin: 0 }} aria-live="polite">
           {matching.length === rows.length
             ? `${rows.length} in this facility`
@@ -81,12 +81,12 @@ export function AssetBrowser({
 
       {groups.map((group) => (
         <section key={group.level} aria-label={group.name}>
-          <h4 className="group-heading">
+          <h3 className="group-heading">
             <span>
               {floorLabel(group.level)} · {group.name}
             </span>
             <span>{group.level === currentLevel ? "this floor" : `${group.rows.length}`}</span>
-          </h4>
+          </h3>
           <ul className="asset-list">
             {group.rows.map((row) => {
               const color =

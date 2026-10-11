@@ -25,7 +25,7 @@ export function FacilityOverviewPage(): React.JSX.Element {
     <AppShell facilityId={facilityId}>
       <div className="page">
         <div className="page-head">
-          <h2>Overview</h2>
+          <h1>Overview</h1>
           <p>How the facility is doing right now, and where to look first.</p>
         </div>
 

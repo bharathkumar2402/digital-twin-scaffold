@@ -100,6 +100,19 @@ frontend work.ts/page tests (401 total). Demo re-run: AC-1 (critical) is today's
 deliberately (product decisions): the maintenance agent still schedules a routine task for every asset, so the parts demand counts
 all of them ("need 41, have 6"); only one technician is on the demo roster.
 
+Note on U8 (responsive, keyboard and accessibility pass; the last UI task; no issue): FOUND AND FIXED by running the real app at 390 px and
+auditing it with axe: the top bar fell off the screen (Work/Analysis/About/Sign out unreachable, page scrolled sideways) - now brand+actions on
+row 1 and a scrolling tab row on row 2; the map page was unusable on a phone (fixed 320 px sidebar, toolbar and floor switcher on top of each
+other) - now map above list, switcher under the toolbar, and the map follows its CONTAINER size (ResizeObserver; MapLibre only watches the window);
+Assets table keeps Asset/Status/Risk on phones, floor cards are one scrolling row; result tables scroll inside their card. Accessibility: every
+page now has exactly one h1 and no skipped heading levels; the brand link and floor tabs are named by their visible text; skip link + main
+landmark; one visible focus ring; the trend chart is ONE tab stop with arrow keys and a live region; colour tokens fixed (muted text was 4.39:1,
+subtle 2.37:1, medium-risk orange used as text 3.1:1 - now >= 4.5:1; markers keep the bright orange). Guards: axe + heading-outline assertions in
+every page test, a contrast test that reads the real stylesheet tokens, and `npm run e2e` (Playwright driving the installed Chrome, 8 specs incl. a
+phone-width pass and an axe audit with contrast of all 7 screens: zero violations). New dev dependencies: axe-core, @playwright/test. Also fixed
+a pre-existing `eslint .` error in vite.config.ts. Tests: 457 frontend + 8 e2e. Not covered: a real phone/Safari, screen-reader listening tests,
+the technician login (the demo only seeds a manager). The UI plan U1-U8 is complete.
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
 (UI hides it for non-completed runs); `docs/DATASETS.md` is unchanged (no new data).

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { RISK_BAND_COLOR, riskBand } from "../lib/assetHealth";
+import { RISK_BAND_COLOR, RISK_BAND_TEXT_COLOR, riskBand } from "../lib/assetHealth";
 import {
   BAND_EDGES,
   CHART,
@@ -57,11 +57,33 @@ export function RiskTrendChart({ points }: { points: RiskHistoryPoint[] }): Reac
   const tipX = tip ? Math.min(Math.max(tip.x - tipWidth / 2, 4), CHART.width - tipWidth - 4) : 0;
   const tipY = tip ? (tip.y < 50 ? tip.y + 10 : tip.y - 26) : 0;
 
+  // The chart is ONE tab stop. Arrow keys / Home / End move between its points (announced through the
+  // live region below) and Escape lets go, so a keyboard user is not made to tab through every dot.
+  function onKeyDown(event: React.KeyboardEvent<SVGSVGElement>): void {
+    const last = laidOut.length - 1;
+    const here = active ?? last;
+    const next: Record<string, number | null> = {
+      ArrowRight: Math.min(last, here + 1),
+      ArrowLeft: Math.max(0, here - 1),
+      Home: 0,
+      End: last,
+      Escape: null,
+    };
+    if (event.key in next) {
+      event.preventDefault();
+      setActive(next[event.key]);
+    }
+  }
+
   return (
     <div className="risk-chart">
       <svg
         role="group"
-        aria-label={summary}
+        aria-label={`${summary}. Use the left and right arrow keys to read each score.`}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onFocus={() => setActive((current) => current ?? laidOut.length - 1)}
+        onBlur={() => setActive(null)}
         viewBox={`0 0 ${CHART.width} ${CHART.height}`}
         width="100%"
         style={{ maxWidth: 420, display: "block" }}
@@ -108,7 +130,7 @@ export function RiskTrendChart({ points }: { points: RiskHistoryPoint[] }): Reac
               key={p.point.computed_at + i}
               role="img"
               aria-label={pointLabel(p.point)}
-              tabIndex={0}
+              tabIndex={-1}
               cx={p.x}
               cy={p.y}
               r={isLast ? 4.5 : 3}
@@ -118,8 +140,6 @@ export function RiskTrendChart({ points }: { points: RiskHistoryPoint[] }): Reac
               style={{ cursor: "pointer", outline: "none" }}
               onMouseEnter={() => setActive(i)}
               onMouseLeave={() => setActive(null)}
-              onFocus={() => setActive(i)}
-              onBlur={() => setActive(null)}
             />
           );
         })}
@@ -148,10 +168,13 @@ export function RiskTrendChart({ points }: { points: RiskHistoryPoint[] }): Reac
         )}
       </svg>
 
+      <p className="sr-only" aria-live="polite" data-testid="chart-live">
+        {tipText}
+      </p>
       <p className="chart-legend">
-        Zones: <span style={{ color: RISK_BAND_COLOR.low }}>low</span> under {BAND_EDGES.medium},{" "}
-        <span style={{ color: RISK_BAND_COLOR.medium }}>medium</span> {BAND_EDGES.medium}&ndash;
-        {BAND_EDGES.high - 1}, <span style={{ color: RISK_BAND_COLOR.high }}>high</span>{" "}
+        Zones: <span style={{ color: RISK_BAND_TEXT_COLOR.low }}>low</span> under {BAND_EDGES.medium},{" "}
+        <span style={{ color: RISK_BAND_TEXT_COLOR.medium }}>medium</span> {BAND_EDGES.medium}&ndash;
+        {BAND_EDGES.high - 1}, <span style={{ color: RISK_BAND_TEXT_COLOR.high }}>high</span>{" "}
         {BAND_EDGES.high} and above.
       </p>
       {isFlatSeries(points) ? (

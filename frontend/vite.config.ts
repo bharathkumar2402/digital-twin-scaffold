@@ -1,6 +1,5 @@
-/// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -10,6 +9,11 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // e2e/ holds Playwright specs, run with `npm run e2e` against a live stack
+    exclude: [...configDefaults.exclude, "e2e/**"],
     setupFiles: ["./src/test/setup.ts"],
+    // Tests normally skip CSS. The contrast tests read the real design tokens out of global.css, so
+    // let exactly that file through (imported with ?raw).
+    css: { include: [/styles\/global\.css/] },
   },
 });

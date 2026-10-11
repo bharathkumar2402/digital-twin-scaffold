@@ -7,7 +7,7 @@ export function Section({
 }): React.JSX.Element {
   return (
     <section className="results-section" aria-label={title}>
-      <h3 style={{ marginBottom: 10 }}>{title}</h3>
+      <h2 style={{ marginBottom: 10 }}>{title}</h2>
       {children}
     </section>
   );

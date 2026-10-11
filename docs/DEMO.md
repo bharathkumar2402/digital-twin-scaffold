@@ -163,6 +163,16 @@ healthy one gets records that score near it). Those rows are marked `factors_jso
 the latest score is the real one and is never touched. This is demo data, not telemetry history,
 and nothing in it is used for training (`scripts/demo_history.py`).
 
+## Automated browser check
+
+With the stack running as above (and the demo seeded), `cd frontend; npm run e2e` drives a real Chrome
+through the whole product: sign in as the demo manager, the "needs attention" list, opening a machine and
+its risk trend, today's work, the analysis, filters, the keyboard (skip link, the trend chart's arrow
+keys), every tab at phone width (390 x 844, no sideways scroll, all controls reachable) and an axe
+accessibility audit of all seven screens including colour contrast. It uses the Chrome installed on the
+machine; set `E2E_BROWSER=chromium` (after `npx playwright install chromium`) to use Playwright's own build.
+These specs are not part of `npm test`, which needs no services.
+
 ## Known limits
 
 - Analyses run in the API process (`POST /facilities/{id}/agent-runs`, about 10 s), not in a background worker.

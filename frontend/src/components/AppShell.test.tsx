@@ -74,6 +74,28 @@ describe("AppShell tabs", () => {
     expect(within(nav).getByText("Map")).toHaveClass("nav-disabled");
   });
 
+  it("names the brand link by its visible text (not a different label) and explains it on hover", () => {
+    renderShell("viewer");
+    const brand = screen.getByRole("link", { name: "Digital Twin" });
+    expect(brand).toHaveAttribute("href", "/");
+    expect(brand).toHaveAttribute("title", "All facilities");
+  });
+
+  it("starts with a skip link that targets the main landmark", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AppShell>
+          <p>content</p>
+        </AppShell>
+      </MemoryRouter>
+    );
+    const skip = screen.getByRole("link", { name: "Skip to main content" });
+    expect(skip).toHaveAttribute("href", "#main-content");
+    expect(container.querySelector("#main-content")).toBe(screen.getByRole("main"));
+    // it must come before everything else a keyboard user could tab to
+    expect(container.querySelector("a, button")).toBe(skip);
+  });
+
   it("offers About the models from every page and shows no tabs outside a facility", () => {
     renderShell("viewer", "/about", false);
     expect(screen.getByRole("link", { name: "About the models" })).toHaveAttribute("href", "/about");

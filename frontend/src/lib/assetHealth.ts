@@ -18,6 +18,14 @@ export const RISK_BAND_COLOR: Record<RiskBand, string> = {
   high: "#c62828",
 };
 
+// The same bands as TEXT colours: the marker orange (#ed6c02) is only 3.1:1 on white, so text uses a darker amber
+// (5.8:1). Markers, bars and chart fills keep RISK_BAND_COLOR.
+export const RISK_BAND_TEXT_COLOR: Record<RiskBand, string> = {
+  low: "#2e7d32",
+  medium: "#a8480a",
+  high: "#c62828",
+};
+
 export interface VibrationVerdict {
   alarm: boolean;
   alarmChannels: number | null;

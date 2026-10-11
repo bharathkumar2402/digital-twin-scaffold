@@ -14,7 +14,7 @@ export function FacilitiesPage(): React.JSX.Element {
     <AppShell>
       <div className="page">
         <div className="page-head">
-          <h2>Your facilities</h2>
+          <h1>Your facilities</h1>
           <p>Pick a facility to open its map or its {TAB_LABEL[landing].toLowerCase()}.</p>
         </div>
 
@@ -31,7 +31,7 @@ export function FacilitiesPage(): React.JSX.Element {
         <div className="facility-grid">
           {data?.map((facility) => (
             <article key={facility.id} className="facility-card" aria-label={facility.name}>
-              <h3>{facility.name}</h3>
+              <h2>{facility.name}</h2>
               <p className="facility-meta">
                 {facility.asset_count} {facility.asset_count === 1 ? "asset" : "assets"}
                 {facility.latest_map_upload_id ? "" : " · no floor plan yet"}

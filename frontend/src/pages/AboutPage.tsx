@@ -6,7 +6,7 @@ export function AboutPage(): React.JSX.Element {
     <AppShell>
       <div className="page">
         <div className="page-head">
-          <h2>About the models</h2>
+          <h1>About the models</h1>
           <p>Which real datasets the risk, remaining-life and vibration models learned from, and their limits.</p>
         </div>
         <ModelCards />

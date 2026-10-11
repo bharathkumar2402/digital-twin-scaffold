@@ -34,7 +34,6 @@ import type { Asset } from "../types/api";
 // viewer stay read-only on the map, same restriction as facility map uploads.
 const WRITE_ROLES = new Set(["superadmin", "tenant_admin", "facility_manager"]);
 
-const SIDEBAR_WIDTH = 320;
 // Zoom used when centring on one asset (the whole-floor fit is capped at 3.4).
 const FOCUS_ZOOM = 3;
 
@@ -239,6 +238,7 @@ export function FacilityMapPage(): React.JSX.Element {
   return (
     <AppShell facilityId={facilityId}>
     <div className="map-layout">
+      <h1 className="sr-only">Floor map</h1>
       <div className="map-stage">
         <AlertToast alerts={alerts} onDismiss={dismiss} />
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={handleMapLoad} />
@@ -328,17 +328,7 @@ export function FacilityMapPage(): React.JSX.Element {
         )}
       </div>
 
-      <div
-        className="scrollbar-thin"
-        style={{
-          width: SIDEBAR_WIDTH,
-          flexShrink: 0,
-          padding: 16,
-          overflowY: "auto",
-          borderLeft: "1px solid var(--color-border)",
-          background: "var(--color-surface)",
-        }}
-      >
+      <div className="scrollbar-thin map-sidebar">
         {newAssetDraft && canEdit && (
           <NewAssetForm
             draft={newAssetDraft}
@@ -375,6 +365,7 @@ export function FacilityMapPage(): React.JSX.Element {
             onJump={goToAsset}
             onClose={() => setSelectedAssetId(null)}
             closeLabel="Back"
+            titleLevel={2}
             history={riskHistory.byAsset.get(selectedAsset.id)}
             edit={
               canEdit
@@ -443,7 +434,7 @@ function SidebarHeader({
       <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
         &larr; Back
       </button>
-      <h3 style={{ margin: 0, fontSize: 14 }}>{title}</h3>
+      <h2 style={{ margin: 0, fontSize: 14 }}>{title}</h2>
       <span style={{ width: 58 }} />
     </div>
   );

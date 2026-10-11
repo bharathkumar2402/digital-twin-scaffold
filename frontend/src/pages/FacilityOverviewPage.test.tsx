@@ -8,6 +8,7 @@ import { useFacilities } from "../hooks/useFacilities";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
+import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityOverviewPage } from "./FacilityOverviewPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
@@ -46,7 +47,7 @@ function query<T>(over: Record<string, unknown>) {
 }
 
 function renderPage() {
-  render(
+  return render(
     <MemoryRouter initialEntries={["/facilities/f1/overview"]}>
       <Routes>
         <Route path="/facilities/:facilityId/overview" element={<FacilityOverviewPage />} />
@@ -200,5 +201,12 @@ describe("FacilityOverviewPage", () => {
     renderPage();
     expect(screen.getByText("No risk scores yet")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Facility summary" })).not.toBeInTheDocument();
+  });
+
+  it("has no accessibility violations and a valid heading outline", async () => {
+    const { container } = renderPage();
+    await screen.findByRole("region", { name: "Needs attention" });
+    expect(outlineProblems(headingLevels(container))).toEqual([]);
+    expect(await a11yViolations(container)).toEqual([]);
   });
 });

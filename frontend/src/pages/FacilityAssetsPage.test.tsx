@@ -10,6 +10,7 @@ import { useFacilities } from "../hooks/useFacilities";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
+import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityAssetsPage } from "./FacilityAssetsPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
@@ -54,7 +55,7 @@ function query<T>(over: Record<string, unknown>) {
 }
 
 function renderPage(url = "/facilities/f1/assets?upload=u9") {
-  render(
+  return render(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/facilities/:facilityId/assets" element={<FacilityAssetsPage />} />
@@ -422,5 +423,13 @@ describe("FacilityAssetsPage", () => {
       fireEvent.click(within(panel).getByRole("button", { name: "New Engine" }));
       expect(screen.getByTestId("search")).toHaveTextContent("?asset=b");
     });
+  });
+
+  it("has no accessibility violations and a valid heading outline, with the panel open", async () => {
+    const { container } = renderPage("/facilities/f1/assets?asset=a");
+    await screen.findByRole("table", { name: "Asset health" });
+    await screen.findByRole("complementary", { name: "Details for Aged Engine" });
+    expect(outlineProblems(headingLevels(container))).toEqual([]);
+    expect(await a11yViolations(container)).toEqual([]);
   });
 });

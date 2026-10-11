@@ -25,7 +25,7 @@ export function FacilityAnalysisPage(): React.JSX.Element {
     <AppShell facilityId={facilityId}>
       <div className="page">
         <div className="page-head">
-          <h2>Analysis</h2>
+          <h1>Analysis</h1>
           <p>Ask &ldquo;what if this fails?&rdquo; and see how the five agents reached their answer.</p>
         </div>
         <Section title="Agent analysis">

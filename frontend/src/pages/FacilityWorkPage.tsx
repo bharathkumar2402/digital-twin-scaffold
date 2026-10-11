@@ -136,7 +136,7 @@ export function FacilityWorkPage(): React.JSX.Element {
     <AppShell facilityId={facilityId}>
       <div className="page">
         <div className="page-head">
-          <h2>Work</h2>
+          <h1>Work</h1>
           <p>The stops from the latest analysis, in the order to visit them.</p>
         </div>
         {plan.run && age && (

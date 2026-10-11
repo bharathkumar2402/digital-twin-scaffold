@@ -1,4 +1,4 @@
-import { assetRowButtonId, formatRul, RISK_BAND_COLOR, riskBand, type AssetHealthRow } from "../lib/assetHealth";
+import { assetRowButtonId, formatRul, RISK_BAND_COLOR, RISK_BAND_TEXT_COLOR, riskBand, type AssetHealthRow } from "../lib/assetHealth";
 import { assetStatus } from "../lib/assetStatus";
 import { StatusBadge } from "./StatusBadge";
 import { Term } from "./Term";
@@ -55,10 +55,10 @@ export function AssetHealthTable({
           <th>
             <Term term="risk">Risk (0-100)</Term>
           </th>
-          <th>
+          <th className="col-secondary">
             <Term term="rul">Remaining life (cycles)</Term>
           </th>
-          <th>
+          <th className="col-secondary">
             <Term term="vibration">Vibration</Term>
           </th>
         </tr>
@@ -100,7 +100,7 @@ export function AssetHealthTable({
                   </span>
                 ) : (
                   <div className="risk-cell">
-                    <span className="risk-number" style={{ color: RISK_BAND_COLOR[band] }}>
+                    <span className="risk-number" style={{ color: RISK_BAND_TEXT_COLOR[band] }}>
                       {row.risk.toFixed(1)}
                     </span>
                     <span className="risk-bar" aria-hidden="true">
@@ -115,8 +115,8 @@ export function AssetHealthTable({
                   </div>
                 )}
               </td>
-              <td>{formatRul(row.rulCycles)}</td>
-              <td>
+              <td className="col-secondary">{formatRul(row.rulCycles)}</td>
+              <td className="col-secondary">
                 <VibrationCell row={row} />
               </td>
             </tr>

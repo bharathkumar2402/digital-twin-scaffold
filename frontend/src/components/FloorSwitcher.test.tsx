@@ -38,11 +38,20 @@ describe("FloorSwitcher", () => {
 
   it("says in words which floor has high-risk assets and alarms", () => {
     renderSwitcher();
-    expect(screen.getByRole("link", { name: /Ground floor: 17 assets, 2 high risk, 1 vibration alarms/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Ground floor 2 high risk, 17 assets, 1 vibration alarms/ })).toBeInTheDocument();
   });
 
   it("renders nothing for a single-floor facility", () => {
     renderSwitcher([badges[0]], 0);
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+  it("names each link with exactly its visible text (level, floor name, red count), then the details", () => {
+    render(
+      <MemoryRouter>
+        <FloorSwitcher facilityId="f1" badges={badges} currentLevel={1} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: "L0 Ground floor 2 high risk, 17 assets, 1 vibration alarms" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "L2 Roof 11 assets" })).toBeInTheDocument();
   });
 });

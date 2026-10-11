@@ -23,6 +23,15 @@ export function FloorSwitcher({
       {[...badges].reverse().map((badge) => {
         // top floor first, like a building's elevator panel
         const active = badge.level === currentLevel;
+        // The visible text is "L0 Ground floor" plus a red count of high-risk assets. The accessible
+        // name keeps exactly that text (so what is read matches what is seen) and appends the rest:
+        // "L0 Ground floor 2 high risk, 17 assets, 1 vibration alarms".
+        const rest = [
+          `${badge.assetCount} assets`,
+          badge.alarms > 0 ? `${badge.alarms} vibration alarms` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
         const detail = [
           `${badge.assetCount} assets`,
           badge.highRisk > 0 ? `${badge.highRisk} high risk` : null,
@@ -36,16 +45,18 @@ export function FloorSwitcher({
             to={`/facilities/${facilityId}/map/${badge.mapUploadId}`}
             className={`floor-tab${active ? " floor-tab-active" : ""}`}
             aria-current={active ? "page" : undefined}
-            aria-label={`${badge.name}: ${detail}`}
             title={`${badge.name} - ${detail}`}
           >
-            <span className="floor-tab-level">{floorLabel(badge.level)}</span>
+            <span className="floor-tab-level">{floorLabel(badge.level)}</span>{" "}
             <span className="floor-tab-name">{badge.name}</span>
             {badge.highRisk > 0 && (
-              <span className="floor-tab-badge" aria-hidden="true">
-                {badge.highRisk}
-              </span>
+              <>
+                {" "}
+                <span className="floor-tab-badge">{badge.highRisk}</span>
+                <span className="sr-only"> high risk,</span>
+              </>
             )}
+            <span className="sr-only">{rest}</span>
           </Link>
         );
       })}

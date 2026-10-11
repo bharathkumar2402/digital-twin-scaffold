@@ -11,7 +11,7 @@ export function ModelCards(): React.JSX.Element {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
         {MODEL_CARDS.map((card) => (
           <article key={card.id} className="stage-card" aria-label={card.title} style={{ margin: 0 }}>
-            <h4>{card.title}</h4>
+            <h2 className="card-title">{card.title}</h2>
             <p style={{ fontSize: 13 }}>{card.task}</p>
             <p style={{ fontSize: 13 }}>
               <strong>Data:</strong> {card.dataset}

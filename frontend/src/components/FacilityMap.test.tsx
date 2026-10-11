@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FacilityMap, RASTER_PROFILE_MAX_ZOOM } from "./FacilityMap";
 
@@ -7,6 +7,7 @@ const addSource = vi.fn();
 const addLayer = vi.fn();
 const addControl = vi.fn();
 const remove = vi.fn();
+const resize = vi.fn();
 let loadCallback: (() => void) | undefined;
 
 vi.mock("maplibre-gl", () => {
@@ -16,6 +17,7 @@ vi.mock("maplibre-gl", () => {
     addSource = addSource;
     addLayer = addLayer;
     remove = remove;
+    resize = resize;
     on(event: string, callback: () => void) {
       if (event === "load") {
         loadCallback = callback;
@@ -33,6 +35,7 @@ describe("FacilityMap", () => {
     addSource.mockClear();
     addLayer.mockClear();
     remove.mockClear();
+    resize.mockClear();
     loadCallback = undefined;
   });
 
@@ -62,5 +65,58 @@ describe("FacilityMap", () => {
     );
     unmount();
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("FacilityMap container resizing", () => {
+  const observe = vi.fn();
+  const disconnect = vi.fn();
+  let notify: (() => void) | undefined;
+
+  beforeEach(() => {
+    observe.mockClear();
+    disconnect.mockClear();
+    resize.mockClear();
+    notify = undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("re-measures the map whenever its container changes size, not just the window", () => {
+    const { getByTestId } = render(<FacilityMap tileUrlTemplate="http://x/{z}/{x}/{y}.png" />);
+    expect(observe).toHaveBeenCalledWith(getByTestId("maplibre-container"));
+    expect(resize).not.toHaveBeenCalled();
+    notify?.();
+    expect(resize).toHaveBeenCalledTimes(1);
+    notify?.();
+    expect(resize).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops observing when the map is removed", () => {
+    const { unmount } = render(<FacilityMap tileUrlTemplate="http://x/{z}/{x}/{y}.png" />);
+    unmount();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FacilityMap without ResizeObserver (older browsers, jsdom)", () => {
+  it("still renders and unmounts cleanly", () => {
+    vi.stubGlobal("ResizeObserver", undefined);
+    const { unmount } = render(<FacilityMap tileUrlTemplate="http://x/{z}/{x}/{y}.png" />);
+    expect(() => unmount()).not.toThrow();
+    vi.unstubAllGlobals();
   });
 });

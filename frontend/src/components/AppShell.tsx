@@ -45,9 +45,14 @@ export function AppShell({ facilityId, children }: AppShellProps): React.JSX.Ele
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="topbar">
-        <Link to="/" className="brand" aria-label="All facilities">
-          <span className="brand-mark">DT</span>
+        <Link to="/" className="brand" title="All facilities">
+          <span className="brand-mark" aria-hidden="true">
+            DT
+          </span>
           <span>Digital Twin</span>
         </Link>
 
@@ -66,7 +71,9 @@ export function AppShell({ facilityId, children }: AppShellProps): React.JSX.Ele
           Sign out
         </button>
       </header>
-      <main className="app-main">{children}</main>
+      <main id="main-content" className="app-main" tabIndex={-1}>
+        {children}
+      </main>
     </div>
   );
 }

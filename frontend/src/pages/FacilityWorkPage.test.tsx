@@ -7,6 +7,7 @@ import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import type { AgentRunDetail, AgentRunState, Asset } from "../types/api";
+import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityWorkPage } from "./FacilityWorkPage";
 
 vi.mock("../hooks/useAgentRuns", () => ({ useAgentRuns: vi.fn(), useAgentRun: vi.fn() }));
@@ -105,7 +106,7 @@ function q<T>(over: Record<string, unknown>) {
 }
 
 function renderPage() {
-  render(
+  return render(
     <MemoryRouter initialEntries={["/facilities/f1/work"]}>
       <Routes>
         <Route path="/facilities/:facilityId/work" element={<FacilityWorkPage />} />
@@ -263,5 +264,12 @@ describe("FacilityWorkPage", () => {
     );
     renderPage();
     expect(screen.getByRole("status")).toHaveTextContent("Nothing to do");
+  });
+
+  it("has no accessibility violations and a valid heading outline", async () => {
+    const { container } = renderPage();
+    await screen.findByRole("region", { name: "Scheduled for later" });
+    expect(outlineProblems(headingLevels(container))).toEqual([]);
+    expect(await a11yViolations(container)).toEqual([]);
   });
 });

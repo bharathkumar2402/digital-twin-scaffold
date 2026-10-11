@@ -63,6 +63,14 @@ export function FacilityMap({ tileUrlTemplate, onMapLoad }: FacilityMapProps): R
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl());
 
+    // MapLibre only listens for WINDOW resizes. The container also changes size when the layout does
+    // (a phone's stacked layout, a sidebar opening), and a canvas left at its old size shows blank
+    // bands where tiles should be. Follow the container instead.
+    const container = containerRef.current;
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => map.resize());
+    observer?.observe(container);
+
     map.on("load", () => {
       map.addSource(RASTER_SOURCE_ID, {
         type: "raster",
@@ -81,6 +89,7 @@ export function FacilityMap({ tileUrlTemplate, onMapLoad }: FacilityMapProps): R
     });
 
     return () => {
+      observer?.disconnect();
       map.remove();
       mapRef.current = null;
     };

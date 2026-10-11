@@ -190,7 +190,7 @@ and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra M
   Phase 3b (tasks 3b.1-3b.8) is closed with all Definition of Done items met; the audit and
   the follow-up gap fixes are in `docs/PROGRESS_LOG.md`.
 
-**Handoff (as of 2026-10-11, branch `phase-3b.1-cmapss-profile`, ahead of `main` by ~19 commits).**
+**Handoff (as of 2026-10-12, on `main`).** The usability overhaul U1-U8 (role-aware tabs, plain-language status, shared asset panel, needs-attention list, technician Work tab, answer-first Analysis, risk history + trend chart, phone/keyboard/accessibility pass, `npm run e2e`) and the routing priority fix are done and pushed; see `docs/PROGRESS_LOG.md`.
 Beyond the numbered tasks, the demo was upgraded to multi-floor facilities and a 44-machine, 3-floor plant
 ("Meridian Components Plant"); details and verification in `docs/PROGRESS_LOG.md`, how to run it in
 `docs/DEMO.md`. Step 3 (Results page polish) and Step 4 (leftover docs) are done. Now start the real

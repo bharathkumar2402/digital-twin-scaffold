@@ -109,7 +109,7 @@ export function FacilityAssetsPage(): React.JSX.Element {
     <AppShell facilityId={facilityId}>
       <div className="page">
         <div className="page-head">
-          <h2>Assets</h2>
+          <h1>Assets</h1>
           <p>Every machine with a plain-language verdict. Click one for its details.</p>
         </div>
 

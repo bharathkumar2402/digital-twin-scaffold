@@ -9,14 +9,14 @@
   --color-border-strong: #cbd5e1;
 
   --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-text-subtle: #94a3b8;
+  --color-text-muted: #586579; /* 5.4:1 on the page bg (was 4.39) */
+  --color-text-subtle: #5f6f85; /* 4.7:1 (was 2.37) */
 
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-soft: #eff6ff;
 
-  --color-danger: #dc2626;
+  --color-danger: #d32020; /* 4.85:1 on the page bg (was 4.46) */
   --color-danger-soft: #fef2f2;
   --color-danger-border: #fecaca;
 
@@ -458,7 +458,7 @@ textarea {
   margin-bottom: 20px;
 }
 
-.page-head h2 {
+.page-head h1 {
   font-size: 24px;
   letter-spacing: -0.02em;
   margin-bottom: 4px;
@@ -478,7 +478,7 @@ textarea {
   margin-bottom: 20px;
 }
 
-.results-section > h3 {
+.results-section > h2 {
   font-size: 15px;
   letter-spacing: -0.01em;
 }
@@ -664,6 +664,7 @@ textarea {
   background: var(--color-surface-alt);
 }
 
+.card-title,
 .stage-card h4 {
   font-size: 13.5px;
   margin-bottom: 8px;
@@ -711,7 +712,7 @@ textarea {
   transform: translateY(-1px);
 }
 
-.facility-card h3 {
+.facility-card h2 {
   font-size: 17px;
   margin-bottom: 2px;
 }
@@ -1104,7 +1105,8 @@ textarea {
   }
 }
 
-.empty-state h4 {
+.empty-state h3 {
+  font-size: 16px;
   margin-bottom: 6px;
 }
 
@@ -1138,10 +1140,6 @@ textarea {
 @media (max-width: 420px) {
   .kpi-row {
     grid-template-columns: 1fr;
-  }
-
-  .floor-chip {
-    flex: 1 1 100%;
   }
 }
 
@@ -1552,4 +1550,180 @@ textarea {
   margin: 4px 0 0;
   font-size: 11.5px;
   color: var(--color-text-muted);
+}
+
+/* ---- U8: phone layout for the shell --------------------------------------------------------
+   The desktop bar is one 52px row; on a phone Work/Analysis/About/Sign out fell off the right edge and
+   the whole page scrolled sideways. Here the brand and actions share the first row, and the tabs get a
+   row of their own that scrolls sideways if it must, with touch-sized targets. */
+@media (max-width: 760px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 0 8px;
+    padding: 6px 12px 0;
+  }
+
+  .brand {
+    white-space: nowrap;
+  }
+
+  .topbar-spacer {
+    flex: 1 1 0;
+  }
+
+  .topbar-link {
+    margin-right: 0;
+    white-space: nowrap;
+  }
+
+  .btn-topbar {
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
+  .topnav {
+    order: 3;
+    flex: 0 0 100%;
+    padding: 4px 0 6px;
+    border-left: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .topnav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex: 0 0 auto;
+    padding: 10px 14px;
+  }
+}
+
+/* ---- U8: phone layout for the pages --------------------------------------------------------
+   The table keeps Asset / Status / Risk (tap a row for the rest in the panel), the floor cards become
+   one scrolling row instead of a screenful of stacked cards, and filters get touch-sized targets. */
+@media (max-width: 760px) {
+  .data-table .col-type,
+  .data-table .col-secondary,
+  .risk-cell .pill {
+    display: none;
+  }
+
+  .floor-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+
+  .floor-chip {
+    flex: 0 0 auto;
+    min-width: 128px;
+  }
+
+  .quick-filters .btn,
+  .filter-bar .input {
+    min-height: 40px;
+  }
+
+  .row-button {
+    display: inline-block;
+    padding: 6px 0;
+  }
+
+  .results-section {
+    padding: 16px 14px;
+  }
+}
+
+/* ---- U8: the map on a phone ----------------------------------------------------------------
+   Desktop: map on the left, a 320px sidebar on the right. Phone: the map on top (about 55% of the
+   screen), the asset list/panel below it at full width, and the floor switcher tucked under the
+   toolbar instead of on top of it. */
+.map-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 16px;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+@media (max-width: 760px) {
+  .map-layout {
+    height: calc(100vh - 100px);
+    height: calc(100dvh - 100px);
+    min-height: 520px;
+  }
+
+  .map-stage {
+    flex: 1 1 55%;
+    min-height: 260px;
+  }
+
+  .map-sidebar {
+    width: 100%;
+    flex: 1 1 45%;
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+    padding: 12px;
+  }
+
+  .floor-switcher {
+    top: 60px;
+  }
+
+  .map-toolbar {
+    flex-wrap: wrap;
+    max-width: calc(100% - 24px);
+  }
+
+  .map-legend {
+    bottom: 12px;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+}
+
+/* ---- U8: keyboard and screen-reader basics --------------------------------------------------- */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: #1d4ed8;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* One visible focus ring everywhere, instead of per-component ones that were easy to miss. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.topbar a:focus-visible,
+.topbar button:focus-visible {
+  outline-color: #93c5fd;
+}
+
+.app-main:focus {
+  outline: none;
 }

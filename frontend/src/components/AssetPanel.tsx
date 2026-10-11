@@ -37,10 +37,21 @@ interface AssetPanelProps {
   edit?: AssetPanelEdit;
   // Recent scores, oldest first. Optional: the panel is complete without them.
   history?: RiskHistoryPoint[];
+  // The heading level of the asset's name: 3 under a page section's h2 (Assets), 2 straight under the
+  // page's h1 (Map). Its sub-headings sit one level below it.
+  titleLevel?: 2 | 3;
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <h4 className="panel-heading">{children}</h4>;
+type HeadingTag = "h2" | "h3" | "h4";
+
+function SectionHeading({
+  children,
+  tag: Tag,
+}: {
+  children: React.ReactNode;
+  tag: HeadingTag;
+}): React.JSX.Element {
+  return <Tag className="panel-heading">{children}</Tag>;
 }
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }): React.JSX.Element {
@@ -113,6 +124,7 @@ export function AssetPanel({
   mapHref = null,
   edit,
   history = [],
+  titleLevel = 3,
 }: AssetPanelProps): React.JSX.Element {
   const { asset } = row;
   const telemetry = useAssetTelemetry(facilityId, asset.id);
@@ -120,6 +132,8 @@ export function AssetPanel({
   const vib = row.vibration;
   const { dependsOn, dependedOnBy } = connectionsOf(asset.id, dependencies, assetsById);
   const ref = useRef<HTMLElement>(null);
+  const Title: HeadingTag = titleLevel === 2 ? "h2" : "h3";
+  const sub: HeadingTag = titleLevel === 2 ? "h3" : "h4";
 
   // Move keyboard/screen-reader focus into the panel when it opens or switches asset.
   useEffect(() => {
@@ -139,7 +153,7 @@ export function AssetPanel({
         )}
       </div>
 
-      <h3 style={{ fontSize: 17, marginBottom: 2 }}>{asset.name}</h3>
+      <Title style={{ fontSize: 17, marginBottom: 2 }}>{asset.name}</Title>
       <p style={{ fontSize: 12.5, margin: "0 0 10px" }}>
         {asset.type} &middot; {floorLabel(asset.floor_level)}
       </p>
@@ -148,7 +162,7 @@ export function AssetPanel({
         <StatusBadge status={status} /> {status.reasons.join("; ")}. <strong>{status.action}.</strong>
       </p>
 
-      <SectionHeading>Health</SectionHeading>
+      <SectionHeading tag={sub}>Health</SectionHeading>
       <Fact label="Operating state" value={<OperatingStateBadge state={asset.status} />} />
       <Fact
         label="Risk score"
@@ -178,12 +192,12 @@ export function AssetPanel({
 
       {history.length > 0 && (
         <>
-          <SectionHeading>Risk trend</SectionHeading>
+          <SectionHeading tag={sub}>Risk trend</SectionHeading>
           <RiskTrendChart points={history} />
         </>
       )}
 
-      <SectionHeading>Details</SectionHeading>
+      <SectionHeading tag={sub}>Details</SectionHeading>
       <Fact label="Position" value={`(${asset.x.toFixed(1)}, ${asset.y.toFixed(1)})`} />
       {asset.manufacturer && <Fact label="Manufacturer" value={asset.manufacturer} />}
       {asset.model && <Fact label="Model" value={asset.model} />}
@@ -208,7 +222,7 @@ export function AssetPanel({
         </div>
       )}
 
-      <SectionHeading>Telemetry</SectionHeading>
+      <SectionHeading tag={sub}>Telemetry</SectionHeading>
       {telemetry.isPending && <p style={{ fontSize: 13 }}>Loading telemetry...</p>}
       {telemetry.isError && (
         <p role="alert" style={{ fontSize: 13, color: "var(--color-danger)" }}>
@@ -221,10 +235,10 @@ export function AssetPanel({
         </div>
       )}
 
-      <SectionHeading>Depends on</SectionHeading>
+      <SectionHeading tag={sub}>Depends on</SectionHeading>
       <ConnectionList items={dependsOn} currentLevel={currentLevel} onJump={onJump} edit={edit} />
 
-      <SectionHeading>Depended on by</SectionHeading>
+      <SectionHeading tag={sub}>Depended on by</SectionHeading>
       <ConnectionList items={dependedOnBy} currentLevel={currentLevel} onJump={onJump} edit={edit} />
 
       {edit && (

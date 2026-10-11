@@ -35,7 +35,7 @@ function StageCard({
 }): React.JSX.Element {
   return (
     <section className="stage-card" aria-label={title}>
-      <h4>{title}</h4>
+      <h3 className="card-title">{title}</h3>
       {children}
     </section>
   );
@@ -73,7 +73,7 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
       )}
 
       <section className="answer-card" aria-label="Answer">
-        <h4>Answer</h4>
+        <h3 className="card-title">Answer</h3>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
           <span className={`pill ${statusPill(run.status)}`}>
             {STATUS_LABEL[run.status] ?? run.status}
@@ -144,7 +144,8 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
         {!risks || risks.length === 0 ? (
           <p style={muted}>Not produced.</p>
         ) : (
-          <table className="data-table">
+          <div className="table-scroll">
+<table className="data-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -175,6 +176,7 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
                 ))}
             </tbody>
           </table>
+</div>
         )}
       </StageCard>
 
@@ -182,7 +184,8 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
         {!items || items.length === 0 ? (
           <p style={muted}>Not produced.</p>
         ) : (
-          <table className="data-table">
+          <div className="table-scroll">
+<table className="data-table">
             <thead>
               <tr>
                 <th>Date</th>
@@ -211,6 +214,7 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
               ))}
             </tbody>
           </table>
+</div>
         )}
         {gaps && gaps.length > 0 ? (
           <div className="banner-warning" style={{ marginTop: 10 }}>

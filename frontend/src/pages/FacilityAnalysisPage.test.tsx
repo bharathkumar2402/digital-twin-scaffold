@@ -6,6 +6,7 @@ import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useRiskScores } from "../hooks/useRiskScores";
+import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityAnalysisPage } from "./FacilityAnalysisPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
@@ -25,7 +26,7 @@ vi.mock("../components/AgentAnalysisPanel", () => ({
 }));
 
 function renderPage() {
-  render(
+  return render(
     <MemoryRouter initialEntries={["/facilities/f1/analysis"]}>
       <Routes>
         <Route path="/facilities/:facilityId/analysis" element={<FacilityAnalysisPage />} />
@@ -110,5 +111,12 @@ describe("FacilityAnalysisPage", () => {
     vi.mocked(useAuth).mockReturnValue({ role: null } as ReturnType<typeof useAuth>);
     renderPage();
     expect(screen.getByTestId("analysis")).toHaveAttribute("data-can-run", "false");
+  });
+
+  it("has no accessibility violations and a valid heading outline", async () => {
+    const { container } = renderPage();
+    await screen.findByRole("region", { name: "Agent analysis" });
+    expect(outlineProblems(headingLevels(container))).toEqual([]);
+    expect(await a11yViolations(container)).toEqual([]);
   });
 });
