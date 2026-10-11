@@ -7,7 +7,7 @@ export const RUL_URGENT_CYCLES = 30;
 
 export type StatusKey = "critical" | "warning" | "healthy" | "unknown";
 
-export interface AssetStatus {
+export interface HealthStatus {
   key: StatusKey;
   label: string;
   // What a person should do next.
@@ -20,7 +20,7 @@ export interface AssetStatus {
 
 const RANK: Record<StatusKey, number> = { critical: 0, warning: 1, unknown: 2, healthy: 3 };
 
-export function assetStatus(row: AssetHealthRow): AssetStatus {
+export function assetStatus(row: AssetHealthRow): HealthStatus {
   const band = row.risk === null ? null : riskBand(row.risk);
   const urgentRul = row.rulCycles !== null && row.rulCycles <= RUL_URGENT_CYCLES;
   const alarm = row.vibration?.alarm === true;

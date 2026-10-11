@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAssetDependencies } from "../hooks/useAssetDependencies";
 import { useAssets } from "../hooks/useAssets";
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
@@ -11,6 +12,7 @@ import type { Asset, RiskScore } from "../types/api";
 import { FacilityResultsPage } from "./FacilityResultsPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
+vi.mock("../hooks/useAssetDependencies", () => ({ useAssetDependencies: vi.fn() }));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 vi.mock("../hooks/useAssetTelemetry", () => ({ useAssetTelemetry: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -85,6 +87,9 @@ describe("FacilityResultsPage", () => {
     );
     vi.mocked(useAssetTelemetry).mockReturnValue(
       query<ReturnType<typeof useAssetTelemetry>>({ data: [] })
+    );
+    vi.mocked(useAssetDependencies).mockReturnValue(
+      query<ReturnType<typeof useAssetDependencies>>({ data: [] })
     );
   });
 
@@ -320,5 +325,71 @@ describe("FacilityResultsPage", () => {
     expect(drawer).toHaveFocus();
     fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
     expect(screen.getByRole("button", { name: "Aged Engine" })).toHaveFocus();
+  });
+
+  describe("asset panel", () => {
+    const withGroundMap = () =>
+      vi.mocked(useFacilities).mockReturnValue(
+        query<ReturnType<typeof useFacilities>>({
+          data: [
+            {
+              id: "f1",
+              name: "Demo Plant 1",
+              latest_map_upload_id: "u0",
+              asset_count: 2,
+              floors: [{ level: 0, name: "Ground", map_upload_id: "u0", asset_count: 2 }],
+            },
+          ],
+        })
+      );
+
+    it("opens beside the table (not below it) with a Show on map link to the asset's floor", () => {
+      withGroundMap();
+      renderPage("/facilities/f1/results");
+      fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+      const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
+      expect(panel.parentElement).toHaveClass("results-split");
+      expect(panel.previousElementSibling).toContainElement(screen.getByRole("table", { name: "Asset health" }));
+      expect(within(panel).getByRole("link", { name: "Show on map" })).toHaveAttribute(
+        "href",
+        "/facilities/f1/map/u0?asset=a"
+      );
+    });
+
+    it("hides Show on map when the asset's floor has no finished map", () => {
+      renderPage("/facilities/f1/results");
+      fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+      const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
+      expect(within(panel).queryByRole("link", { name: "Show on map" })).not.toBeInTheDocument();
+    });
+
+    it("is read-only on Results: no delete, unlink or state change", () => {
+      vi.mocked(useAssetDependencies).mockReturnValue(
+        query<ReturnType<typeof useAssetDependencies>>({
+          data: [{ id: "d1", facility_id: "f1", parent_asset_id: "a", child_asset_id: "b" }],
+        })
+      );
+      renderPage("/facilities/f1/results");
+      fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+      const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
+      expect(within(panel).getByRole("button", { name: "New Engine" })).toBeInTheDocument();
+      expect(within(panel).queryByRole("button", { name: "Unlink" })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole("button", { name: "Delete asset" })).not.toBeInTheDocument();
+      expect(within(panel).queryByLabelText("Change operating state")).not.toBeInTheDocument();
+    });
+
+    it("jumps to a connected asset on its own floor's map", () => {
+      withGroundMap();
+      vi.mocked(useAssetDependencies).mockReturnValue(
+        query<ReturnType<typeof useAssetDependencies>>({
+          data: [{ id: "d1", facility_id: "f1", parent_asset_id: "a", child_asset_id: "b" }],
+        })
+      );
+      renderPage("/facilities/f1/results");
+      fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+      const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
+      fireEvent.click(within(panel).getByRole("button", { name: "New Engine" }));
+      expect(screen.getByTestId("search")).toHaveTextContent("?asset=b");
+    });
   });
 });

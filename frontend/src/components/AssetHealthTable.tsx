@@ -51,7 +51,7 @@ export function AssetHealthTable({
           <th>
             <Term term="status">Status</Term>
           </th>
-          <th>Type</th>
+          <th className="col-type">Type</th>
           <th>
             <Term term="risk">Risk (0-100)</Term>
           </th>
@@ -89,7 +89,7 @@ export function AssetHealthTable({
               <td>
                 <StatusBadge status={assetStatus(row)} />
               </td>
-              <td>{row.asset.type}</td>
+              <td className="col-type">{row.asset.type}</td>
               <td>
                 {row.risk === null || band === null ? (
                   <span

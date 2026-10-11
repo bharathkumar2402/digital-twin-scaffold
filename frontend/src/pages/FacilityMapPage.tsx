@@ -5,20 +5,19 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertToast } from "../components/AlertToast";
 import { AppShell } from "../components/AppShell";
 import { AssetBrowser } from "../components/AssetBrowser";
+import { AssetPanel } from "../components/AssetPanel";
 import { AssetHoverTip } from "../components/AssetHoverTip";
 import { AssetLayer } from "../components/AssetLayer";
 import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
 import { FloorSwitcher } from "../components/FloorSwitcher";
 import { SelectionLayer } from "../components/SelectionLayer";
-import { TelemetryChart } from "../components/TelemetryChart";
 import {
   useAssetDependencies,
   useCreateAssetDependency,
   useDeleteAssetDependency,
 } from "../hooks/useAssetDependencies";
 import { useAlertsSocket } from "../hooks/useAlertsSocket";
-import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilities } from "../hooks/useFacilities";
@@ -26,16 +25,9 @@ import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
 import { useRiskScores } from "../hooks/useRiskScores";
 import { buildHealthRows } from "../lib/assetHealth";
 import { assetBounds } from "../lib/fitAssets";
-import {
-  assetsOnFloor,
-  connectionsOf,
-  floorBadges,
-  floorLabel,
-  floorOfUpload,
-  type Connection,
-} from "../lib/floors";
+import { assetsOnFloor, floorBadges, floorOfUpload } from "../lib/floors";
 import { pixelToLngLat } from "../lib/mapCoords";
-import type { Asset, AssetDependency, AssetStatus } from "../types/api";
+import type { Asset } from "../types/api";
 
 // Mirrors backend/app/core/rbac.py's WRITE_ROLES in app/api/assets.py - technician and
 // viewer stay read-only on the map, same restriction as facility map uploads.
@@ -164,6 +156,7 @@ export function FacilityMapPage(): React.JSX.Element {
     [allAssets, riskScoresQuery.data]
   );
   const badges = useMemo(() => floorBadges(floors, healthRows), [floors, healthRows]);
+  const selectedRow = healthRows.find((row) => row.asset.id === selectedAssetId) ?? null;
 
   // Open framed on the equipment (not on the whole world), once per map; "Fit view" re-frames.
   const fitToAssets = useCallback(
@@ -370,26 +363,32 @@ export function FacilityMapPage(): React.JSX.Element {
         )}
 
         {selectedAsset && (
-          <AssetDetailPanel
+          <AssetPanel
             key={selectedAsset.id}
             facilityId={facilityId}
-            asset={selectedAsset}
-            canEdit={canEdit}
-            isSaving={updateAsset.isPending}
-            isDeleting={deleteAsset.isPending}
+            row={selectedRow ?? buildHealthRows([selectedAsset], [])[0]}
             dependencies={allDependencies}
             assetsById={assetsById}
             currentLevel={currentLevel}
             onJump={goToAsset}
-            isDeletingDependency={deleteDependency.isPending}
-            onUpdate={(updates) => updateAsset.mutate({ assetId: selectedAsset.id, body: updates })}
-            onDelete={() => {
-              deleteAsset.mutate(selectedAsset.id, {
-                onSuccess: () => setSelectedAssetId(null),
-              });
-            }}
-            onDeleteDependency={(dependencyId) => deleteDependency.mutate(dependencyId)}
             onClose={() => setSelectedAssetId(null)}
+            closeLabel="Back"
+            edit={
+              canEdit
+                ? {
+                    isSaving: updateAsset.isPending,
+                    isDeleting: deleteAsset.isPending,
+                    isDeletingDependency: deleteDependency.isPending,
+                    onUpdate: (updates) =>
+                      updateAsset.mutate({ assetId: selectedAsset.id, body: updates }),
+                    onDelete: () =>
+                      deleteAsset.mutate(selectedAsset.id, {
+                        onSuccess: () => setSelectedAssetId(null),
+                      }),
+                    onDeleteDependency: (dependencyId) => deleteDependency.mutate(dependencyId),
+                  }
+                : undefined
+            }
           />
         )}
 
@@ -426,15 +425,6 @@ function MapLegend(): React.JSX.Element {
         </span>
       ))}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: AssetStatus }): React.JSX.Element {
-  return (
-    <span className={`status-badge status-${status}`}>
-      <span className="status-dot" />
-      {status}
-    </span>
   );
 }
 
@@ -529,220 +519,5 @@ function NewAssetForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function AssetDetailPanel({
-  facilityId,
-  asset,
-  canEdit,
-  isSaving,
-  isDeleting,
-  dependencies,
-  assetsById,
-  currentLevel,
-  onJump,
-  isDeletingDependency,
-  onUpdate,
-  onDelete,
-  onDeleteDependency,
-  onClose,
-}: {
-  facilityId: string;
-  asset: Asset;
-  canEdit: boolean;
-  isSaving: boolean;
-  isDeleting: boolean;
-  dependencies: AssetDependency[];
-  assetsById: Map<string, Asset>;
-  currentLevel: number | undefined;
-  onJump: (asset: Asset) => void;
-  isDeletingDependency: boolean;
-  onUpdate: (updates: { name?: string; type?: string; status?: AssetStatus }) => void;
-  onDelete: () => void;
-  onDeleteDependency: (dependencyId: string) => void;
-  onClose: () => void;
-}): React.JSX.Element {
-  const telemetryQuery = useAssetTelemetry(facilityId, asset.id);
-  // parent depends_on child (see AssetDependency's docstring in types/api.ts) - so
-  // "depends on" (upstream) is where this asset is the parent, "depended on by"
-  // (downstream) is where it's the child.
-  const { dependsOn, dependedOnBy } = connectionsOf(asset.id, dependencies, assetsById);
-
-  return (
-    <div>
-      <SidebarHeader title="Asset detail" onClose={onClose} />
-
-      <div style={{ marginBottom: 18 }}>
-        <h3 style={{ fontSize: 17 }}>{asset.name}</h3>
-        <p style={{ fontSize: 12.5, margin: "2px 0 10px" }}>{asset.type}</p>
-        <StatusBadge status={asset.status} />
-      </div>
-
-      <dl className="card" style={{ padding: "10px 12px", margin: "0 0 18px", background: "var(--color-surface-alt)" }}>
-        <DetailRow label="Floor">{floorLabel(asset.floor_level)}</DetailRow>
-        <DetailRow label="Position">
-          ({asset.x.toFixed(1)}, {asset.y.toFixed(1)})
-        </DetailRow>
-        {asset.manufacturer && <DetailRow label="Manufacturer">{asset.manufacturer}</DetailRow>}
-        {asset.model && <DetailRow label="Model">{asset.model}</DetailRow>}
-        {asset.installed_date && <DetailRow label="Installed">{asset.installed_date}</DetailRow>}
-      </dl>
-
-      <div className="field">
-        <label className="field-label" htmlFor="asset-status">
-          Status
-        </label>
-        <select
-          id="asset-status"
-          className="select"
-          value={asset.status}
-          disabled={!canEdit || isSaving}
-          onChange={(event) => onUpdate({ status: event.target.value as AssetStatus })}
-        >
-          <option value="operational">Operational</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="offline">Offline</option>
-        </select>
-      </div>
-
-      <SectionHeading>Telemetry</SectionHeading>
-      {telemetryQuery.isPending && <p style={{ fontSize: 13 }}>Loading telemetry...</p>}
-      {telemetryQuery.isError && (
-        <p role="alert" style={{ fontSize: 13, color: "var(--color-danger)" }}>
-          Failed to load telemetry: {telemetryQuery.error.message}
-        </p>
-      )}
-      {telemetryQuery.isSuccess && (
-        <div className="card" style={{ padding: 8, marginBottom: 20 }}>
-          <TelemetryChart readings={telemetryQuery.data} />
-        </div>
-      )}
-
-      <SectionHeading>Maintenance history</SectionHeading>
-      <p style={{ fontSize: 13 }}>No maintenance records yet - scheduling arrives in a later phase.</p>
-
-      <SectionHeading>Depends on</SectionHeading>
-      <DependencyList
-        items={dependsOn}
-        currentLevel={currentLevel}
-        onJump={onJump}
-        canEdit={canEdit}
-        isDeleting={isDeletingDependency}
-        onDelete={onDeleteDependency}
-      />
-
-      <SectionHeading>Depended on by</SectionHeading>
-      <DependencyList
-        items={dependedOnBy}
-        currentLevel={currentLevel}
-        onJump={onJump}
-        canEdit={canEdit}
-        isDeleting={isDeletingDependency}
-        onDelete={onDeleteDependency}
-      />
-
-      {canEdit && (
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={onDelete}
-          disabled={isDeleting}
-          style={{ width: "100%", marginTop: 20 }}
-        >
-          {isDeleting ? "Deleting..." : "Delete asset"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SectionHeading({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <h4
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        color: "var(--color-text-subtle)",
-        margin: "20px 0 8px",
-      }}
-    >
-      {children}
-    </h4>
-  );
-}
-
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 0", fontSize: 12.5 }}>
-      <dt style={{ color: "var(--color-text-muted)" }}>{label}</dt>
-      <dd style={{ margin: 0, color: "var(--color-text)", fontWeight: 500, textAlign: "right" }}>{children}</dd>
-    </div>
-  );
-}
-
-function DependencyList({
-  items,
-  currentLevel,
-  onJump,
-  canEdit,
-  isDeleting,
-  onDelete,
-}: {
-  items: Connection[];
-  currentLevel: number | undefined;
-  onJump: (asset: Asset) => void;
-  canEdit: boolean;
-  isDeleting: boolean;
-  onDelete: (dependencyId: string) => void;
-}): React.JSX.Element {
-  if (items.length === 0) {
-    return <p style={{ fontSize: 13 }}>None</p>;
-  }
-  return (
-    <ul style={{ listStyle: "none", padding: 0, margin: "0 0 4px", display: "flex", flexDirection: "column", gap: 6 }}>
-      {items.map((conn) => (
-        <li
-          key={conn.dependencyId}
-          className="card"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "6px 10px",
-            fontSize: 13,
-            background: "var(--color-surface-alt)",
-          }}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <button
-              type="button"
-              className="link-button"
-              title={`Show ${conn.asset.name} on the map`}
-              onClick={() => onJump(conn.asset)}
-            >
-              {conn.asset.name}
-            </button>
-            {currentLevel !== undefined && conn.asset.floor_level !== currentLevel && (
-              <span className="floor-tag" title="On another floor - click the name to go there">
-                {floorLabel(conn.asset.floor_level)}
-              </span>
-            )}
-          </span>
-          {canEdit && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={isDeleting}
-              onClick={() => onDelete(conn.dependencyId)}
-            >
-              Unlink
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }

@@ -1,19 +1,21 @@
 import { useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { AgentAnalysisPanel } from "../components/AgentAnalysisPanel";
 import { AppShell } from "../components/AppShell";
-import { AssetDetailDrawer } from "../components/AssetDetailDrawer";
+import { AssetPanel } from "../components/AssetPanel";
 import { AssetHealthTable } from "../components/AssetHealthTable";
 import { EmptyState } from "../components/EmptyState";
 import { FloorFilter } from "../components/FloorFilter";
 import { KpiTiles } from "../components/KpiTiles";
 import { ModelCards } from "../components/ModelCards";
 import { ResultsSkeleton } from "../components/Skeleton";
+import { useAssetDependencies } from "../hooks/useAssetDependencies";
 import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useRiskScores } from "../hooks/useRiskScores";
+import type { Asset } from "../types/api";
 import {
   assetRowButtonId,
   buildHealthRows,
@@ -51,6 +53,8 @@ export function FacilityResultsPage(): React.JSX.Element {
   const facility = facilities.data?.find((f) => f.id === facilityId) ?? null;
   const assetsQuery = useAssets(facilityId);
   const scoresQuery = useRiskScores(facilityId);
+  const dependenciesQuery = useAssetDependencies(facilityId);
+  const navigate = useNavigate();
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   const allRows = useMemo(
@@ -75,6 +79,17 @@ export function FacilityResultsPage(): React.JSX.Element {
   const summary = useMemo(() => summarizeHealth(rows), [rows]);
   // Derived from the filtered rows, so a selection on another floor simply has no drawer.
   const selectedRow = rows.find((row) => row.asset.id === selectedAssetId) ?? null;
+
+  const assetsById = useMemo(
+    () => new Map((assetsQuery.data ?? []).map((asset) => [asset.id, asset])),
+    [assetsQuery.data]
+  );
+
+  // Each floor has its own map; an asset is shown on the map of the floor it is on.
+  function mapHrefFor(asset: Asset): string | null {
+    const floorMap = facility?.floors.find((f) => f.level === asset.floor_level);
+    return floorMap ? `/facilities/${facilityId}/map/${floorMap.map_upload_id}?asset=${asset.id}` : null;
+  }
 
   function selectFloor(level: number | null): void {
     setSelectedAssetId(null);
@@ -170,10 +185,23 @@ export function FacilityResultsPage(): React.JSX.Element {
           </EmptyState>
         ) : (
           <>
-            <AssetHealthTable rows={rows} selectedAssetId={selectedAssetId} onSelect={setSelectedAssetId} />
-            {selectedRow && (
-              <AssetDetailDrawer facilityId={facilityId} row={selectedRow} onClose={closeDrawer} />
-            )}
+            <div className={selectedRow ? "results-split" : undefined}>
+              <AssetHealthTable rows={rows} selectedAssetId={selectedAssetId} onSelect={setSelectedAssetId} />
+              {selectedRow && (
+                <AssetPanel
+                  facilityId={facilityId}
+                  row={selectedRow}
+                  dependencies={dependenciesQuery.data ?? []}
+                  assetsById={assetsById}
+                  onJump={(asset) => {
+                    const href = mapHrefFor(asset);
+                    if (href) navigate(href);
+                  }}
+                  mapHref={mapHrefFor(selectedRow.asset)}
+                  onClose={closeDrawer}
+                />
+              )}
+            </div>
           </>
         )}
       </>

@@ -1,4 +1,4 @@
-import type { AssetStatus, StatusKey } from "../lib/assetStatus";
+import type { HealthStatus, StatusKey } from "../lib/assetStatus";
 
 const PILL: Record<StatusKey, string> = {
   critical: "pill-high",
@@ -7,7 +7,7 @@ const PILL: Record<StatusKey, string> = {
   unknown: "pill-neutral",
 };
 
-export function StatusBadge({ status }: { status: AssetStatus }): React.JSX.Element {
+export function StatusBadge({ status }: { status: HealthStatus }): React.JSX.Element {
   return (
     <span className={`pill ${PILL[status.key]}`} title={`${status.reasons.join("; ")}. ${status.action}.`}>
       {status.label}
