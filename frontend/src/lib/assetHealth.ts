@@ -131,3 +131,54 @@ export function summarizeHealth(rows: AssetHealthRow[]): HealthSummary {
     shortestRul: shortest,
   };
 }
+
+export interface FloorOption {
+  level: number;
+  label: string;
+}
+
+// Every floor worth offering in the filter: floors with a finished map (named by the facility)
+// plus any floor that has assets but no map yet ("Floor N"). Lowest level first.
+export function floorOptions(
+  rows: AssetHealthRow[],
+  floors: { level: number; name: string }[]
+): FloorOption[] {
+  const byLevel = new Map<number, string>();
+  for (const floor of floors) byLevel.set(floor.level, floor.name || `Floor ${floor.level}`);
+  for (const row of rows) {
+    if (!byLevel.has(row.asset.floor_level)) {
+      byLevel.set(row.asset.floor_level, `Floor ${row.asset.floor_level}`);
+    }
+  }
+  return [...byLevel.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([level, label]) => ({ level, label }));
+}
+
+// level === null means "all floors".
+export function filterByFloor(rows: AssetHealthRow[], level: number | null): AssetHealthRow[] {
+  return level === null ? rows : rows.filter((row) => row.asset.floor_level === level);
+}
+
+export interface FloorHealth extends FloorOption {
+  monitored: number;
+  highRisk: number;
+  vibrationAlarms: number;
+}
+
+export function summarizeByFloor(rows: AssetHealthRow[], options: FloorOption[]): FloorHealth[] {
+  return options.map((option) => {
+    const summary = summarizeHealth(filterByFloor(rows, option.level));
+    return {
+      ...option,
+      monitored: summary.monitored,
+      highRisk: summary.highRisk,
+      vibrationAlarms: summary.vibrationAlarms,
+    };
+  });
+}
+
+// DOM id of a row's name button; the page returns focus to it when the detail drawer closes.
+export function assetRowButtonId(assetId: string): string {
+  return `asset-row-${assetId}`;
+}

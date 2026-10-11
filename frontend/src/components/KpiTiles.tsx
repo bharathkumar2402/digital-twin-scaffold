@@ -21,9 +21,20 @@ function Tile({
 }
 
 // Four numbers that answer "is anything wrong?" before anyone reads the table.
-export function KpiTiles({ summary }: { summary: HealthSummary }): React.JSX.Element {
+export function KpiTiles({
+  summary,
+  scopeLabel = null,
+}: {
+  summary: HealthSummary;
+  // Name of the floor the numbers are limited to; null = whole facility.
+  scopeLabel?: string | null;
+}): React.JSX.Element {
   return (
-    <div className="kpi-row" role="group" aria-label="Facility summary">
+    <div
+      className="kpi-row"
+      role="group"
+      aria-label={scopeLabel === null ? "Facility summary" : `Summary for ${scopeLabel}`}
+    >
       <Tile
         label="Assets monitored"
         value={String(summary.monitored)}

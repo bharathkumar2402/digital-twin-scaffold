@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import type { Asset, RiskScore } from "../types/api";
-import { buildHealthRows, formatRul, riskBand, summarizeHealth } from "./assetHealth";
+import {
+  buildHealthRows,
+  filterByFloor,
+  floorOptions,
+  formatRul,
+  riskBand,
+  summarizeByFloor,
+  summarizeHealth,
+} from "./assetHealth";
 
-function asset(id: string, name: string): Asset {
+function asset(id: string, name: string, floor = 0): Asset {
   return {
     id,
     facility_id: "f1",
     name,
     type: "pump",
-    floor_level: 0,
+    floor_level: floor,
     x: 0,
     y: 0,
     status: "operational",
@@ -168,5 +176,42 @@ describe("summarizeHealth", () => {
   it("treats an RUL of exactly zero as the shortest, not as missing", () => {
     const rows = buildHealthRows([asset("a", "A"), asset("b", "B")], [score("a", 90, { rul_cycles: 0 }), score("b", 5, { rul_cycles: 50 })]);
     expect(summarizeHealth(rows).shortestRul).toEqual({ assetName: "A", cycles: 0 });
+  });
+});
+
+describe("floor helpers", () => {
+  const rows = buildHealthRows(
+    [asset("a", "A", 0), asset("b", "B", 0), asset("c", "C", 2), asset("d", "D", 3)],
+    [score("a", 90, { factors_json: { vibration_alarm: 1 } }), score("b", 10), score("c", 70)]
+  );
+
+  it("lists named floors plus floors that only have assets, lowest first", () => {
+    const options = floorOptions(rows, [
+      { level: 2, name: "Roof" },
+      { level: 0, name: "" },
+      { level: 1, name: "Empty mezzanine" },
+    ]);
+    expect(options).toEqual([
+      { level: 0, label: "Floor 0" },
+      { level: 1, label: "Empty mezzanine" },
+      { level: 2, label: "Roof" },
+      { level: 3, label: "Floor 3" },
+    ]);
+  });
+
+  it("filters by level, and null means everything", () => {
+    expect(filterByFloor(rows, null)).toHaveLength(4);
+    expect(filterByFloor(rows, 0).map((r) => r.asset.name).sort()).toEqual(["A", "B"]);
+    expect(filterByFloor(rows, 9)).toEqual([]);
+  });
+
+  it("summarises each floor separately, counting unscored assets and empty floors", () => {
+    const summary = summarizeByFloor(rows, floorOptions(rows, [{ level: 1, name: "Empty" }]));
+    const by = Object.fromEntries(summary.map((f) => [f.level, f]));
+    expect(by[0]).toMatchObject({ monitored: 2, highRisk: 1, vibrationAlarms: 1 });
+    expect(by[1]).toMatchObject({ monitored: 0, highRisk: 0, vibrationAlarms: 0 });
+    expect(by[2]).toMatchObject({ monitored: 1, highRisk: 1, vibrationAlarms: 0 });
+    // floor 3's asset has no score: it is monitored but never high risk
+    expect(by[3]).toMatchObject({ monitored: 1, highRisk: 0 });
   });
 });

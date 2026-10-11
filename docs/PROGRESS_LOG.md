@@ -30,10 +30,19 @@ never filled `floor_level` (always 0), and switching floors made the layers touc
 the page now only hands the layers a map built for the upload on screen. Also fixed a stale cross-tenant test
 (`test_main_and_timescale_migration_chains_are_independent`, now compares real chain heads).
 Verified at `6672efb`: backend unit ~519, integration 130+, cross_tenant 61 pass; frontend 166 tests, tsc and eslint clean.
+Note on Results page polish (Step 3 of the Meridian handoff; no issue): floor filter chips double as a per-floor
+summary (assets / high risk / alarms), state in the URL as `?floor=N` (invalid or unknown values fall back to all
+floors; the KPI tiles and table follow the filter; agent analysis stays facility-wide and says so). Skeleton while
+loading; empty states for no assets (links to the map), no scores at all, and a floor with no assets; errors name
+which query failed and Retry refetches only that one. Accessibility: asset name is a real button (replaces
+`aria-selected` on a plain row; `aria-current` marks the selection), drawer takes focus on open and returns it to
+the row on close, polite live region announces "Showing N of M", reduced-motion skeleton, table scrolls inside its
+card, KPI tiles reflow to 2 then 1 column. Tests: 184 frontend (was 145+), `tsc` and `eslint` clean; checked the
+floor filter in a real browser on the Meridian plant. Not covered by automation: the responsive CSS breakpoints.
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
-(UI hides it for non-completed runs); `app/agents/runner.py` referenced by the compose file does not exist; the Results page
-does not yet have per-floor filtering/skeleton/empty states (planned "Step 3"). `docs/DATASETS.md` is unchanged (no new data).
+(UI hides it for non-completed runs); `app/agents/runner.py` referenced by the compose file does not exist; `docs/DATASETS.md` is unchanged (no new data).
 
 Note on the UI/login overhaul (follow-up to the Results page; no issue): triggered by "the login keeps
 failing, the UI is plain HTML and the asset map is not proper". Fixed at the root, not patched:

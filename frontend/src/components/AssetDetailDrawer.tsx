@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { formatRul, type AssetHealthRow } from "../lib/assetHealth";
 import { TelemetryChart } from "./TelemetryChart";
@@ -24,9 +26,21 @@ export function AssetDetailDrawer({
 }: AssetDetailDrawerProps): React.JSX.Element {
   const telemetry = useAssetTelemetry(facilityId, row.asset.id);
   const vib = row.vibration;
+  const ref = useRef<HTMLElement>(null);
+
+  // Move keyboard/screen-reader focus into the drawer when it opens or switches asset.
+  useEffect(() => {
+    ref.current?.focus();
+  }, [row.asset.id]);
 
   return (
-    <aside aria-label={`Details for ${row.asset.name}`} className="stage-card" style={{ marginTop: 12 }}>
+    <aside
+      ref={ref}
+      tabIndex={-1}
+      aria-label={`Details for ${row.asset.name}`}
+      className="stage-card"
+      style={{ marginTop: 12 }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h4 style={{ margin: 0 }}>{row.asset.name}</h4>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>

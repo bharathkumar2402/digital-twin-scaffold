@@ -1,4 +1,4 @@
-import { formatRul, RISK_BAND_COLOR, riskBand, type AssetHealthRow } from "../lib/assetHealth";
+import { assetRowButtonId, formatRul, RISK_BAND_COLOR, riskBand, type AssetHealthRow } from "../lib/assetHealth";
 
 interface AssetHealthTableProps {
   rows: AssetHealthRow[];
@@ -40,6 +40,7 @@ export function AssetHealthTable({
   }
 
   return (
+    <div className="table-scroll">
     <table className="data-table" aria-label="Asset health">
       <thead>
         <tr>
@@ -58,16 +59,21 @@ export function AssetHealthTable({
               key={row.asset.id}
               className={`row-clickable ${row.asset.id === selectedAssetId ? "row-selected" : ""}`}
               onClick={() => onSelect(row.asset.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(row.asset.id);
-                }
-              }}
-              tabIndex={0}
-              aria-selected={row.asset.id === selectedAssetId}
+              aria-current={row.asset.id === selectedAssetId ? "true" : undefined}
             >
-              <td style={{ fontWeight: 500 }}>{row.asset.name}</td>
+              <td>
+                <button
+                  type="button"
+                  id={assetRowButtonId(row.asset.id)}
+                  className="row-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(row.asset.id);
+                  }}
+                >
+                  {row.asset.name}
+                </button>
+              </td>
               <td>{row.asset.type}</td>
               <td>
                 {row.risk === null || band === null ? (
@@ -103,5 +109,6 @@ export function AssetHealthTable({
         })}
       </tbody>
     </table>
+    </div>
   );
 }

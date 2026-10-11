@@ -102,19 +102,21 @@ describe("AssetHealthTable", () => {
     expect(screen.getByText("no data")).toHaveAttribute("title", "invalid_waveform");
   });
 
-  it("selects an asset on click and on keyboard activation", () => {
+  it("selects an asset by clicking the row or its name button (once per click)", () => {
     const onSelect = vi.fn();
     renderTable([aged, fresh], [score("a", 90), score("b", 5)], { onSelect });
     const rows = screen.getAllByRole("row").slice(1);
     fireEvent.click(rows[0]);
     expect(onSelect).toHaveBeenLastCalledWith("a");
-    fireEvent.keyDown(rows[1], { key: "Enter" });
+    // The name is a real button: Enter/Space activate it natively (a click in jsdom).
+    fireEvent.click(within(rows[1]).getByRole("button", { name: "Compressor Engine B (new)" }));
     expect(onSelect).toHaveBeenLastCalledWith("b");
+    expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
   it("marks the selected row", () => {
     renderTable([aged], [score("a", 90)], { selected: "a" });
-    expect(screen.getAllByRole("row")[1]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("row")[1]).toHaveAttribute("aria-current", "true");
   });
 
   it("handles an empty facility", () => {
