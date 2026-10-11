@@ -190,5 +190,17 @@ and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra M
   Phase 3b (tasks 3b.1-3b.8) is closed with all Definition of Done items met; the audit and
   the follow-up gap fixes are in `docs/PROGRESS_LOG.md`.
 
+**Handoff (as of 2026-10-11, branch `phase-3b.1-cmapss-profile`, ahead of `main` by ~19 commits).**
+Beyond the numbered tasks, the demo was upgraded to multi-floor facilities and a 44-machine, 3-floor plant
+("Meridian Components Plant"); details and verification in `docs/PROGRESS_LOG.md`, how to run it in
+`docs/DEMO.md`. Optional unfinished polish, in this order: **Step 3** Results page polish (per-floor filter and
+summary, skeletons, empty/error states, responsive/accessibility); **Step 4** leftover docs. Then start the real
+tracker: **Phase 5 task 1 (RLS audit, issue #32)** - extra-scrutiny task: propose adversarial tests before building.
+Working notes: never `ruff format`/`ruff --fix` across all of `app/`; a few files show as modified only from
+line-ending bookkeeping (`core/tenant_context.py`, `ml/synthetic_data.py`, `models/asset_dependency.py`,
+`sandbox/{convert,sanitize,storage}.py`, `services/telemetry_service.py`, `workers/callback_tasks.py`) - never
+stage them; `git add` explicit files. To run the demo stack see `docs/DEMO.md` (Docker Desktop must be running).
+Browser automation needs a *visible* tab (hidden tabs never fire MapLibre `load`).
+
 Detailed per-task session notes (what was built, gaps found, how each task was
 verified) have been moved to `docs/PROGRESS_LOG.md` to keep this file short.

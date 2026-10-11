@@ -10,6 +10,31 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on multi-floor facilities and the Meridian plant (follow-up work, no issue; commits `2359ba9`, `6672efb`):
+(1) Data model: migration `0012_add_floors` adds `assets.floor_level` (INT NOT NULL default 0, check -10..100) and
+`facility_map_uploads.floor_level`/`floor_name`. No new table, so no new RLS policy; reversible, existing rows land on
+the ground floor (`test_migration_0012_floors.py` upgrades a populated DB, checks constraints, downgrades, re-upgrades).
+Each floor is its own map upload / tile pyramid; the newest *tiled* upload per level is the floor. An asset can only be
+created/moved to a floor the facility has a finished map for (400 otherwise; any level is accepted while a facility has no
+finished map). `GET /facilities` returns `floors: [{level,name,map_upload_id,asset_count}]`. (2) Floor-aware routing:
+`build_distance_and_time_matrices` charges 3 min per floor changed plus climb height; the route agent receives
+`meters_per_pixel` from `real_pipeline_config`; asset-graph nodes and agent context carry `floor_level`.
+(3) The Meridian Components Plant (`backend/scripts/demo_factory.py` is the single spec: 44 machines on 3 floors, 60 acyclic
+dependency links many crossing floors, areas, scenarios; `demo_floorplan.py` draws the three plans and tiles them;
+`demo_setup.py` loads everything, ~163 s). `test_factory_pipeline.py` runs the whole plant through the real pipeline: the AC-1
+cascade equals `downstream_of("AC-1")`, the SG-1 cascade spans floors 0/1/2, a three-floor route pays the transit time.
+(4) Map UI: floor switcher with per-floor high-risk badges, searchable/filterable asset list grouped by floor, hover tips,
+selection ring, cross-floor links in the detail panel, `?asset=<id>` deep link, assets/links filtered to the floor on screen
+(`lib/floors.ts`, tested). Two bugs found by exercising it in a real browser and fixed: `GET /facilities/{id}/map/{upload}`
+never filled `floor_level` (always 0), and switching floors made the layers touch the destroyed map for one render (blank page);
+the page now only hands the layers a map built for the upload on screen. Also fixed a stale cross-tenant test
+(`test_main_and_timescale_migration_chains_are_independent`, now compares real chain heads).
+Verified at `6672efb`: backend unit ~519, integration 130+, cross_tenant 61 pass; frontend 166 tests, tsc and eslint clean.
+Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
+the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
+(UI hides it for non-completed runs); `app/agents/runner.py` referenced by the compose file does not exist; the Results page
+does not yet have per-floor filtering/skeleton/empty states (planned "Step 3"). `docs/DATASETS.md` is unchanged (no new data).
+
 Note on the UI/login overhaul (follow-up to the Results page; no issue): triggered by "the login keeps
 failing, the UI is plain HTML and the asset map is not proper". Fixed at the root, not patched:
 (1) Login: the demo tenant, facility and map-upload ids are now fixed UUIDs (`seed_demo.py`), so they no

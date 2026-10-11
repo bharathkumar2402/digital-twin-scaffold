@@ -29,10 +29,13 @@ python -m scripts.demo_setup
 
 `demo_setup` is idempotent. It migrates both databases, trains the risk, RUL and vibration
 models from the **real** datasets into MinIO (skipping any already published), seeds the demo
-tenant/user/facility, creates 6 assets with a dependency chain, backfills telemetry and
-waveforms, scores the facility, and runs the 5-agent pipeline once. It prints the login
+tenant/user/facility, draws and tiles three floor plans, creates the **Meridian Components Plant**
+(44 machines on 3 floors, 60 dependency links, many crossing floors; the spec is
+`backend/scripts/demo_factory.py`), backfills telemetry and vibration waveforms, scores all 44
+machines, and runs the 5-agent pipeline once (about 3 minutes in total on a fresh stack). It prints the login
 and the map URL at the end. Flags: `--skip-migrate`, `--skip-models`, `--no-pipeline`.
-Wipe everything with `docker compose -p twin-demo -f docker-compose.demo.yml down -v`.
+Wipe everything with `docker compose -p twin-demo -f docker-compose.demo.yml down -v`. Do not use
+`--skip-models` on a freshly wiped stack (the models would not exist yet).
 
 ## 2. Start the app (3 terminals, each with the env loaded as above)
 
@@ -47,11 +50,14 @@ cd ..\frontend; npm install; npm run dev
 
 Open **http://localhost:5173** and click **Use demo account** - one click signs in and lands on the
 facility picker, so there is no tenant id or URL to copy. The demo's tenant, facility and map ids are
-fixed (`d3500000-0000-4000-8000-00000000000{1,2,3}`), so bookmarks and the login keep working after you
+fixed (tenant `...0001`, facility `...0002`, floor maps `...0003`/`...0004`/`...0005` for ground/first/roof, all prefixed `d3500000-0000-4000-8000-00000000`), so bookmarks and the login keep working after you
 wipe and rebuild the stack. The button exists only in the dev server (`frontend/.env.development`).
-The facility card's **Open map** goes to a drawn floor plan of the demo plant with the six assets on
+The facility card's **Open map** goes to the ground-floor plan of the Meridian plant with its machines on
 their equipment pads, coloured by risk (red = high), with the dependency lines, a legend and
-**Fit view**; **Results** is the model/agent page.
+**Fit view**. The floor switcher (top right) moves between the three floors; the sidebar lists all 44
+machines grouped by floor with search and High risk / Vibration alarm filters; picking a machine on another
+floor opens that floor with it selected (`?asset=<id>` in the URL); an asset's detail panel tags links to
+other floors (`L1`, `L2`) and jumps there. **Results** is the model/agent page.
 
 ## 3. Demo script (about 10 minutes)
 
@@ -61,26 +67,18 @@ their equipment pads, coloured by risk (red = high), with the dependency lines, 
 | 2 | Click an asset: telemetry chart | Live telemetry per asset, stored in TimescaleDB under row-level security per tenant. |
 | 3 | Click the **Results** tab in the top bar | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
 | 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. |
-| 5 | Click `Compressor Engine A (aged)`, then compare `(new)` | Aged engine: RUL 3.6 cycles and a vibration alarm on both channels. New engine: RUL 115.9, no alarm. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
-| 6 | Results > Agent analysis: type `What if Primary Feed Pump 7 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
+| 5 | Click `Air Compressor AC-1`, then compare `Air Compressor AC-2` | AC-1: risk 95.8, RUL 3.1 cycles, vibration alarm. AC-2: has an RUL but no alarm. `Cooling Water Pump CWP-2` shows an *early* vibration warning while its risk is still low. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
+| 6 | Results > Agent analysis: type `What if Air Compressor AC-1 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
 | 7 | `pytest tests/integration/test_degradation_e2e.py -v` | The same story as an automated test on fresh containers: trains the models, simulates, scores, asserts. |
 
-Asset health table (from `demo_setup`'s output, or re-print it by re-running with
-`--skip-migrate --skip-models`):
-
-```
-asset                            risk  RUL (cycles)  vibration alarm
-Primary Feed Pump 7              98.7             -                -
-Compressor Engine A (aged)       95.8           3.6              YES
-Turbine Gen 1                     0.8             -                -
-Cooling Fan 2                     0.7             -                -
-Compressor Engine B (new)         0.4         115.9               no
-Heat Exchanger Alpha              0.2             -                -
-```
+Headline numbers on the Meridian plant (44/44 machines scored): `Air Compressor AC-1` risk 95.8 / RUL 3.1 /
+vibration ALARM; `CNC Machine CNC-2` 59.4 with a vibration alarm; `Cooling Tower CT-2` 58.0; `Cooling Water
+Pump CWP-2` risk 0.8 but a vibration alarm (early warning); `AC-2`, `CH-2`, `AC-3`, `GEN-1` have an RUL and no
+alarm. Re-print the table with `python -m scripts.demo_setup --skip-migrate --skip-models`.
 
 Where the risk numbers come from: each asset's latest snapshot is a **real AI4I 2020 record that
-the risk model never trained on** (the rows its own train/test split held out). Pump 7 and the aged
-engine replay real failure records (overstrain); the rest replay healthy ones. The model scores
+the risk model never trained on** (the rows its own train/test split held out). AC-1, CNC-2 and CT-2 replay
+real failure records (overstrain, tool wear, power failure); the rest replay healthy ones. The model scores
 that snapshot. On all 2,000 held-out rows it reaches ROC-AUC 0.97.
 
 Agent run through the API (PowerShell):
@@ -91,29 +89,31 @@ $t = (Invoke-RestMethod -Method Post http://localhost:8000/login -ContentType ap
   -Body (@{tenant_id=$tenant;email="demo@twinlabs.com";password="demo-password-123"}|ConvertTo-Json)).access_token
 $h = @{Authorization="Bearer $t"}
 Invoke-RestMethod -Method Post "http://localhost:8000/facilities/$fac/agent-runs" -Headers $h `
-  -ContentType application/json -Body (@{trigger="user_query";user_query="What if Primary Feed Pump 7 fails?"}|ConvertTo-Json) |
+  -ContentType application/json -Body (@{trigger="user_query";user_query="What if Air Compressor AC-1 fails?"}|ConvertTo-Json) |
   Select-Object status, confidence, decision_report
 ```
 
 The pipeline needs no external API key: the agents run deterministic tools (no LLM calls).
 
-Real output on the demo plant (verified through the HTTP API, asset ids mapped back to names):
+Real output on the demo plant (tests assert these against the plant spec):
 
 ```
-query: What if Primary Feed Pump 7 fails?    status=completed
-  maintenance: Primary Feed Pump 7 -> critical today; Compressor Engine A (aged) -> critical today;
-               the other four -> low (in 14 days)
-  cascade root: Primary Feed Pump 7 -> Heat Exchanger Alpha, Cooling Fan 2, Turbine Gen 1; 6.5 h downtime
+query: What if Air Compressor AC-1 fails?    status=completed
+  cascade root: Air Compressor AC-1 -> exactly the machines downstream_of("AC-1") in demo_factory.py,
+                all on the first floor (a ground-floor cause, a first-floor effect)
+query: What if Main Switchgear SG-1 fails?   status=completed
+  cascade: plant-wide, machines on all three floors
 query: What if the Flux Capacitor fails?     status=halted_for_escalation
   reason: asset 'Flux Capacitor' was not found in this facility (known assets: ...)
 ```
 
-The run reads the facility's real assets and dependencies (a parent depends on its child, so a
+Technician routes are floor-aware: changing floor costs lift/stairs time (3 min per floor, plus climb
+height), so a route that visits the roof pays for it. The run reads the facility's real assets and dependencies (a parent depends on its child, so a
 failure of the child cascades to the parent) and scores it with the real models. If it cannot answer
 (unknown asset, empty facility, scoring failure) it halts and records why - it never falls back to
 sample data. Two things are still built-in demo choices: the technician roster (one technician at
-the map origin; there is no technician data model) and the 6.5 h downtime formula (a fixed heuristic
-over the cascade, not a prediction).
+the ground-floor map origin; there is no technician data model) and the downtime formula (a fixed
+heuristic over the cascade, not a prediction).
 
 ## 4. What to say honestly (do not skip this)
 
@@ -147,5 +147,6 @@ over the cascade, not a prediction).
 |---|---|
 | `demo_setup` cannot connect | `docker compose -p twin-demo ... ps`; wait for `healthy`; confirm the env is loaded in *this* shell (`$env:POSTGRES_PORT` should be `5433`). |
 | Login fails | Use the **Use demo account** button (fixed demo ids, so nothing to copy). Read the message: "Invalid tenant ID, email or password" is a real 401 (only possible if you typed the form by hand or the demo has not been seeded: run `demo_setup`). A message about the server (HTTP 500) or "could not reach the server" is not a credentials problem: usually a stale API process still holds port 8000 (`Get-NetTCPConnection -LocalPort 8000`; kill the old `uvicorn`, then start it again) or the API terminal did not load `demo.env.example`, so it is talking to the wrong database. Seed users must use a real-shaped domain (`.com`). |
-| Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. Tiles 404 by design with the placeholder map. |
+| Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. |
+| Map looks blank/blurry or screenshots time out in browser automation | The tab is hidden: Chrome throttles MapLibre's animation frames and the map never fires `load`. Use a visible tab; not a product bug. |
 | Anything else | Fall back to step 7: `pytest tests/integration/test_degradation_e2e.py -v` needs only Docker. |
