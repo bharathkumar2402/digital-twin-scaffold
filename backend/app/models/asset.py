@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date
 
-from sqlalchemy import Date, Enum, Float, ForeignKey, String
+from sqlalchemy import Date, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +34,9 @@ class Asset(UUIDPKMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Which floor of the facility the asset stands on (0 = ground); (x, y) are pixels in the
+    # tile space of that floor's map.
+    floor_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     x: Mapped[float] = mapped_column(Float, nullable=False)
     y: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[AssetStatus] = mapped_column(

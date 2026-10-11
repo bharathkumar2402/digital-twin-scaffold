@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy import Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +48,9 @@ class FacilityMapUpload(UUIDPKMixin, TimestampMixin, Base):
         nullable=False,
         default=UploadStatus.PENDING,
     )
+    # The floor this map depicts (0 = ground) and an optional display name ("Roof deck").
+    floor_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    floor_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status_detail: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     # Object-key prefix in the facility-map-tiles MinIO bucket (task 2.3's GDAL
     # conversion pipeline) under which the {z}/{x}/{y}.png tile pyramid lives, in

@@ -11,6 +11,8 @@ class FacilityMapUploadResponse(BaseModel):
     original_filename: str
     format: str
     status: str
+    floor_level: int = 0
+    floor_name: str | None = None
 
 
 class FacilityMapUploadStatusResponse(FacilityMapUploadResponse):

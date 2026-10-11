@@ -23,6 +23,12 @@ DEMO_TENANT_NAME = "Twin Labs Demo"
 DEMO_TENANT_ID = uuid.UUID("d3500000-0000-4000-8000-000000000001")
 DEMO_FACILITY_ID = uuid.UUID("d3500000-0000-4000-8000-000000000002")
 DEMO_UPLOAD_ID = uuid.UUID("d3500000-0000-4000-8000-000000000003")
+# One floor-plan upload per floor of the demo plant (level -> id); L0's is DEMO_UPLOAD_ID.
+DEMO_FLOOR_UPLOAD_IDS: dict[int, uuid.UUID] = {
+    0: DEMO_UPLOAD_ID,
+    1: uuid.UUID("d3500000-0000-4000-8000-000000000004"),
+    2: uuid.UUID("d3500000-0000-4000-8000-000000000005"),
+}
 DEMO_EMAIL = "demo@twinlabs.com"
 DEMO_PASSWORD = "demo-password-123"
 
@@ -65,7 +71,9 @@ async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
         )
         facility = facility_result.scalars().first()
         if facility is None:
-            facility = Facility(id=DEMO_FACILITY_ID, tenant_id=tenant_id, name="Demo Plant 1")
+            facility = Facility(
+                id=DEMO_FACILITY_ID, tenant_id=tenant_id, name="Meridian Components Plant"
+            )
             session.add(facility)
             await session.commit()
 

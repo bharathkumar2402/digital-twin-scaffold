@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -25,6 +25,8 @@ router = APIRouter(tags=["facility-maps"])
 async def upload_facility_map(
     facility_id: uuid.UUID,
     file: UploadFile = File(...),
+    floor_level: int = Form(default=0, ge=-10, le=100),
+    floor_name: str | None = Form(default=None, max_length=100),
     context: TenantContext = Depends(require_roles(Role.TENANT_ADMIN, Role.SUPERADMIN)),
     session: AsyncSession = Depends(get_tenant_scoped_session),
 ) -> FacilityMapUploadResponse:
@@ -35,6 +37,8 @@ async def upload_facility_map(
         facility_id=facility_id,
         filename=file.filename or "upload",
         content=content,
+        floor_level=floor_level,
+        floor_name=floor_name,
     )
     return FacilityMapUploadResponse.model_validate(upload)
 

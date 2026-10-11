@@ -32,6 +32,18 @@ from testcontainers.postgres import PostgresContainer
 from app.services.alert_publish_service import alert_channel
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _head(ini_file: str) -> str | None:
+    """The head revision of the migration chain described by `ini_file` (relative to backend/)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(BACKEND_DIR / ini_file))
+    config.set_main_option(
+        "script_location", str(BACKEND_DIR / config.get_main_option("script_location"))
+    )
+    return ScriptDirectory.from_config(config).get_current_head()
 APP_ROLE_PASSWORD = "test-app-role-password"
 APP_TIMESCALE_ROLE_PASSWORD = "test-app-timescale-role-password"
 
@@ -677,12 +689,15 @@ async def test_main_and_timescale_migration_chains_are_independent(
         assert "sensor_readings" not in main_tables
         assert {"tenants", "users", "facilities"}.isdisjoint(timescale_tables)
 
-        main_version = await main_conn.fetchval("SELECT version_num FROM alembic_version")
+        # Each chain keeps its own version table and sits at its own head. The heads are read from
+        # the migration scripts themselves, not hard-coded, so adding a migration cannot break this.
+        main_version = await main_conn.fetchval("SELECT version_num FROM alembic_version_main")
         timescale_version = await timescale_conn.fetchval(
             "SELECT version_num FROM alembic_version"
         )
-        assert main_version == "0009"
-        assert timescale_version == "0002"
+        assert main_version == _head("alembic.ini")
+        assert timescale_version == _head("alembic_timescale.ini")
+        assert main_version != timescale_version
     finally:
         await main_conn.close()
         await timescale_conn.close()

@@ -20,6 +20,7 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
+from app.core.config import settings
 from app.core.db import async_session_factory, timescale_session_factory
 from app.core.tenant_context import scope_session_to_tenant
 from app.services.asset_dependency_service import list_dependencies
@@ -32,6 +33,7 @@ def _asset_dict(asset: Any) -> dict[str, Any]:
         "id": asset.id,
         "name": asset.name,
         "type": asset.type,
+        "floor_level": int(asset.floor_level),
         "status": status,
         "x": float(asset.x),
         "y": float(asset.y),
@@ -62,6 +64,7 @@ async def real_pipeline_config(
         yield {
             "configurable": {
                 "require_real_data": True,
+                "meters_per_pixel": settings.floor_plan_meters_per_pixel,
                 "assets": [_asset_dict(a) for a in assets],
                 "dependencies": [
                     {

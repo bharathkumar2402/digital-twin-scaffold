@@ -63,6 +63,8 @@ def solve_cvrp_routes(
     technicians: list[dict[str, Any]] | None = None,
     time_limit_seconds: float = 5.0,
     walking_speed_meters_per_minute: float = DEFAULT_WALKING_SPEED_METERS_PER_MINUTE,
+    asset_floors: dict[str, int] | None = None,
+    meters_per_unit: float = 1.0,
 ) -> RouteOptimizationOutput:
     """Solves technician dispatch CVRP using Google OR-Tools with strict 5s time limit."""
     coord_map = asset_coordinates or {}
@@ -109,12 +111,14 @@ def solve_cvrp_routes(
     # 1. Prepare locations: Depot (0.0, 0.0) at index 0, followed by task asset locations
     depot_coord = (0.0, 0.0)
     locations: list[tuple[float, float]] = [depot_coord]
+    location_floors: list[int] = [0]  # the depot is on the ground floor
     task_service_minutes: list[float] = [0.0]
 
     for idx, task in enumerate(tasks):
         asset_id_raw = task.get("asset_id")
         coord = get_or_create_coordinate(str(asset_id_raw), coord_map, fallback_index=idx)
         locations.append(coord)
+        location_floors.append((asset_floors or {}).get(str(asset_id_raw), 0))
 
         # Service duration in minutes (gt=0.0)
         hours = float(task.get("estimated_duration_hours", 1.0) or 1.0)
@@ -125,7 +129,10 @@ def solve_cvrp_routes(
 
     # 2. Build pairwise distance and travel-time matrices
     dist_matrix, travel_time_matrix = build_distance_and_time_matrices(
-        locations, speed_meters_per_minute=walking_speed_meters_per_minute
+        locations,
+        speed_meters_per_minute=walking_speed_meters_per_minute,
+        floors=location_floors if asset_floors else None,
+        meters_per_unit=meters_per_unit,
     )
 
     # Integer scale factor for OR-Tools solver (e.g. 1 unit = 0.01 minutes)

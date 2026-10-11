@@ -60,12 +60,17 @@ def build_asset_graph_from_records(
             raw_y = asset.get("y")
         y_val = float(raw_y) if raw_y is not None else 0.0
 
+        raw_floor: Any = getattr(asset, "floor_level", None)
+        if raw_floor is None and isinstance(asset, dict):
+            raw_floor = asset.get("floor_level")
+
         g.add_node(
             asset_id,
             id=asset_id,
             name=name,
             type=asset_type,
             status=status_val,
+            floor_level=int(raw_floor or 0),
             x=x_val,
             y=y_val,
         )

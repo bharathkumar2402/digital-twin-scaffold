@@ -24,6 +24,8 @@ async def create_map_upload(
     facility_id: uuid.UUID,
     filename: str,
     content: bytes,
+    floor_level: int = 0,
+    floor_name: str | None = None,
 ) -> FacilityMapUpload:
     # `session` is already RLS-scoped to `tenant_id` (get_tenant_scoped_session), but
     # this filters on tenant_id explicitly too rather than relying on `session.get`
@@ -65,6 +67,8 @@ async def create_map_upload(
         storage_key=storage_key,
         format=extension.lstrip("."),
         status=UploadStatus.PENDING,
+        floor_level=floor_level,
+        floor_name=floor_name,
     )
     session.add(upload)
     # No session.refresh() here - `id` is set explicitly above, and expire_on_commit=False

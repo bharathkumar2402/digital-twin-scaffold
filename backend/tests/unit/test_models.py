@@ -119,6 +119,8 @@ def test_facility_map_upload_columns_and_fks():
         "storage_key",
         "format",
         "status",
+        "floor_level",
+        "floor_name",
         "status_detail",
         "tile_prefix",
         "created_at",
@@ -126,6 +128,8 @@ def test_facility_map_upload_columns_and_fks():
     assert not cols["tenant_id"].nullable
     assert not cols["facility_id"].nullable
     assert not cols["storage_key"].nullable
+    assert not cols["floor_level"].nullable  # every map is for a floor; ground (0) by default
+    assert cols["floor_name"].nullable
     assert cols["status_detail"].nullable
     assert {fk.column.table.name for fk in cols["tenant_id"].foreign_keys} == {"tenants"}
     assert {fk.column.table.name for fk in cols["facility_id"].foreign_keys} == {"facilities"}
@@ -143,6 +147,7 @@ def test_asset_columns_and_fks():
         "facility_id",
         "name",
         "type",
+        "floor_level",
         "x",
         "y",
         "status",
@@ -156,6 +161,7 @@ def test_asset_columns_and_fks():
     assert not cols["name"].nullable
     assert not cols["x"].nullable
     assert not cols["y"].nullable
+    assert not cols["floor_level"].nullable  # every asset stands on a floor; ground (0) by default
     assert cols["installed_date"].nullable
     assert cols["manufacturer"].nullable
     assert cols["model"].nullable

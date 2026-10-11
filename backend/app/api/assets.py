@@ -39,6 +39,7 @@ async def create_facility_asset(
         facility_id=facility_id,
         name=body.name,
         type=body.type,
+        floor_level=body.floor_level,
         x=body.x,
         y=body.y,
         status_=body.status,

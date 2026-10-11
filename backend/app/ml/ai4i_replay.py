@@ -41,9 +41,22 @@ def heldout_rows(
     return [rows[i] for i in sorted(int(i) for i in test_idx)]
 
 
-def pick_row(rows: list[dict[str, str]], *, failure: bool, nth: int = 0) -> dict[str, str]:
-    """The `nth` row (file order) whose machine-failure label equals `failure`."""
-    matching = [r for r in rows if bool(map_ai4i2020_row(r).is_failure) is failure]
+def pick_row(
+    rows: list[dict[str, str]], *, failure: bool, nth: int = 0, mode: str | None = None
+) -> dict[str, str]:
+    """The `nth` row (file order) whose machine-failure label equals `failure`.
+
+    `mode` (failing rows only) restricts to rows whose active failure modes include it
+    (HDF heat dissipation, PWF power, OSF overstrain, TWF tool wear).
+    """
+    matching = []
+    for r in rows:
+        record = map_ai4i2020_row(r)
+        if bool(record.is_failure) is not failure:
+            continue
+        if mode is not None and mode not in record.failure_modes:
+            continue
+        matching.append(r)
     if nth >= len(matching):
         raise IndexError(f"only {len(matching)} matching held-out rows, asked for #{nth}")
     return matching[nth]

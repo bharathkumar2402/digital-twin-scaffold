@@ -10,8 +10,9 @@ import math
 import uuid
 from typing import Any
 
-
 DEFAULT_WALKING_SPEED_METERS_PER_MINUTE = 60.0  # ~1.0 m/s average facility pace
+FLOOR_HEIGHT_METERS = 4.5  # vertical distance charged per floor changed
+FLOOR_TRANSIT_MINUTES = 3.0  # waiting for / riding the lift or stairs, per floor changed
 
 
 def compute_euclidean_distance(
@@ -25,12 +26,21 @@ def compute_euclidean_distance(
 def build_distance_and_time_matrices(
     locations: list[tuple[float, float]],
     speed_meters_per_minute: float = DEFAULT_WALKING_SPEED_METERS_PER_MINUTE,
+    *,
+    floors: list[int] | None = None,
+    meters_per_unit: float = 1.0,
+    floor_transit_minutes: float = FLOOR_TRANSIT_MINUTES,
+    floor_height_meters: float = FLOOR_HEIGHT_METERS,
 ) -> tuple[list[list[float]], list[list[float]]]:
     """Generates pairwise distance (meters) and travel-time (minutes) matrices.
 
     Args:
         locations: List of (x, y) coordinates where index 0 is typically the depot/dispatch office.
         speed_meters_per_minute: Facility traversal speed in meters/minute.
+        floors: Optional floor level per location. Changing floors adds `floor_height_meters` of
+            vertical distance and `floor_transit_minutes` of lift/stairs time per floor, so a task
+            on the roof is never treated as the neighbour of one in the basement.
+        meters_per_unit: Real-world size of one coordinate unit (floor-plan pixels are not metres).
 
     Returns:
         tuple of (distance_matrix_meters, time_matrix_minutes)
@@ -43,9 +53,13 @@ def build_distance_and_time_matrices(
         for j in range(n):
             if i == j:
                 continue
-            dist = compute_euclidean_distance(locations[i], locations[j])
+            dist = compute_euclidean_distance(locations[i], locations[j]) * meters_per_unit
+            floors_changed = abs(floors[i] - floors[j]) if floors is not None else 0
+            dist += floors_changed * floor_height_meters
             distance_matrix[i][j] = round(dist, 2)
-            time_matrix[i][j] = round(dist / speed_meters_per_minute, 2)
+            time_matrix[i][j] = round(
+                dist / speed_meters_per_minute + floors_changed * floor_transit_minutes, 2
+            )
 
     return distance_matrix, time_matrix
 
@@ -86,6 +100,22 @@ def extract_asset_coordinates_map(
                 )
 
     return coord_map
+
+
+def extract_asset_floors_map(assets: list[Any] | None) -> dict[str, int]:
+    """asset_id (str) -> floor level, from asset models or dictionaries (default 0)."""
+    floors: dict[str, int] = {}
+    for asset in assets or []:
+        raw_id = getattr(asset, "id", None) or (
+            asset.get("id") if isinstance(asset, dict) else None
+        )
+        if raw_id is None:
+            continue
+        level = getattr(asset, "floor_level", None)
+        if level is None and isinstance(asset, dict):
+            level = asset.get("floor_level")
+        floors[str(raw_id)] = int(level or 0)
+    return floors
 
 
 def get_or_create_coordinate(

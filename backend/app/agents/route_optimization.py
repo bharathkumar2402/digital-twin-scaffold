@@ -12,7 +12,10 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agents.errors import MissingRealDataError
 from app.agents.state import MAX_GRAPH_ITERATIONS, FacilityTwinState
-from app.agents.tools.distance_matrix_tool import extract_asset_coordinates_map
+from app.agents.tools.distance_matrix_tool import (
+    extract_asset_coordinates_map,
+    extract_asset_floors_map,
+)
 from app.agents.tools.route_solver_tool import solve_cvrp_routes
 from app.agents.validation import AgentEscalationRequired, execute_agent_with_retry
 from app.schemas.agent_outputs.route_optimization import RouteOptimizationOutput
@@ -49,6 +52,7 @@ async def real_route_optimization_callable(context: dict[str, Any]) -> dict[str,
     if not asset_coordinates and context.get("assets"):
         asset_coordinates = extract_asset_coordinates_map(assets=context.get("assets"))
 
+    asset_floors = extract_asset_floors_map(context.get("assets"))
     technicians = context.get("technicians")
     time_limit_seconds = float(context.get("time_limit_seconds", 5.0))
 
@@ -57,6 +61,8 @@ async def real_route_optimization_callable(context: dict[str, Any]) -> dict[str,
         tasks=tasks,
         asset_coordinates=asset_coordinates,
         technicians=technicians,
+        asset_floors=asset_floors or None,
+        meters_per_unit=float(context.get("meters_per_pixel") or 1.0),
         time_limit_seconds=time_limit_seconds,
     )
     return output.model_dump(mode="json")
@@ -100,6 +106,7 @@ async def route_optimization_node(
         "asset_graph": state.get("asset_graph"),
         "assets": configurable.get("assets"),
         "technicians": configurable.get("technicians"),
+        "meters_per_pixel": configurable.get("meters_per_pixel"),
         "asset_coordinates": configurable.get("asset_coordinates"),
         "time_limit_seconds": configurable.get("time_limit_seconds", 5.0),
         "require_real_data": configurable.get("require_real_data", False),

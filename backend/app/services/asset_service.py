@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset import Asset
 from app.models.facility import Facility
+from app.models.facility_map_upload import FacilityMapUpload, UploadStatus
 
 
 async def _get_facility_or_404(
@@ -41,6 +42,37 @@ async def _get_asset_or_404(
     return asset
 
 
+async def ensure_floor_exists(
+    session: AsyncSession, *, tenant_id: uuid.UUID, facility_id: uuid.UUID, floor_level: int
+) -> None:
+    """Reject an asset placed on a floor the facility does not have.
+
+    A facility's floors are the levels of its finished (tiled) map uploads. A facility with no
+    finished map yet has no floors to check against, so any level is accepted (the map comes
+    first in the normal flow; this only guards facilities that already have floors).
+    """
+    levels = set(
+        (
+            await session.execute(
+                select(FacilityMapUpload.floor_level)
+                .where(
+                    FacilityMapUpload.tenant_id == tenant_id,
+                    FacilityMapUpload.facility_id == facility_id,
+                    FacilityMapUpload.status == UploadStatus.TILED,
+                )
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if levels and floor_level not in levels:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This facility has no floor {floor_level} (floors: {sorted(levels)})",
+        )
+
+
 async def create_asset(
     session: AsyncSession,
     *,
@@ -54,14 +86,19 @@ async def create_asset(
     installed_date: date | None,
     manufacturer: str | None,
     model: str | None,
+    floor_level: int = 0,
 ) -> Asset:
     await _get_facility_or_404(session, tenant_id=tenant_id, facility_id=facility_id)
+    await ensure_floor_exists(
+        session, tenant_id=tenant_id, facility_id=facility_id, floor_level=floor_level
+    )
 
     asset = Asset(
         tenant_id=tenant_id,
         facility_id=facility_id,
         name=name,
         type=type,
+        floor_level=floor_level,
         x=x,
         y=y,
         status=status_,
@@ -110,6 +147,13 @@ async def update_asset(
     asset = await _get_asset_or_404(
         session, tenant_id=tenant_id, facility_id=facility_id, asset_id=asset_id
     )
+    if updates.get("floor_level") is not None:
+        await ensure_floor_exists(
+            session,
+            tenant_id=tenant_id,
+            facility_id=facility_id,
+            floor_level=updates["floor_level"],
+        )
     for field, value in updates.items():
         setattr(asset, field, value)
     # No session.refresh() here either - `asset`'s attributes already reflect the

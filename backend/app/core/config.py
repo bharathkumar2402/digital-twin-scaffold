@@ -83,6 +83,11 @@ class Settings(BaseSettings):
 
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
+    # Real-world size of one floor-plan pixel (at the maximum tile zoom), used to turn map
+    # coordinates into walking distances for technician routing. The demo plants are about 120 m
+    # across an 8192 px plan; a real deployment sets this per facility's drawing scale.
+    floor_plan_meters_per_pixel: float = 120.0 / 8192.0
+
     jwt_secret_key: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15

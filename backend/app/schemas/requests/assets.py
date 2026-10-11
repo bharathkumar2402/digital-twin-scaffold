@@ -9,6 +9,7 @@ from app.models.asset import AssetStatus
 class AssetCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     type: str = Field(min_length=1, max_length=100)
+    floor_level: int = Field(default=0, ge=-10, le=100)
     x: float
     y: float
     status: AssetStatus = AssetStatus.OPERATIONAL
@@ -23,6 +24,7 @@ class AssetUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     type: str | None = Field(default=None, min_length=1, max_length=100)
+    floor_level: int | None = Field(default=None, ge=-10, le=100)
     x: float | None = None
     y: float | None = None
     status: AssetStatus | None = None
@@ -38,6 +40,7 @@ class AssetResponse(BaseModel):
     facility_id: uuid.UUID
     name: str
     type: str
+    floor_level: int
     x: float
     y: float
     status: AssetStatus
