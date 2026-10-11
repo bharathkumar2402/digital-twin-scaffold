@@ -78,10 +78,20 @@ export function AssetHealthTable({
                     not scored
                   </span>
                 ) : (
-                  <span style={{ color: RISK_BAND_COLOR[band], fontWeight: 600 }}>
-                    {row.risk.toFixed(1)}{" "}
+                  <div className="risk-cell">
+                    <span className="risk-number" style={{ color: RISK_BAND_COLOR[band] }}>
+                      {row.risk.toFixed(1)}
+                    </span>
+                    <span className="risk-bar" aria-hidden="true">
+                      <span
+                        style={{
+                          width: `${Math.max(2, Math.min(100, row.risk))}%`,
+                          background: RISK_BAND_COLOR[band],
+                        }}
+                      />
+                    </span>
                     <span className={`pill pill-${band}`}>{band}</span>
-                  </span>
+                  </div>
                 )}
               </td>
               <td>{formatRul(row.rulCycles)}</td>

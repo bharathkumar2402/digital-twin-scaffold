@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAssets } from "../hooks/useAssets";
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
+import { useFacilities } from "../hooks/useFacilities";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
 import { FacilityResultsPage } from "./FacilityResultsPage";
@@ -13,6 +14,7 @@ vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 vi.mock("../hooks/useAssetTelemetry", () => ({ useAssetTelemetry: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
+vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
 // The analysis panel has its own tests; here only whether the page wires it correctly.
 vi.mock("../components/AgentAnalysisPanel", () => ({
   AgentAnalysisPanel: (props: { canRun: boolean; assetNames: Map<string, string> }) => (
@@ -60,7 +62,14 @@ function renderPage(url = "/facilities/f1/results?upload=u9") {
 
 describe("FacilityResultsPage", () => {
   beforeEach(() => {
-    vi.mocked(useAuth).mockReturnValue({ role: "facility_manager" } as ReturnType<typeof useAuth>);
+    vi.mocked(useAuth).mockReturnValue({ role: "facility_manager", logout: vi.fn() } as unknown as ReturnType<
+      typeof useAuth
+    >);
+    vi.mocked(useFacilities).mockReturnValue(
+      query<ReturnType<typeof useFacilities>>({
+        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u9", asset_count: 2 }],
+      })
+    );
     vi.mocked(useAssets).mockReturnValue(
       query<ReturnType<typeof useAssets>>({ data: [asset("a", "Aged Engine"), asset("b", "New Engine")] })
     );
@@ -85,17 +94,34 @@ describe("FacilityResultsPage", () => {
     expect(screen.getByTestId("analysis")).toHaveAttribute("data-names", "2");
   });
 
-  it("links back to the map using the upload id from the URL", () => {
-    renderPage();
-    expect(screen.getByRole("link", { name: /Back to map/ })).toHaveAttribute(
-      "href",
-      "/facilities/f1/map/u9"
-    );
+  it("shows the facility name and Map / Results tabs in the shell, with the map's real upload id", () => {
+    renderPage("/facilities/f1/results");
+    const nav = screen.getByRole("navigation", { name: "Facility" });
+    expect(within(nav).getByText("Demo Plant 1")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Map" })).toHaveAttribute("href", "/facilities/f1/map/u9");
+    expect(within(nav).getByRole("link", { name: "Results" })).toHaveClass("nav-active");
   });
 
-  it("omits the back link when the page was opened without an upload id", () => {
+  it("disables the Map tab when the facility has no floor plan yet", () => {
+    vi.mocked(useFacilities).mockReturnValue(
+      query<ReturnType<typeof useFacilities>>({
+        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: null, asset_count: 2 }],
+      })
+    );
     renderPage("/facilities/f1/results");
-    expect(screen.queryByRole("link", { name: /Back to map/ })).not.toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Facility" });
+    expect(within(nav).queryByRole("link", { name: "Map" })).not.toBeInTheDocument();
+    expect(within(nav).getByText("Map")).toHaveClass("nav-disabled");
+  });
+
+  it("summarises the facility in KPI tiles above the table", () => {
+    renderPage();
+    const kpis = screen.getByRole("group", { name: "Facility summary" });
+    expect(within(kpis).getByText("Assets monitored")).toBeInTheDocument();
+    expect(within(kpis).getByText("High risk")).toBeInTheDocument();
+    // two assets, one in the high band (95.8), one alarm, shortest RUL 3.6 on the aged engine
+    expect(within(kpis).getByText("3.6 cycles")).toBeInTheDocument();
+    expect(within(kpis).getByText("Aged Engine")).toBeInTheDocument();
   });
 
   it.each([

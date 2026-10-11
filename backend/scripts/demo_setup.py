@@ -57,8 +57,9 @@ from app.services.asset_service import create_asset
 from app.services.risk_inference_service import score_facility
 from app.services.telemetry_service import ingest_readings
 from scripts.calibrate_simulator import DEFAULT_OUT
+from scripts.demo_floorplan import ASSET_LAYOUT, DEMO_TILE_PREFIX, build_and_upload
 from scripts.iot_data_generator import AI4I_SENSOR_PROFILES, generate_reading
-from scripts.seed_demo import DEMO_EMAIL, DEMO_PASSWORD, seed
+from scripts.seed_demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_UPLOAD_ID, seed
 
 logger = logging.getLogger("demo_setup")
 BACKEND = Path(__file__).resolve().parents[1]
@@ -160,6 +161,7 @@ async def create_assets_and_map(
 ) -> dict[str, uuid.UUID]:
     ids: dict[str, uuid.UUID] = {}
     for name, kind, x, y in [*PLANT_ASSETS, *ENGINES]:
+        x, y = ASSET_LAYOUT[name]  # each asset sits on its equipment pad in the floor plan
         async with async_session_factory() as session:
             await scope_session_to_tenant(session, tenant_id)  # re-scope: SET LOCAL per txn
             asset = await create_asset(
@@ -174,22 +176,55 @@ async def create_assets_and_map(
                 session, tenant_id=tenant_id, facility_id=facility_id,
                 parent_asset_id=ids[parent], child_asset_id=ids[child],
             )  # fmt: skip
+    return ids
+
+
+async def ensure_floor_plan(tenant_id: uuid.UUID, facility_id: uuid.UUID) -> None:
+    """Draw the demo plant, tile it into MinIO, and make sure the map upload row points at it.
+
+    Idempotent, with a fixed upload id so the map URL is stable. This is a drawn plan generated
+    for the demo, tiled directly (no sandbox worker); a real upload still goes through the sandbox.
+    """
+    count = await asyncio.to_thread(build_and_upload)
+    logger.info("floor plan: uploaded %d tiles", count)
     async with async_session_factory() as session:
         await scope_session_to_tenant(session, tenant_id)
-        session.add(
-            FacilityMapUpload(
-                tenant_id=tenant_id,
-                facility_id=facility_id,
-                original_filename="demo-placeholder.pdf",
-                storage_key=f"demo/{facility_id}/placeholder",
-                format="pdf",
-                status=UploadStatus.TILED,
-                status_detail="placeholder map for the demo; upload a real floor plan instead",
-                tile_prefix=f"demo/{facility_id}",
+        upload = (
+            await session.execute(
+                select(FacilityMapUpload).where(FacilityMapUpload.id == DEMO_UPLOAD_ID)
             )
-        )
+        ).scalar_one_or_none()
+        if upload is None:
+            session.add(
+                FacilityMapUpload(
+                    id=DEMO_UPLOAD_ID,
+                    tenant_id=tenant_id,
+                    facility_id=facility_id,
+                    original_filename="demo-plant-floor-plan.png",
+                    storage_key=f"demo/{facility_id}/floor-plan",
+                    format="png",
+                    status=UploadStatus.TILED,
+                    status_detail="generated demo floor plan (scripts/demo_floorplan.py)",
+                    tile_prefix=DEMO_TILE_PREFIX,
+                )
+            )
+        else:
+            upload.status = UploadStatus.TILED
+            upload.tile_prefix = DEMO_TILE_PREFIX
         await session.commit()
-    return ids
+
+
+async def place_assets_on_plan(tenant_id: uuid.UUID, facility_id: uuid.UUID) -> None:
+    """Move already-created assets onto their pads (a re-run after the layout changed)."""
+    async with async_session_factory() as session:
+        await scope_session_to_tenant(session, tenant_id)
+        assets = (
+            await session.execute(select(Asset).where(Asset.facility_id == facility_id))
+        ).scalars()
+        for asset in assets:
+            if asset.name in ASSET_LAYOUT:
+                asset.x, asset.y = ASSET_LAYOUT[asset.name]
+        await session.commit()
 
 
 async def _ingest(tenant_id: uuid.UUID, readings: list[SensorReadingIn]) -> None:
@@ -344,6 +379,7 @@ async def main_async(args: argparse.Namespace) -> None:
     cal = ensure_calibration()
     tenant_id, _, facility_id = await seed()
     end = datetime.now(UTC)
+    await ensure_floor_plan(tenant_id, facility_id)
     if await facility_has_assets(tenant_id, facility_id):
         logger.info("facility already has assets - skipping asset/telemetry backfill")
         async with async_session_factory() as session:
@@ -352,6 +388,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 await session.execute(select(Asset).where(Asset.facility_id == facility_id))
             ).scalars()
             ids = {a.name: a.id for a in rows}
+        await place_assets_on_plan(tenant_id, facility_id)
     else:
         ids = await create_assets_and_map(tenant_id, facility_id)
         await backfill_plant_telemetry(tenant_id, ids, end)
@@ -361,13 +398,11 @@ async def main_async(args: argparse.Namespace) -> None:
     await summarize(tenant_id, facility_id, {v: k for k, v in ids.items()})
 
     print("\n--- demo ready ---")
+    print('open:        http://localhost:5173   (click "Use demo account")')
     print(f"login:       tenant_id={tenant_id}")
     print(f"             email={DEMO_EMAIL}  password={DEMO_PASSWORD}")
     print(f"facility_id: {facility_id}")
-    upload_id = await get_upload_id(tenant_id, facility_id)
-    print(
-        f"map page:    http://localhost:5173/login?next=/facilities/{facility_id}/map/{upload_id}"
-    )
+    print(f"map page:    http://localhost:5173/facilities/{facility_id}/map/{DEMO_UPLOAD_ID}")
     print("API docs:    http://localhost:8000/docs")
     print("Next: see docs/DEMO.md for the demo script.")
 

@@ -55,6 +55,7 @@ export function AgentAnalysisPanel({
         >
           <input
             type="text"
+            className="input"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={`Optional what-if, e.g. "${EXAMPLE_QUERY}"`}

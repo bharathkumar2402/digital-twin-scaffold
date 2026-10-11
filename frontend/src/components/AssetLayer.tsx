@@ -19,6 +19,7 @@ import type { Asset } from "../types/api";
 // nothing anyway.
 const SOURCE_ID = "facility-assets";
 const CIRCLE_LAYER_ID = "facility-assets-circle";
+const HALO_LAYER_ID = "facility-assets-halo";
 // A real click (mouse never really stationary) still fires a stray mousemove or two
 // of a pixel or so between mousedown and mouseup - confirmed by exercising this in an
 // actual browser, where an exact-mousemove-count check falsely treated a plain click
@@ -122,7 +123,7 @@ export function AssetLayer({
         type: "circle",
         source: SOURCE_ID,
         paint: {
-          "circle-radius": 8,
+          "circle-radius": 11,
           "circle-color": [
             "step",
             ["get", "risk_score"],
@@ -134,10 +135,36 @@ export function AssetLayer({
             67,
             RISK_COLOR_HIGH,
           ],
-          "circle-stroke-width": 2,
+          "circle-stroke-width": 3,
           "circle-stroke-color": "#ffffff",
         },
       });
+      // A soft coloured halo beneath each marker so risk reads at a glance, even zoomed out.
+      // Added second but placed *before* the marker layer, so it draws underneath it.
+      map.addLayer(
+        {
+          id: HALO_LAYER_ID,
+          type: "circle",
+          source: SOURCE_ID,
+          paint: {
+            "circle-radius": 24,
+            "circle-opacity": 0.22,
+            "circle-blur": 0.5,
+            "circle-color": [
+              "step",
+              ["get", "risk_score"],
+              RISK_COLOR_UNSCORED,
+              0,
+              RISK_COLOR_LOW,
+              34,
+              RISK_COLOR_MEDIUM,
+              67,
+              RISK_COLOR_HIGH,
+            ],
+          },
+        },
+        CIRCLE_LAYER_ID
+      );
     }
 
     const getSource = () => map.getSource(SOURCE_ID) as GeoJSONSource | undefined;

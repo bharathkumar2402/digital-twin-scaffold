@@ -24,6 +24,7 @@ dependencies = [
     "langgraph>=0.2.0",
     "networkx>=3.0",
     "ortools>=9.8",
+    "pillow>=10.0",  # demo floor-plan tiles (scripts/demo_floorplan.py)
     "py7zr>=0.21",  # IMS dataset acquisition (7z layer); RAR layer uses libarchive bsdtar
 ]
 

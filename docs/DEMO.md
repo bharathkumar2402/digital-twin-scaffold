@@ -45,16 +45,21 @@ python -m celery -A app.core.celery_app worker --loglevel=info -P solo -Q celery
 cd ..\frontend; npm install; npm run dev
 ```
 
-Open the map URL printed by `demo_setup` (it goes through `/login?next=...` on purpose: the
-access token is held in memory only, so a hard reload logs you out).
+Open **http://localhost:5173** and click **Use demo account** - one click signs in and lands on the
+facility picker, so there is no tenant id or URL to copy. The demo's tenant, facility and map ids are
+fixed (`d3500000-0000-4000-8000-00000000000{1,2,3}`), so bookmarks and the login keep working after you
+wipe and rebuild the stack. The button exists only in the dev server (`frontend/.env.development`).
+The facility card's **Open map** goes to a drawn floor plan of the demo plant with the six assets on
+their equipment pads, coloured by risk (red = high), with the dependency lines, a legend and
+**Fit view**; **Results** is the model/agent page.
 
 ## 3. Demo script (about 10 minutes)
 
 | # | Show | Say |
 |---|---|---|
-| 1 | Map page, assets, dependency lines | A private spatial map of the facility; assets are nodes with dependencies. The background is a placeholder: a real floor plan goes through the sandboxed upload worker (needs the extra sandbox container). |
+| 1 | Facility picker, then **Open map** | A private spatial map of the facility; assets are nodes coloured by risk, with their dependencies. The floor plan is a generated demo drawing (`scripts/demo_floorplan.py`); a real upload goes through the sandboxed upload worker (needs the extra sandbox container). |
 | 2 | Click an asset: telemetry chart | Live telemetry per asset, stored in TimescaleDB under row-level security per tenant. |
-| 3 | Click **Results** (top-left of the map) | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
+| 3 | Click the **Results** tab in the top bar | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
 | 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. |
 | 5 | Click `Compressor Engine A (aged)`, then compare `(new)` | Aged engine: RUL 3.6 cycles and a vibration alarm on both channels. New engine: RUL 115.9, no alarm. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
 | 6 | Results > Agent analysis: type `What if Primary Feed Pump 7 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
@@ -141,6 +146,6 @@ over the cascade, not a prediction).
 | Symptom | Fix |
 |---|---|
 | `demo_setup` cannot connect | `docker compose -p twin-demo ... ps`; wait for `healthy`; confirm the env is loaded in *this* shell (`$env:POSTGRES_PORT` should be `5433`). |
-| Login fails | Read the message: "Invalid tenant ID, email or password" is a real 401 - use the `tenant_id` printed by the latest `demo_setup` (it is **new every time you wipe the stack with `down -v`**; a single wrong character gives the same message). A message about the server (HTTP 500) or "could not reach the server" is not a credentials problem: usually a stale API process still holds port 8000 (`Get-NetTCPConnection -LocalPort 8000`; kill the old `uvicorn`, then start it again) or the API terminal did not load `demo.env.example`, so it is talking to the wrong database. Seed users must use a real-shaped domain (`.com`). |
+| Login fails | Use the **Use demo account** button (fixed demo ids, so nothing to copy). Read the message: "Invalid tenant ID, email or password" is a real 401 (only possible if you typed the form by hand or the demo has not been seeded: run `demo_setup`). A message about the server (HTTP 500) or "could not reach the server" is not a credentials problem: usually a stale API process still holds port 8000 (`Get-NetTCPConnection -LocalPort 8000`; kill the old `uvicorn`, then start it again) or the API terminal did not load `demo.env.example`, so it is talking to the wrong database. Seed users must use a real-shaped domain (`.com`). |
 | Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. Tiles 404 by design with the placeholder map. |
 | Anything else | Fall back to step 7: `pytest tests/integration/test_degradation_e2e.py -v` needs only Docker. |

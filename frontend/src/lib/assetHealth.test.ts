@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Asset, RiskScore } from "../types/api";
-import { buildHealthRows, formatRul, riskBand } from "./assetHealth";
+import { buildHealthRows, formatRul, riskBand, summarizeHealth } from "./assetHealth";
 
 function asset(id: string, name: string): Asset {
   return {
@@ -133,5 +133,39 @@ describe("buildHealthRows", () => {
 
   it("ignores scores for assets that are not in the list", () => {
     expect(buildHealthRows([], [score("ghost", 99)])).toEqual([]);
+  });
+});
+
+describe("summarizeHealth", () => {
+  it("counts assets, the high band, alarms and finds the shortest remaining life", () => {
+    const rows = buildHealthRows(
+      [asset("a", "Aged"), asset("b", "New"), asset("c", "Lonely")],
+      [
+        score("a", 95.8, { rul_cycles: 3.6, factors_json: { vibration_alarm: 1 } }),
+        score("b", 0.4, { rul_cycles: 115.9, factors_json: { vibration_alarm: 0 } }),
+      ]
+    );
+    expect(summarizeHealth(rows)).toEqual({
+      monitored: 3,
+      scored: 2,
+      unscored: 1,
+      highRisk: 1,
+      vibrationAlarms: 1,
+      shortestRul: { assetName: "Aged", cycles: 3.6 },
+    });
+  });
+
+  it("handles a facility with nothing scored or with no RUL", () => {
+    expect(summarizeHealth(buildHealthRows([asset("a", "A")], []))).toMatchObject({
+      highRisk: 0,
+      vibrationAlarms: 0,
+      shortestRul: null,
+    });
+    expect(summarizeHealth([])).toMatchObject({ monitored: 0, shortestRul: null });
+  });
+
+  it("treats an RUL of exactly zero as the shortest, not as missing", () => {
+    const rows = buildHealthRows([asset("a", "A"), asset("b", "B")], [score("a", 90, { rul_cycles: 0 }), score("b", 5, { rul_cycles: 50 })]);
+    expect(summarizeHealth(rows).shortestRul).toEqual({ assetName: "A", cycles: 0 });
   });
 });

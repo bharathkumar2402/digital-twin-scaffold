@@ -102,3 +102,32 @@ export function buildHealthRows(assets: Asset[], scores: RiskScore[]): AssetHeal
 export function formatRul(cycles: number | null): string {
   return cycles === null ? "—" : cycles.toFixed(1);
 }
+
+export interface HealthSummary {
+  monitored: number;
+  // Assets with a risk score / without one.
+  scored: number;
+  unscored: number;
+  // Risk in the map's "high" band (>= 67).
+  highRisk: number;
+  vibrationAlarms: number;
+  // The asset closest to failure among those that have an RUL, or null if none do.
+  shortestRul: { assetName: string; cycles: number } | null;
+}
+
+export function summarizeHealth(rows: AssetHealthRow[]): HealthSummary {
+  let shortest: HealthSummary["shortestRul"] = null;
+  for (const row of rows) {
+    if (row.rulCycles !== null && (shortest === null || row.rulCycles < shortest.cycles)) {
+      shortest = { assetName: row.asset.name, cycles: row.rulCycles };
+    }
+  }
+  return {
+    monitored: rows.length,
+    scored: rows.filter((r) => r.risk !== null).length,
+    unscored: rows.filter((r) => r.risk === null).length,
+    highRisk: rows.filter((r) => r.risk !== null && riskBand(r.risk) === "high").length,
+    vibrationAlarms: rows.filter((r) => r.vibration?.alarm === true).length,
+    shortestRul: shortest,
+  };
+}

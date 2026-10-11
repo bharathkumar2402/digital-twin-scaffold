@@ -216,3 +216,12 @@ export interface AgentRunRequest {
   trigger: AgentRunTrigger;
   user_query: string | null;
 }
+
+// Mirrors backend/app/schemas/requests/facilities.py's FacilityResponse.
+export interface FacilitySummary {
+  id: string;
+  name: string;
+  // Newest floor-plan upload that finished tiling; null if the facility has no map yet.
+  latest_map_upload_id: string | null;
+  asset_count: number;
+}

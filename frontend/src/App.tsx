@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "./components/RequireAuth";
 import { LoginPage } from "./pages/LoginPage";
+import { FacilitiesPage } from "./pages/FacilitiesPage";
 import { FacilityMapPage } from "./pages/FacilityMapPage";
 import { FacilityResultsPage } from "./pages/FacilityResultsPage";
 
@@ -26,7 +27,15 @@ export function App(): React.JSX.Element {
             </RequireAuth>
           }
         />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <FacilitiesPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -16,9 +16,13 @@ from app.models.facility import Facility
 from app.models.tenant import Tenant
 from app.models.user import Role, User
 from app.services.auth_service import EmailAlreadyRegisteredError, create_user_as_admin
-from app.services.tenant_service import create_tenant
 
 DEMO_TENANT_NAME = "Twin Labs Demo"
+# Fixed ids, so the demo login (tenant id) and every URL stay the same across rebuilds of the
+# local stack. Demo-only: real tenants get random ids.
+DEMO_TENANT_ID = uuid.UUID("d3500000-0000-4000-8000-000000000001")
+DEMO_FACILITY_ID = uuid.UUID("d3500000-0000-4000-8000-000000000002")
+DEMO_UPLOAD_ID = uuid.UUID("d3500000-0000-4000-8000-000000000003")
 DEMO_EMAIL = "demo@twinlabs.com"
 DEMO_PASSWORD = "demo-password-123"
 
@@ -30,10 +34,12 @@ async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
         # created a brand-new tenant (and tenant_id) on every rerun, which left orphaned
         # duplicate "Twin Labs Demo" rows and made login fail with a generic "Invalid
         # email or password" whenever someone used a tenant_id from an earlier run.
-        tenant_result = await session.execute(select(Tenant).where(Tenant.name == DEMO_TENANT_NAME))
+        tenant_result = await session.execute(select(Tenant).where(Tenant.id == DEMO_TENANT_ID))
         tenant = tenant_result.scalars().first()
         if tenant is None:
-            tenant = await create_tenant(session, name=DEMO_TENANT_NAME, plan_tier="pro")
+            tenant = Tenant(id=DEMO_TENANT_ID, name=DEMO_TENANT_NAME, plan_tier="pro")
+            session.add(tenant)
+            await session.commit()
         tenant_id = tenant.id
 
     async with async_session_factory() as session:
@@ -59,7 +65,7 @@ async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
         )
         facility = facility_result.scalars().first()
         if facility is None:
-            facility = Facility(tenant_id=tenant_id, name="Demo Plant 1")
+            facility = Facility(id=DEMO_FACILITY_ID, tenant_id=tenant_id, name="Demo Plant 1")
             session.add(facility)
             await session.commit()
 

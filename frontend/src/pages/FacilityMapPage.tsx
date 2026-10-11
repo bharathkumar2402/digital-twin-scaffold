@@ -1,8 +1,9 @@
 import type maplibregl from "maplibre-gl";
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { AlertToast } from "../components/AlertToast";
+import { AppShell } from "../components/AppShell";
 import { AssetLayer } from "../components/AssetLayer";
 import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
@@ -18,6 +19,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
 import { useRiskScores } from "../hooks/useRiskScores";
+import { assetBounds } from "../lib/fitAssets";
 import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 
 // Mirrors backend/app/core/rbac.py's WRITE_ROLES in app/api/assets.py - technician and
@@ -107,6 +109,31 @@ export function FacilityMapPage(): React.JSX.Element {
     return new Map(scores.map((riskScore) => [riskScore.asset_id, riskScore.score]));
   }, [riskScoresQuery.data]);
 
+  // Open framed on the equipment (not on the whole world), once per map; "Fit view" re-frames.
+  const fitToAssets = useCallback(
+    (animate: boolean) => {
+      const bounds = assetBounds(assets);
+      if (map && bounds) {
+        // The container may have changed size since the map was created (shell, sidebar), and a
+        // fit against a stale size frames the equipment too tightly - re-measure first.
+        map.resize();
+        map.fitBounds(bounds, {
+          padding: { top: 110, bottom: 150, left: 120, right: 120 },
+          maxZoom: 3.4,
+          duration: animate ? 500 : 0,
+        });
+      }
+    },
+    [map, assets]
+  );
+  const hasFittedRef = useRef(false);
+  useEffect(() => {
+    if (map && assets.length > 0 && !hasFittedRef.current) {
+      hasFittedRef.current = true;
+      fitToAssets(false);
+    }
+  }, [map, assets.length, fitToAssets]);
+
   if (!facilityId || !uploadId) {
     return <CenteredMessage isError>Missing facility or upload id in the URL.</CenteredMessage>;
   }
@@ -124,16 +151,10 @@ export function FacilityMapPage(): React.JSX.Element {
   }
 
   return (
-    <div style={{ width: "100vw", height: "100vh", display: "flex", background: "var(--color-bg)" }}>
-      <div style={{ flex: 1, position: "relative" }}>
+    <AppShell facilityId={facilityId}>
+    <div className="map-layout">
+      <div className="map-stage">
         <AlertToast alerts={alerts} onDismiss={dismiss} />
-        <Link
-          to={`/facilities/${facilityId}/results?upload=${uploadId}`}
-          className="btn btn-sm"
-          style={{ position: "absolute", top: 12, left: 12, zIndex: 5 }}
-        >
-          Results
-        </Link>
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
         <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
         <AssetLayer
@@ -167,19 +188,12 @@ export function FacilityMapPage(): React.JSX.Element {
             setNewAssetDraft({ x, y, name: "", type: "" });
           }}
         />
-        {canEdit && (
-          <div
-            className="card"
-            style={{
-              position: "absolute",
-              top: 12,
-              left: 12,
-              display: "flex",
-              gap: 6,
-              padding: 6,
-              boxShadow: "var(--shadow-md)",
-            }}
-          >
+        <div className="card map-toolbar">
+          <button type="button" className="btn btn-sm" onClick={() => fitToAssets(true)}>
+            Fit view
+          </button>
+          {canEdit && (
+            <>
             <button
               type="button"
               className={`btn btn-sm ${addMode ? "btn-active" : ""}`}
@@ -200,14 +214,16 @@ export function FacilityMapPage(): React.JSX.Element {
             >
               {linkMode ? "Cancel linking" : "Link dependency"}
             </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
+        <MapLegend />
         {linkMode && (
           <p
             className="card"
             style={{
               position: "absolute",
-              top: canEdit ? 56 : 12,
+              top: 64,
               left: 12,
               margin: 0,
               padding: "8px 12px",
@@ -312,6 +328,28 @@ export function FacilityMapPage(): React.JSX.Element {
           </>
         )}
       </div>
+    </div>
+    </AppShell>
+  );
+}
+
+const LEGEND: { label: string; color: string }[] = [
+  { label: "Low risk", color: "#2e7d32" },
+  { label: "Medium", color: "#ed6c02" },
+  { label: "High", color: "#c62828" },
+  { label: "Not scored", color: "#9e9e9e" },
+];
+
+function MapLegend(): React.JSX.Element {
+  return (
+    <div className="card map-legend" aria-label="Risk legend">
+      <strong>Asset risk</strong>
+      {LEGEND.map((item) => (
+        <span key={item.label} className="legend-item">
+          <span className="legend-dot" style={{ background: item.color }} />
+          {item.label}
+        </span>
+      ))}
     </div>
   );
 }

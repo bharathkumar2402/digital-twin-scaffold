@@ -10,6 +10,30 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on the UI/login overhaul (follow-up to the Results page; no issue): triggered by "the login keeps
+failing, the UI is plain HTML and the asset map is not proper". Fixed at the root, not patched:
+(1) Login: the demo tenant, facility and map-upload ids are now fixed UUIDs (`seed_demo.py`), so they no
+longer change when the local stack is wiped, and the login page offers "Use demo account" in the dev server
+only (`getDemoAccount`: needs `import.meta.env.DEV` plus the `VITE_DEMO_*` variables in
+`frontend/.env.development`; a production build never shows it). New `GET /facilities` (tenant-scoped,
+newest *tiled* map per facility, asset count; tests include a cross-tenant attack and a failed-newer-upload
+case) feeds a facility picker at `/`, so no URL or id needs to be known. (2) Map: it was blank because the
+placeholder upload row pointed at tiles that never existed, and the camera opened on the whole world. The
+demo now generates and tiles a real floor plan (`scripts/demo_floorplan.py`, Pillow, uploaded directly to
+the public tile bucket; the sandbox path for real uploads is unchanged), asset positions come from the same
+layout so every marker sits on its pad (a test checks each max-zoom tile is exactly the plan crop it claims
+to be, and that each asset's pad is where it should be), the world grid is padded with filler tiles so no
+visible area 404s into a black void, and the map opens framed on the assets (`assetBounds`, re-measuring the
+container first) with a "Fit view" button, larger markers with a risk halo, and a legend. My earlier
+absolutely-positioned "Results" button covered the "Add asset" button: replaced by a shared app shell
+(brand, facility name, Map / Results tabs, Sign out). (3) UI: KPI tiles (assets, high risk, vibration alarms,
+shortest remaining life), tables with risk bars, cards and a consistent type scale. Tests: 145 frontend, 491
+backend unit, 114 integration. Checked in a real browser; the automation tab was hidden, which makes Chrome
+throttle animation frames, so MapLibre looked slow/blurry on first paint there - not reproducible in a
+visible window (confirmed via `document.visibilityState`). Known limits: the floor plan is a generated
+drawing, not an uploaded one; the filler tiles cover zooms 0-5 only, so panning far outside the plan at the
+highest zoom still shows the (now light) background rather than tiles; `/facilities` has no create/edit.
+
 Note on the Results page (follow-up to the agent wiring; no issue): new route
 `/facilities/:facilityId/results` (linked from the map; `?upload=` carries the map upload id for the
 back link). Asset health table (risk with the map's colour bands, RUL, vibration verdict; unscored assets

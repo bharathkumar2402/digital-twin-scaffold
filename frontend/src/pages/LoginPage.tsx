@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../hooks/useAuth";
+import { getDemoAccount } from "../lib/demoAccount";
 import { describeLoginError } from "../lib/loginError";
 
 // Deliberately bare - this task's job is proving the map-rendering pipeline works
@@ -17,19 +18,33 @@ export function LoginPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
+  const demo = getDemoAccount();
+
+  const signIn = async (credentials: {
+    tenantId: string;
+    email: string;
+    password: string;
+  }): Promise<void> => {
     setError(null);
     setIsSubmitting(true);
     try {
       // Pasted ids/emails often carry a stray space or newline; that alone fails sign-in.
-      await login({ tenantId: tenantId.trim(), email: email.trim(), password });
+      await login({
+        tenantId: credentials.tenantId.trim(),
+        email: credentials.email.trim(),
+        password: credentials.password,
+      });
       navigate(searchParams.get("next") ?? "/");
     } catch (caught) {
       setError(describeLoginError(caught));
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    await signIn({ tenantId, email, password });
   };
 
   return (
@@ -142,6 +157,17 @@ export function LoginPage(): React.JSX.Element {
           >
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
+          {demo && (
+            <button
+              type="button"
+              className="btn"
+              style={{ width: "100%", marginTop: 10 }}
+              disabled={isSubmitting}
+              onClick={() => void signIn(demo)}
+            >
+              Use demo account
+            </button>
+          )}
         </form>
       </div>
     </div>

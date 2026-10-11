@@ -44,7 +44,15 @@ export function FacilityMap({ tileUrlTemplate, onMapLoad }: FacilityMapProps): R
       style: {
         version: 8,
         sources: {},
-        layers: [],
+        // Fills the area around/beyond the floor plan's tiles (tiles only exist where the plan
+        // is) so it reads as empty floor rather than as a black void.
+        layers: [
+          {
+            id: "floor-background",
+            type: "background",
+            paint: { "background-color": "#eef2f6" },
+          },
+        ],
       },
       center: [0, 0],
       zoom: 0,
@@ -78,5 +86,9 @@ export function FacilityMap({ tileUrlTemplate, onMapLoad }: FacilityMapProps): R
     };
   }, [tileUrlTemplate, onMapLoad]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} data-testid="maplibre-container" />;
+  return <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", background: "#eef2f6" }}
+      data-testid="maplibre-container"
+    />;
 }

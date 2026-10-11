@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { AgentAnalysisPanel } from "../components/AgentAnalysisPanel";
+import { AppShell } from "../components/AppShell";
 import { AssetDetailDrawer } from "../components/AssetDetailDrawer";
 import { AssetHealthTable } from "../components/AssetHealthTable";
+import { KpiTiles } from "../components/KpiTiles";
 import { ModelCards } from "../components/ModelCards";
 import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useRiskScores } from "../hooks/useRiskScores";
-import { buildHealthRows } from "../lib/assetHealth";
+import { buildHealthRows, summarizeHealth } from "../lib/assetHealth";
 
 // Mirrors the backend's RUN_ROLES in app/api/agent_runs.py; the server still enforces it.
 const RUN_ROLES = new Set(["superadmin", "tenant_admin", "facility_manager"]);
@@ -30,8 +32,6 @@ function Section({
 
 export function FacilityResultsPage(): React.JSX.Element {
   const { facilityId = "" } = useParams<{ facilityId: string }>();
-  const [searchParams] = useSearchParams();
-  const uploadId = searchParams.get("upload");
   const { role } = useAuth();
   const canRun = role !== null && RUN_ROLES.has(role);
 
@@ -47,19 +47,18 @@ export function FacilityResultsPage(): React.JSX.Element {
     () => new Map((assetsQuery.data ?? []).map((asset) => [asset.id, asset.name])),
     [assetsQuery.data]
   );
+  const summary = useMemo(() => summarizeHealth(rows), [rows]);
   const selectedRow = rows.find((row) => row.asset.id === selectedAssetId) ?? null;
 
   return (
-    <div className="results-page">
-      <header style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Facility results</h2>
-        <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{facilityId}</span>
-        {uploadId && (
-          <Link to={`/facilities/${facilityId}/map/${uploadId}`} style={{ marginLeft: "auto" }}>
-            &larr; Back to map
-          </Link>
-        )}
-      </header>
+    <AppShell facilityId={facilityId}>
+      <div className="page">
+        <div className="page-head">
+          <h2>Facility results</h2>
+          <p>What the risk, remaining-life and vibration models and the five agents say right now.</p>
+        </div>
+
+        {assetsQuery.data && scoresQuery.data && <KpiTiles summary={summary} />}
 
       <Section title="Asset health">
         {(assetsQuery.isPending || scoresQuery.isPending) && <p style={{ fontSize: 13 }}>Loading...</p>}
@@ -93,6 +92,7 @@ export function FacilityResultsPage(): React.JSX.Element {
       <Section title="About these models">
         <ModelCards />
       </Section>
-    </div>
+      </div>
+    </AppShell>
   );
 }
