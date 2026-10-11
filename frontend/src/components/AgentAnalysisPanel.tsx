@@ -10,6 +10,8 @@ interface AgentAnalysisPanelProps {
   // Mirrors the backend's run roles (superadmin / tenant_admin / facility_manager); the
   // server still enforces it, this only avoids offering a button that would 403.
   canRun: boolean;
+  // Ready-made what-if questions; clicking one fills the box (it does not run anything).
+  suggestions?: string[];
 }
 
 const EXAMPLE_QUERY = "What if Primary Feed Pump 7 fails?";
@@ -22,6 +24,7 @@ export function AgentAnalysisPanel({
   facilityId,
   assetNames,
   canRun,
+  suggestions = [],
 }: AgentAnalysisPanelProps): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [chosenRunId, setChosenRunId] = useState<string | null>(null);
@@ -45,6 +48,22 @@ export function AgentAnalysisPanel({
 
   return (
     <div>
+      {canRun && suggestions.length > 0 && (
+        <div className="suggestions" role="group" aria-label="Suggested questions">
+          <span className="suggestions-label">Try:</span>
+          {suggestions.map((question) => (
+            <button
+              key={question}
+              type="button"
+              className="btn btn-sm"
+              disabled={analyse.isPending}
+              onClick={() => setQuery(question)}
+            >
+              {question}
+            </button>
+          ))}
+        </div>
+      )}
       {canRun ? (
         <form
           onSubmit={(event) => {
@@ -92,11 +111,11 @@ export function AgentAnalysisPanel({
       )}
       {runs.data && runs.data.length > 0 && (
         <label style={{ display: "block", fontSize: 13, marginBottom: 12 }}>
-          Past analyses{" "}
+          Earlier analyses{" "}
           <select
             value={selectedRunId ?? ""}
             onChange={(event) => setChosenRunId(event.target.value)}
-            aria-label="Past analyses"
+            aria-label="Earlier analyses"
           >
             {runs.data.map((run) => (
               <option key={run.id} value={run.id}>

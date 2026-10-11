@@ -67,7 +67,10 @@ uses one flat drop penalty (1,000,000) for every task and one technician has a 4
 run it routed 3 LOW-priority jobs and left 41 tasks unassigned, including the critical Air Compressor AC-1 and three
 high-priority ones. Fix needs priority-weighted drop penalties plus a test (Phase 4 agent change; extra scrutiny).
 Also the maintenance agent schedules a task for every asset (44), which inflates the parts demand ("need 41, have 6").
-Planned next:
+U6 (done): Analysis is answer-first - an Answer card (outcome, what-if impact tiles, executive summary), validation status always
+visible outside the collapsed "How this was decided" section (the four agent steps), suggestion chips (top attention assets)
+that fill the question box without running. Tests: 329 frontend; checked live. Note: a real what-if on the 44-asset demo
+plant took 28-30 s, right at the 30 s pipeline SLO (the SLO test used a smaller facility). Planned next:
 U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
 
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;

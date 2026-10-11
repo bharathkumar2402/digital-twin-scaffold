@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildHealthRows } from "./assetHealth";
-import { latestScoredAt, topAttention } from "./attention";
+import { latestScoredAt, suggestedQuestions, topAttention } from "./attention";
 import type { Asset, RiskScore } from "../types/api";
 
 const asset = (id: string, name: string): Asset => ({
@@ -113,5 +113,29 @@ describe("latestScoredAt", () => {
     );
     expect(latestScoredAt(rows)).toBe("2026-10-11T08:00:00Z");
     expect(latestScoredAt(buildHealthRows([asset("c", "C")], []))).toBeNull();
+  });
+});
+
+describe("suggestedQuestions", () => {
+  it("asks about the machines needing attention, worst first, up to the limit", () => {
+    const rows = rowsFor([
+      ["Fine", 5],
+      ["Worst", 95],
+      ["Warm", 50],
+      ["Hot", 80],
+    ]);
+    expect(suggestedQuestions(rows, 2)).toEqual(["What if Worst fails?", "What if Hot fails?"]);
+  });
+
+  it("falls back to the riskiest assets when nothing needs attention", () => {
+    const rows = rowsFor([
+      ["Calm", 3],
+      ["Quiet", 1],
+    ]);
+    expect(suggestedQuestions(rows, 1)).toEqual(["What if Calm fails?"]);
+  });
+
+  it("returns nothing for a facility with no assets", () => {
+    expect(suggestedQuestions([])).toEqual([]);
   });
 });

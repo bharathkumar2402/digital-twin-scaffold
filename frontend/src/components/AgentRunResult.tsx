@@ -55,20 +55,6 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
 
   return (
     <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
-        <span className={`pill ${statusPill(run.status)}`}>
-          {STATUS_LABEL[run.status] ?? run.status}
-        </span>
-        <span style={muted}>{(run.duration_ms / 1000).toFixed(1)} s</span>
-        <span style={muted}>{new Date(run.created_at).toLocaleString()}</span>
-        {/* A halted run keeps the confidence of the last agent that set one; it says nothing
-            about a run that did not finish, so it is only shown for completed runs. */}
-        {!halted && run.confidence !== null && (
-          <span style={muted}>confidence {(run.confidence * 100).toFixed(0)}%</span>
-        )}
-        {state.user_query && <span style={muted}>query: &ldquo;{state.user_query}&rdquo;</span>}
-      </div>
-
       {halted && (
         <div className="banner-warning" role="alert">
           <strong>The pipeline stopped before finishing.</strong>{" "}
@@ -82,9 +68,57 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
               ))}
             </ul>
           )}
-          <div style={{ marginTop: 6 }}>Stages that completed before the stop are shown below.</div>
+          <div style={{ marginTop: 6 }}>Stages that completed before the stop are under &ldquo;How this was decided&rdquo;.</div>
         </div>
       )}
+
+      <section className="answer-card" aria-label="Answer">
+        <h4>Answer</h4>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
+          <span className={`pill ${statusPill(run.status)}`}>
+            {STATUS_LABEL[run.status] ?? run.status}
+          </span>
+          <span style={muted}>{(run.duration_ms / 1000).toFixed(1)} s</span>
+          <span style={muted}>{new Date(run.created_at).toLocaleString()}</span>
+          {/* A halted run keeps the confidence of the last agent that set one; it says nothing
+              about a run that did not finish, so it is only shown for completed runs. */}
+          {!halted && run.confidence !== null && (
+            <span style={muted}>confidence {(run.confidence * 100).toFixed(0)}%</span>
+          )}
+          {state.user_query && <span style={muted}>query: &ldquo;{state.user_query}&rdquo;</span>}
+        </div>
+
+        {state.user_query && cascade && (
+          <div className="impact" role="group" aria-label="What-if impact">
+            <p style={{ margin: "0 0 6px", fontSize: 14 }}>
+              If <strong>{nameOf(cascade.root_cause_asset_id)}</strong> fails:
+            </p>
+            <div className="impact-tiles">
+              <div>
+                <div className="impact-value">{cascade.total_affected_assets}</div>
+                <div className="impact-label">Assets affected</div>
+              </div>
+              <div>
+                <div className="impact-value">{cascade.cascade_depth}</div>
+                <div className="impact-label">Cascade levels</div>
+              </div>
+              <div>
+                <div className="impact-value">{cascade.estimated_downtime_hours} h</div>
+                <div className="impact-label">Estimated downtime</div>
+              </div>
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: 12 }}>
+              Downtime is a rule-of-thumb estimate over the cascade, not a prediction.
+            </p>
+          </div>
+        )}
+
+        {run.decision_report ? (
+          <p className="answer-summary">{replaceAssetIds(run.decision_report, assetNames)}</p>
+        ) : (
+          <p style={muted}>No summary was produced.</p>
+        )}
+      </section>
 
       <StageCard title="Validation errors">
         {run.validation_errors_json.length === 0 ? (
@@ -100,6 +134,8 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
         )}
       </StageCard>
 
+      <details className="how-decided">
+        <summary>How this was decided: the four agent steps</summary>
       <StageCard title="1. Risk priorities">
         <p style={{ fontSize: 12 }}>
           The score and RUL come from the trained models. The &ldquo;why&rdquo; text is a
@@ -247,15 +283,7 @@ export function AgentRunResult({ run, assetNames }: AgentRunResultProps): React.
         )}
       </StageCard>
 
-      <StageCard title="5. Executive summary">
-        {run.decision_report ? (
-          <p style={{ ...muted, color: "var(--color-text)" }}>
-            {replaceAssetIds(run.decision_report, assetNames)}
-          </p>
-        ) : (
-          <p style={muted}>No summary was produced.</p>
-        )}
-      </StageCard>
+      </details>
     </div>
   );
 }

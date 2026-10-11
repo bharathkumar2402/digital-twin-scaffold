@@ -4,8 +4,9 @@ import { useParams } from "react-router-dom";
 import { AgentAnalysisPanel } from "../components/AgentAnalysisPanel";
 import { AppShell } from "../components/AppShell";
 import { Section } from "../components/Section";
-import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
+import { useFacilityHealth } from "../hooks/useFacilityHealth";
+import { suggestedQuestions } from "../lib/attention";
 import { canRunAnalyses } from "../lib/roles";
 
 // What-if analyses and the five agents' reasoning. Running one is limited to managers and admins
@@ -13,11 +14,12 @@ import { canRunAnalyses } from "../lib/roles";
 export function FacilityAnalysisPage(): React.JSX.Element {
   const { facilityId = "" } = useParams<{ facilityId: string }>();
   const { role } = useAuth();
-  const assetsQuery = useAssets(facilityId);
+  const health = useFacilityHealth(facilityId);
   const assetNames = useMemo(
-    () => new Map((assetsQuery.data ?? []).map((asset) => [asset.id, asset.name])),
-    [assetsQuery.data]
+    () => new Map([...health.assetsById].map(([id, asset]) => [id, asset.name])),
+    [health.assetsById]
   );
+  const suggestions = useMemo(() => suggestedQuestions(health.allRows, 3), [health.allRows]);
 
   return (
     <AppShell facilityId={facilityId}>
@@ -28,7 +30,12 @@ export function FacilityAnalysisPage(): React.JSX.Element {
         </div>
         <Section title="Agent analysis">
           <p className="scope-note">Analyses cover the whole facility, not a single floor.</p>
-          <AgentAnalysisPanel facilityId={facilityId} assetNames={assetNames} canRun={canRunAnalyses(role)} />
+          <AgentAnalysisPanel
+            facilityId={facilityId}
+            assetNames={assetNames}
+            canRun={canRunAnalyses(role)}
+            suggestions={suggestions}
+          />
         </Section>
       </div>
     </AppShell>

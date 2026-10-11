@@ -38,3 +38,11 @@ export function latestScoredAt(rows: AssetHealthRow[]): string | null {
   }
   return latest;
 }
+
+// Ready-made what-if questions for the machines most worth asking about: the ones needing attention,
+// or, if nothing does, simply the riskiest assets (rows arrive worst first).
+export function suggestedQuestions(rows: AssetHealthRow[], limit = 3): string[] {
+  const { top } = topAttention(rows, limit);
+  const picks = top.length > 0 ? top : rows.slice(0, limit);
+  return picks.map((row) => `What if ${row.asset.name} fails?`);
+}

@@ -124,8 +124,41 @@ describe("AgentAnalysisPanel", () => {
     expect(vi.mocked(useAgentRun)).toHaveBeenLastCalledWith("new");
     expect(screen.getByText("Report for new")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Past analyses"), { target: { value: "old" } });
+    fireEvent.change(screen.getByLabelText("Earlier analyses"), { target: { value: "old" } });
     expect(vi.mocked(useAgentRun)).toHaveBeenLastCalledWith("old");
+  });
+
+  describe("suggested questions", () => {
+    const chips = ["What if Air Compressor AC-1 fails?", "What if CNC Machine CNC-2 fails?"];
+
+    it("fills the question box when clicked, without running anything", () => {
+      setup({ runs: [] });
+      render(<AgentAnalysisPanel facilityId="f" assetNames={new Map()} canRun={true} suggestions={chips} />);
+      fireEvent.click(screen.getByRole("button", { name: chips[1] }));
+      expect(screen.getByLabelText("What-if question")).toHaveValue(chips[1]);
+      expect(mutate).not.toHaveBeenCalled();
+      // the user can then run it as usual
+      fireEvent.click(screen.getByRole("button", { name: "Run analysis" }));
+      expect(mutate).toHaveBeenCalledWith(
+        { trigger: "user_query", user_query: chips[1] },
+        expect.any(Object)
+      );
+    });
+
+    it("is not offered to roles that cannot run analyses", () => {
+      setup({ runs: [] });
+      render(<AgentAnalysisPanel facilityId="f" assetNames={new Map()} canRun={false} suggestions={chips} />);
+      expect(screen.queryByRole("group", { name: "Suggested questions" })).not.toBeInTheDocument();
+    });
+
+    it("is hidden when there are no suggestions, and disabled while a run is in flight", () => {
+      setup({ runs: [] });
+      const { rerender } = render(<AgentAnalysisPanel facilityId="f" assetNames={new Map()} canRun={true} />);
+      expect(screen.queryByRole("group", { name: "Suggested questions" })).not.toBeInTheDocument();
+      setup({ runs: [], pending: true });
+      rerender(<AgentAnalysisPanel facilityId="f" assetNames={new Map()} canRun={true} suggestions={chips} />);
+      expect(screen.getByRole("button", { name: chips[0] })).toBeDisabled();
+    });
   });
 
   it("says so when no analysis has ever been run", () => {

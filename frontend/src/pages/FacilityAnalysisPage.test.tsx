@@ -5,15 +5,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { useRiskScores } from "../hooks/useRiskScores";
 import { FacilityAnalysisPage } from "./FacilityAnalysisPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
+vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 // The analysis panel has its own tests; here only whether the page wires it correctly.
 vi.mock("../components/AgentAnalysisPanel", () => ({
-  AgentAnalysisPanel: (props: { canRun: boolean; assetNames: Map<string, string> }) => (
-    <div data-testid="analysis" data-can-run={String(props.canRun)} data-names={props.assetNames.size} />
+  AgentAnalysisPanel: (props: { canRun: boolean; assetNames: Map<string, string>; suggestions?: string[] }) => (
+    <div
+      data-testid="analysis"
+      data-can-run={String(props.canRun)}
+      data-names={props.assetNames.size}
+      data-suggestions={JSON.stringify(props.suggestions ?? [])}
+    />
   ),
 }));
 
@@ -52,6 +59,27 @@ describe("FacilityAnalysisPage", () => {
     vi.mocked(useAssets).mockReturnValue({
       data: [asset("a", "Aged Engine"), asset("b", "New Engine")],
     } as unknown as ReturnType<typeof useAssets>);
+    vi.mocked(useRiskScores).mockReturnValue({
+      data: [
+        {
+          id: "r1",
+          facility_id: "f1",
+          asset_id: "a",
+          score: 95.8,
+          rul_cycles: 3.6,
+          model_version: "v1",
+          factors_json: {},
+          computed_at: "2026-10-10T10:00:00Z",
+        },
+      ],
+    } as unknown as ReturnType<typeof useRiskScores>);
+  });
+
+  it("suggests what-if questions about the machines that need attention", () => {
+    renderPage();
+    expect(JSON.parse(screen.getByTestId("analysis").getAttribute("data-suggestions") ?? "[]")).toEqual([
+      "What if Aged Engine fails?",
+    ]);
   });
 
   it("shows only the analysis panel, labelled as facility-wide", () => {

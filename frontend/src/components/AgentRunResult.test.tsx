@@ -108,6 +108,81 @@ function run(overrides: Partial<AgentRunDetail> = {}, state: Partial<AgentRunSta
 }
 
 describe("AgentRunResult", () => {
+  describe("answer first", () => {
+    it("opens with the executive summary and the what-if impact numbers", () => {
+      render(<AgentRunResult run={run()} assetNames={names} />);
+      const answer = screen.getByRole("region", { name: "Answer" });
+      expect(within(answer).getByText("Failure at the pump threatens 2 assets.")).toBeInTheDocument();
+      const impact = within(answer).getByRole("group", { name: "What-if impact" });
+      expect(impact).toHaveTextContent("If Primary Feed Pump 7 fails:");
+      expect(impact).toHaveTextContent("2Assets affected");
+      expect(impact).toHaveTextContent("2Cascade levels");
+      expect(impact).toHaveTextContent("6.5 hEstimated downtime");
+      expect(impact).toHaveTextContent("not a prediction");
+      expect(within(answer).getByText("confidence 89%")).toBeInTheDocument();
+    });
+
+    it("puts the answer before every stage card in the page", () => {
+      render(<AgentRunResult run={run()} assetNames={names} />);
+      const answer = screen.getByRole("region", { name: "Answer" });
+      const stage = screen.getByRole("region", { name: "1. Risk priorities" });
+      expect(answer.compareDocumentPosition(stage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows no impact tiles for a routine (non what-if) run, only the summary", () => {
+      render(<AgentRunResult run={run({}, { user_query: null })} assetNames={names} />);
+      const answer = screen.getByRole("region", { name: "Answer" });
+      expect(within(answer).queryByRole("group", { name: "What-if impact" })).not.toBeInTheDocument();
+      expect(within(answer).getByText("Failure at the pump threatens 2 assets.")).toBeInTheDocument();
+    });
+
+    it("shows no impact tiles when the cascade stage produced nothing", () => {
+      render(<AgentRunResult run={run({}, { simulation_result: null })} assetNames={names} />);
+      expect(screen.queryByRole("group", { name: "What-if impact" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the four agent steps in a section that starts collapsed", () => {
+      const { container } = render(<AgentRunResult run={run()} assetNames={names} />);
+      const details = container.querySelector("details.how-decided") as HTMLDetailsElement;
+      expect(details).not.toBeNull();
+      expect(details.open).toBe(false);
+      for (const title of [
+        "1. Risk priorities",
+        "2. Maintenance schedule and inventory",
+        "3. Technician routes",
+        "4. Failure cascade (what-if)",
+      ]) {
+        const card = screen.getByRole("region", { name: title });
+        expect(details.contains(card)).toBe(true);
+      }
+    });
+
+    it("never hides validation errors inside the collapsed section", () => {
+      const { container } = render(
+        <AgentRunResult
+          run={run({ validation_errors_json: ["risk_assessment: score 140 > 100"] })}
+          assetNames={names}
+        />
+      );
+      const details = container.querySelector("details.how-decided") as HTMLDetailsElement;
+      const card = screen.getByRole("region", { name: "Validation errors" });
+      expect(details.contains(card)).toBe(false);
+      expect(within(card).getByText("risk_assessment: score 140 > 100")).toBeInTheDocument();
+    });
+
+    it("shows the halted warning above the answer", () => {
+      render(
+        <AgentRunResult
+          run={run({ status: "halted_for_escalation" }, { escalation_reason: "asset not found" })}
+          assetNames={names}
+        />
+      );
+      const alert = screen.getByRole("alert");
+      const answer = screen.getByRole("region", { name: "Answer" });
+      expect(alert.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  });
+
   it("shows asset names (never raw ids) in every stage", () => {
     const { container } = render(<AgentRunResult run={run()} assetNames={names} />);
     expect(screen.getAllByText("Primary Feed Pump 7").length).toBeGreaterThan(2);
@@ -130,7 +205,9 @@ describe("AgentRunResult", () => {
     expect(screen.getByText(/need 2, have 0/)).toBeInTheDocument();
     expect(screen.getByText(/Jordan Lee/)).toBeInTheDocument();
     expect(screen.getByText(/2 asset\(s\) are affected/)).toBeInTheDocument();
-    expect(screen.getByText(/not a prediction/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "4. Failure cascade (what-if)" })).getByText(/not a prediction/)
+    ).toBeInTheDocument();
     expect(screen.getByText("Failure at the pump threatens 2 assets.")).toBeInTheDocument();
   });
 
