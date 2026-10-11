@@ -40,6 +40,10 @@ the row on close, polite live region announces "Showing N of M", reduced-motion 
 card, KPI tiles reflow to 2 then 1 column. Tests: 184 frontend (was 145+), `tsc` and `eslint` clean; checked the
 floor filter in a real browser on the Meridian plant. Not covered by automation: the responsive CSS breakpoints.
 
+Note on Step 4 (leftover docs; no issue): `docs/DEMO.md` now describes the floor filter and has a "Known limits"
+section, including the dangling `agent-runner` compose service (documented, not fixed: it is agent-layer work for
+a separate task). Corrected the stale "no facility picker" limit above.
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
 (UI hides it for non-completed runs); `app/agents/runner.py` referenced by the compose file does not exist; `docs/DATASETS.md` is unchanged (no new data).
@@ -86,7 +90,7 @@ air-temperature anomalies (the message now names the trigger that fired; regress
 backend's executive-summary text names assets by raw UUID (the UI now substitutes asset names, leaving
 any id that is not one of the facility's assets visible). Also added automatic Testing Library cleanup
 to `src/test/setup.ts` (vitest runs without globals, so rendered components leaked between tests).
-Limits: no facility picker (reach the page from the map or by URL); the "why" text is rule-based, not the
+Limits: (at the time; a facility picker, `/facilities`, was added later) no facility picker; the "why" text is rule-based, not the
 model's reasoning; model-card numbers are static copies of docs/DATASETS.md.
 
 Note on wiring the agents to the real facility (follow-up to the correction below; no issue): the

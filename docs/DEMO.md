@@ -66,7 +66,7 @@ other floors (`L1`, `L2`) and jumps there. **Results** is the model/agent page.
 | 1 | Facility picker, then **Open map** | A private spatial map of the facility; assets are nodes coloured by risk, with their dependencies. The floor plan is a generated demo drawing (`scripts/demo_floorplan.py`); a real upload goes through the sandboxed upload worker (needs the extra sandbox container). |
 | 2 | Click an asset: telemetry chart | Live telemetry per asset, stored in TimescaleDB under row-level security per tenant. |
 | 3 | Click the **Results** tab in the top bar | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
-| 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. |
+| 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. On a multi-floor plant, the floor chips above the table filter the table and KPI tiles (and set `?floor=N` in the URL); each chip also shows that floor's high-risk and alarm counts. Agent analysis below it stays facility-wide. |
 | 5 | Click `Air Compressor AC-1`, then compare `Air Compressor AC-2` | AC-1: risk 95.8, RUL 3.1 cycles, vibration alarm. AC-2: has an RUL but no alarm. `Cooling Water Pump CWP-2` shows an *early* vibration warning while its risk is still low. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
 | 6 | Results > Agent analysis: type `What if Air Compressor AC-1 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
 | 7 | `pytest tests/integration/test_degradation_e2e.py -v` | The same story as an automated test on fresh containers: trains the models, simulates, scores, asserts. |
@@ -150,3 +150,13 @@ heuristic over the cascade, not a prediction).
 | Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. |
 | Map looks blank/blurry or screenshots time out in browser automation | The tab is hidden: Chrome throttles MapLibre's animation frames and the map never fires `load`. Use a visible tab; not a product bug. |
 | Anything else | Fall back to step 7: `pytest tests/integration/test_degradation_e2e.py -v` needs only Docker. |
+
+## Known limits
+
+- `docker-compose.yml` defines an `agent-runner` service whose command (`python -m app.agents.runner`) points at
+  a module that does not exist. The demo does not need it: analyses run in the API process
+  (`POST /facilities/{id}/agent-runs`). Do not start that service; removing or implementing it is open.
+- Floor plans are generated drawings; filler map tiles only cover zoom 0-5.
+- The technician roster is a single built-in technician and downtime is a heuristic.
+- The Results page's "why" text is rule-based, and the model cards are static copies of `docs/DATASETS.md`.
+- `/facilities` is read-only (no create or edit).
