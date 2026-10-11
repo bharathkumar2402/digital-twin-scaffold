@@ -1,6 +1,6 @@
 # Live data loop — plan and decisions (Phase L)
 
-Written 2026-10-12 so work can resume in a new session. **Status: planned, nothing built yet.**
+Written 2026-10-12 so work can resume in a new session. **Status: L.0 measured (see "Baseline measurements"); nothing else built yet. Next: L.1.**
 Read this, then `docs/PHASE_PLAN.md` ("Phase L") for the task list, then start at **L.0**.
 
 ## Why
@@ -31,7 +31,7 @@ event so screens refresh themselves, stale-data awareness, and automatic (deboun
 | D7 | Ingest security | **Restrict `POST /telemetry` to technician, facility_manager, tenant_admin, superadmin** (viewer = read-only). The simulator signs in as a seeded technician-role account | Today ANY authenticated role (a viewer!) can write sensor data. Real devices need API keys (future work, not in scope). |
 | D8 | Demo accounts | Seed **a technician and a viewer** account next to the manager (also closes the "technician view never seen in a browser" gap) | Needed for D7 and for testing the role-based UI live. |
 | D9 | Order | **Phase L first, then Phase 5 RLS audit** | Highest demo value; Phase L adds no tenant table, so no new RLS work, and the audit afterwards covers the new paths. |
-| D10 | Data growth | Timescale **retention 14 days** (+ compression only if compatible with RLS; see Risks) | Bounded disk. |
+| D10 | Data growth | Timescale **retention 14 days**, retention only (L.0 proved compression cannot be used with RLS) | Bounded disk. |
 
 ## Architecture (target)
 
@@ -84,6 +84,45 @@ event so screens refresh themselves, stale-data awareness, and automatic (deboun
 | Agent run | in the worker; never blocks an API request; <= 1 / 10 min / facility |
 | DB growth | <= ~150 MB/day raw (retention 14 days) |
 | Stale detection | an asset with no reading for 5 min shows "No recent data" within one refresh |
+
+## Baseline measurements (Phase L task L.0, 2026-10-11)
+
+Run with `python -m scripts.measure_live_load` (scratch tenant of 44 machines in the demo stack, 220-row batches =
+44 machines x 5 AI4I sensors; filler rows are timing-only, never training data). Windows dev machine, Docker Desktop,
+API on uvicorn. Raw JSON: `backend/data/processed/measure_live_load.json`. Rows stored are for the one tenant.
+
+| Rows stored | Ingest 220 rows, p50 / p95 | Ingest ceiling | Scoring 44 assets | Read routes p95 (idle) |
+|---|---|---|---|---|
+| 30 k | 342 / 396 ms | 578 rows/s | 8.6-9.7 s | 14-29 ms |
+| 300 k | (not measured) | | 9.2-9.7 s | 14-19 ms |
+| 1 M | **2080 / 2342 ms** | **103 rows/s** | **15.9-16.3 s** | 12-31 ms |
+
+Other results:
+- Read routes **under concurrent ingest** (at 1 M rows): p95 10-29 ms, no worse than idle. OK.
+- A 15 s tick needs 14.7 rows/s. Ceiling at 1 M rows is 103 rows/s: 7x headroom, shrinking as data grows.
+- **Compression with RLS (TimescaleDB 2.29.2): impossible in both orders.** Enabling compression on an RLS table
+  fails (`columnstore cannot be used on table with row security`) and so does enabling RLS on a compressed one
+  (`operation not supported on hypertables that have columnstore enabled`). The no-RLS control compresses (3/3
+  chunks). An RLS-only table stays isolated (tenant A 3000 rows, B 3000, no tenant 0).
+- **Not measured:** the 300 k ingest row and the 3 M tier. 3 M rows took Docker Desktop down on this machine, so the
+  script defaults to 1 M (`--max-rows 3000000` opts in).
+- Environment note: on this Windows machine `localhost:9000` (MinIO) intermittently stalls while `127.0.0.1:9000`
+  is instant; set `MINIO_ENDPOINT=127.0.0.1:9000` when running scripts if scoring hangs.
+
+Verdict against the budget above: ingest p95 **fails** (budget 200 ms) and gets worse with data; scoring **fails**
+(budget 10 s) and also grows (9 s -> 16 s from 30 k to 1 M rows); read routes pass.
+
+Findings that change later tasks (D1-D10 stay as decided unless noted):
+- **D10:** **retention only** (14 days). Do not plan compression or continuous aggregates on `sensor_readings` while
+  it has RLS. Any rollups must be ordinary tables with their own RLS policy.
+- **Ingest scales badly (fix in L.2, before the simulator runs for days):** `check_readings_for_anomalies` runs one
+  baseline query per (asset, sensor) group, 220 per batch, and each query gets slower as rows accumulate (6x slower
+  from 30 k to 1 M). At the 14-day retention size (~18 M rows at D1's rate) the 15 s tick would not keep up.
+  L.2's plan step must pick: one grouped baseline query, a bounded time window on the baseline, or both, with
+  tests. This is a product change, so it was not done in L.0.
+- **Scoring grows with data (affects L.4 / D4):** 9 s -> 16 s for 44 assets. A 60 s cadence with an overlap lock
+  still fits, but L.4 must profile the cause (the 30/90/365-day feature windows are the suspect; unverified) and cap
+  the windows, and the "skip when no new readings" rule is mandatory.
 
 ## Risks and mitigations
 

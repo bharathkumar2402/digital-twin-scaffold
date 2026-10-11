@@ -10,6 +10,19 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.0 (baseline measurements; measured 2026-10-11, `backend/scripts/measure_live_load.py`,
+raw numbers in `backend/data/processed/measure_live_load.json`; no product code changed). Full table in
+`docs/LIVE_DATA_PLAN.md` "Baseline measurements". Headlines: (1) **TimescaleDB 2.29.2 cannot compress a table with
+row-level security, in either order** -> D10 is retention only. (2) **Ingest and scoring both slow down as rows
+accumulate:** a 220-row batch is p50 342 ms at 30 k rows and 2080 ms at 1 M (budget 200 ms p95), because the anomaly
+check issues 220 baseline queries per batch; scoring 44 assets goes 9 s -> 16 s (budget 10 s). Throughput is still 7x a
+15 s tick at 1 M rows, but the 14-day retention size would not keep up, so L.2 must fix the baseline query first. (3)
+Read routes stay at p95 < 31 ms, also under concurrent ingest. Not measured: the 300 k ingest row and the 3 M tier (it
+crashed Docker Desktop; 3 M is opt-in). Problems met on the way: the first compression test ran `ALTER ROLE app_role`
+(cluster-wide) and changed the demo TimescaleDB password - restored, and the script now uses its own `l0_scratch_app`
+role; an interrupted run left scratch rows behind - cleaned, and the demo tenant is intact (44 assets, 29,604 rows);
+`localhost:9000` MinIO stalls on this machine (use `127.0.0.1`).
+
 Note on multi-floor facilities and the Meridian plant (follow-up work, no issue; commits `2359ba9`, `6672efb`):
 (1) Data model: migration `0012_add_floors` adds `assets.floor_level` (INT NOT NULL default 0, check -10..100) and
 `facility_map_uploads.floor_level`/`floor_name`. No new table, so no new RLS policy; reversible, existing rows land on

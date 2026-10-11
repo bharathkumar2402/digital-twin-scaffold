@@ -1,0 +1,223 @@
+{
+  "measured_at": "2026-10-11T15:27:29.620983+00:00",
+  "live_path": {
+    "tiers": [
+      {
+        "rows_stored": 29920,
+        "scoring": {
+          "first_run_s": 9.66,
+          "later_runs_s": [
+            9.15,
+            8.63
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 17.1,
+            "p95_ms": 28.8,
+            "p99_ms": 273.9,
+            "max_ms": 273.9
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 16.2,
+            "p95_ms": 21.1,
+            "p99_ms": 27.7,
+            "max_ms": 27.7
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 12.3,
+            "p95_ms": 14.1,
+            "p99_ms": 22.6,
+            "max_ms": 22.6
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 14.8,
+            "p95_ms": 22.3,
+            "p99_ms": 78.0,
+            "max_ms": 78.0
+          }
+        },
+        "ingest": {
+          "batch_rows": 220,
+          "sequential": {
+            "n": 40,
+            "p50_ms": 342.3,
+            "p95_ms": 395.7,
+            "p99_ms": 594.7,
+            "max_ms": 594.7
+          },
+          "back_to_back": {
+            "n": 40,
+            "p50_ms": 355.0,
+            "p95_ms": 457.6,
+            "p99_ms": 753.7,
+            "max_ms": 753.7
+          },
+          "back_to_back_rows_per_s": 578.0,
+          "required_rows_per_s_at_15s_tick": 14.7
+        }
+      },
+      {
+        "rows_stored": 299860,
+        "scoring": {
+          "first_run_s": 9.65,
+          "later_runs_s": [
+            9.23,
+            9.53
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 8.7,
+            "p95_ms": 18.9,
+            "p99_ms": 272.3,
+            "max_ms": 272.3
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 15.5,
+            "p95_ms": 20.0,
+            "p99_ms": 64.3,
+            "max_ms": 64.3
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 11.2,
+            "p95_ms": 13.8,
+            "p99_ms": 14.4,
+            "max_ms": 14.4
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 10.8,
+            "p95_ms": 14.2,
+            "p99_ms": 17.5,
+            "max_ms": 17.5
+          }
+        }
+      },
+      {
+        "rows_stored": 999900,
+        "scoring": {
+          "first_run_s": 16.31,
+          "later_runs_s": [
+            15.92,
+            16.2
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 8.9,
+            "p95_ms": 11.9,
+            "p99_ms": 267.1,
+            "max_ms": 267.1
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 18.1,
+            "p95_ms": 30.7,
+            "p99_ms": 74.8,
+            "max_ms": 74.8
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 12.2,
+            "p95_ms": 14.2,
+            "p99_ms": 15.1,
+            "max_ms": 15.1
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 10.7,
+            "p95_ms": 12.6,
+            "p99_ms": 12.9,
+            "max_ms": 12.9
+          }
+        }
+      }
+    ],
+    "routes_under_ingest": {
+      "assets": {
+        "n": 30,
+        "p50_ms": 8.5,
+        "p95_ms": 9.9,
+        "p99_ms": 10.7,
+        "max_ms": 10.7
+      },
+      "risk_scores": {
+        "n": 30,
+        "p50_ms": 20.0,
+        "p95_ms": 29.0,
+        "p99_ms": 72.7,
+        "max_ms": 72.7
+      },
+      "risk_history": {
+        "n": 30,
+        "p50_ms": 15.1,
+        "p95_ms": 20.5,
+        "p99_ms": 20.6,
+        "max_ms": 20.6
+      },
+      "telemetry": {
+        "n": 30,
+        "p50_ms": 11.5,
+        "p95_ms": 16.6,
+        "p99_ms": 17.4,
+        "max_ms": 17.4
+      }
+    },
+    "ingest_at_largest_tier": {
+      "batch_rows": 220,
+      "sequential": {
+        "n": 40,
+        "p50_ms": 2079.5,
+        "p95_ms": 2341.9,
+        "p99_ms": 2451.4,
+        "max_ms": 2451.4
+      },
+      "back_to_back": {
+        "n": 40,
+        "p50_ms": 2103.6,
+        "p95_ms": 2331.8,
+        "p99_ms": 2367.5,
+        "max_ms": 2367.5
+      },
+      "back_to_back_rows_per_s": 103.0,
+      "required_rows_per_s_at_15s_tick": 14.7
+    }
+  },
+  "compression_vs_rls": {
+    "timescaledb_version": "2.29.2",
+    "control_no_rls": {
+      "enable": "ok",
+      "compress_chunks": "ok",
+      "compressed_chunks": 3
+    },
+    "order_rls_then_compression": {
+      "enable_compression": "FeatureNotSupportedError: columnstore cannot be used on table with row security",
+      "isolation": {
+        "tenant_a_sees": 3000,
+        "tenant_b_sees": 3000,
+        "no_tenant_sees": 0,
+        "expected_each": 3000,
+        "isolated": true
+      }
+    },
+    "order_compression_then_rls": {
+      "enable_compression": "ok",
+      "compress_chunks": "ok",
+      "compressed_chunks": 3,
+      "enable_rls": "FeatureNotSupportedError: operation not supported on hypertables that have columnstore enabled",
+      "isolation": null
+    }
+  }
+}
