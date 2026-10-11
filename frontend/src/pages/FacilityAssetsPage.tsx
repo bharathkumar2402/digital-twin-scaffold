@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { AppShell } from "../components/AppShell";
@@ -18,6 +18,7 @@ import {
   QUICK_FILTERS,
   searchRows,
 } from "../lib/assetFilters";
+import { assetMapHref } from "../lib/mapLinks";
 import type { Asset } from "../types/api";
 
 // Every asset with its health verdict. Filters (floor, quick filter) live in the URL so a view can
@@ -59,11 +60,37 @@ export function FacilityAssetsPage(): React.JSX.Element {
     );
   }
 
-  // Each floor has its own map; an asset is shown on the map of the floor it is on.
   function mapHrefFor(asset: Asset): string | null {
-    const floorMap = health.facility?.floors.find((f) => f.level === asset.floor_level);
-    return floorMap ? `/facilities/${facilityId}/map/${floorMap.map_upload_id}?asset=${asset.id}` : null;
+    return assetMapHref(facilityId, health.facility?.floors ?? [], asset);
   }
+
+  // A link like ?asset=<id> (from the Overview) opens that asset's panel. It must be visible, so the
+  // floor and quick filters are dropped; then the param is consumed so a reload does not reopen it.
+  // An id that is not one of this facility's assets is simply ignored.
+  const wantedAssetId = searchParams.get("asset");
+  useEffect(() => {
+    if (wantedAssetId === null || !health.loaded) return;
+    const found = health.allRows.some((row) => row.asset.id === wantedAssetId);
+    if (found) setSelectedAssetId(wantedAssetId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("asset");
+        if (found) {
+          next.delete("floor");
+          next.delete("show");
+        }
+        return next;
+      },
+      { replace: true }
+    );
+    if (found) {
+      window.setTimeout(
+        () => document.getElementById(assetRowButtonId(wantedAssetId))?.scrollIntoView?.({ block: "center" }),
+        0
+      );
+    }
+  }, [wantedAssetId, health.loaded, health.allRows, setSearchParams]);
 
   function closePanel(): void {
     const id = selectedAssetId;

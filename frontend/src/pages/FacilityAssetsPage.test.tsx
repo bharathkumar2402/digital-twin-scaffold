@@ -95,6 +95,29 @@ describe("FacilityAssetsPage", () => {
     expect(screen.queryByRole("region", { name: "Agent analysis" })).not.toBeInTheDocument();
   });
 
+  describe("opening an asset from a link (?asset=)", () => {
+    it("opens that asset's panel and consumes the param so a reload does not reopen it", () => {
+      renderPage("/facilities/f1/assets?asset=b");
+      expect(screen.getByRole("complementary", { name: "Details for New Engine" })).toBeInTheDocument();
+      expect(screen.getByTestId("search")).not.toHaveTextContent("asset=");
+    });
+
+    it("ignores an id that is not one of this facility's assets, and still clears it", () => {
+      renderPage("/facilities/f1/assets?asset=does-not-exist");
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+      expect(screen.getByRole("table", { name: "Asset health" })).toBeInTheDocument();
+      expect(screen.getByTestId("search")).not.toHaveTextContent("asset=");
+    });
+
+    it("drops the floor and quick filters so the asset is actually visible", () => {
+      renderPage("/facilities/f1/assets?floor=0&show=alarms&asset=a");
+      expect(screen.getByRole("complementary", { name: "Details for Aged Engine" })).toBeInTheDocument();
+      const search = screen.getByTestId("search").textContent ?? "";
+      expect(search).not.toContain("floor=");
+      expect(search).not.toContain("show=");
+    });
+  });
+
   describe("search and quick filters", () => {
     const rowNames = () =>
       within(screen.getByRole("table", { name: "Asset health" }))

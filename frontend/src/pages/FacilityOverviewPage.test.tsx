@@ -96,6 +96,35 @@ describe("FacilityOverviewPage", () => {
     expect(screen.queryByRole("region", { name: "Agent analysis" })).not.toBeInTheDocument();
   });
 
+  it("lists the machines needing attention, worst first, and leaves out healthy ones", () => {
+    renderPage();
+    const section = screen.getByRole("region", { name: "Needs attention" });
+    const cards = within(section).getAllByRole("listitem");
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["Aged Engine", "Mezz Pump"]);
+    expect(within(section).queryByText("New Engine")).not.toBeInTheDocument();
+    expect(within(cards[0]).getByRole("link", { name: "Details" })).toHaveAttribute(
+      "href",
+      "/facilities/f1/assets?asset=a"
+    );
+    // Mezzanine has a map in the fixture; its card links there, and Ground's too.
+    expect(within(cards[1]).getByRole("link", { name: "Show on map" })).toHaveAttribute(
+      "href",
+      "/facilities/f1/map/u1?asset=c"
+    );
+  });
+
+  it("shows an all-clear instead of an empty list when everything is healthy", () => {
+    vi.mocked(useRiskScores).mockReturnValue(
+      query<ReturnType<typeof useRiskScores>>({
+        data: [score("a", 3, 100), score("b", 0.4, 115.9), score("c", 5, 90)],
+      })
+    );
+    renderPage();
+    const section = screen.getByRole("region", { name: "Needs attention" });
+    expect(within(section).getByRole("status")).toHaveTextContent("All clear");
+    expect(within(section).queryByRole("listitem")).not.toBeInTheDocument();
+  });
+
   it("links each floor card to the Assets tab filtered to that floor, with counts", () => {
     renderPage();
     const floors = screen.getByRole("navigation", { name: "Floors" });

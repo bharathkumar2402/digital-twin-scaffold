@@ -58,7 +58,9 @@ the map's own sidebar panel; edit controls only when the host passes edit handle
 into role-aware tabs: Overview (KPIs + floor cards linking to Assets), Assets (table + search + quick filters +
 floor filter, state in the URL), Analysis (facility-wide, hidden for technician/viewer), and an About-the-models page;
 `/results` redirects (to Assets when a `?floor=` is present). Tests: 254 frontend. Checked in a real browser on the Meridian
-plant (old /results URL redirects via sign-in to /overview; floor card -> /assets?floor=0; quick filter; Analysis tab). Planned next: U4 Overview "Needs attention", U5 technician Work view,
+plant (old /results URL redirects via sign-in to /overview; floor card -> /assets?floor=0; quick filter; Analysis tab). U4 (done): Overview "Needs attention" - up to 5 cards ranked by status, risk, then remaining life, each with the
+reason, next action, Details (opens Assets with `?asset=<id>`, which clears itself) and Show on map; an all-clear state
+that says how many assets were never scored. Tests: 276 frontend; checked live. Planned next: U5 technician Work view,
 U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
 
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
