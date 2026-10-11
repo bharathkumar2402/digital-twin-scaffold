@@ -240,3 +240,16 @@ export interface FloorSummary {
   map_upload_id: string;
   asset_count: number;
 }
+
+// Mirrors backend/app/schemas/requests/risk_scores.py's RiskHistoryPoint / RiskHistorySeries.
+export interface RiskHistoryPoint {
+  computed_at: string;
+  score: number;
+  rul_cycles: number | null;
+}
+
+export interface RiskHistorySeries {
+  asset_id: string;
+  // Oldest first.
+  points: RiskHistoryPoint[];
+}

@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { assetStatus } from "../lib/assetStatus";
 import type { Attention } from "../lib/attention";
 import { floorLabel } from "../lib/floors";
+import { describeTrend, trendOf, TREND_ARROW } from "../lib/riskTrend";
 import { assetDetailHref, assetMapHref } from "../lib/mapLinks";
-import type { FloorSummary } from "../types/api";
+import type { FloorSummary, RiskHistoryPoint } from "../types/api";
 import { StatusBadge } from "./StatusBadge";
 
 interface AttentionListProps {
@@ -15,6 +16,8 @@ interface AttentionListProps {
   lastScoredAt: string | null;
   // Assets the risk model has not scored: they are not "fine", they are unknown.
   unscored: number;
+  // Recent scores per asset id (oldest first). Optional: cards are complete without them.
+  history?: Map<string, RiskHistoryPoint[]>;
 }
 
 // The few machines to look at first, each with why and what to do. Replaces "scan a 44-row table".
@@ -24,6 +27,7 @@ export function AttentionList({
   floors,
   lastScoredAt,
   unscored,
+  history,
 }: AttentionListProps): React.JSX.Element {
   if (attention.total === 0) {
     return (
@@ -44,6 +48,7 @@ export function AttentionList({
         {attention.top.map((row) => {
           const status = assetStatus(row);
           const mapHref = assetMapHref(facilityId, floors, row.asset);
+          const trend = trendOf(history?.get(row.asset.id) ?? []);
           return (
             <li key={row.asset.id} className={`attention-card attention-${status.key}`} aria-label={row.asset.name}>
               <div className="attention-head">
@@ -52,6 +57,11 @@ export function AttentionList({
                 <StatusBadge status={status} />
               </div>
               <p className="attention-why">{status.reasons.join("; ")}.</p>
+              {trend && trend.direction !== "flat" && (
+                <p className={`trend trend-${trend.direction}`}>
+                  {TREND_ARROW[trend.direction]} {describeTrend(trend)}
+                </p>
+              )}
               <p className="attention-action">{status.action}.</p>
               <div className="attention-links">
                 <Link className="btn btn-sm" to={assetDetailHref(facilityId, row.asset)}>

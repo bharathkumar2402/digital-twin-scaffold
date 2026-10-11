@@ -5,8 +5,9 @@ import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { formatRul, type AssetHealthRow } from "../lib/assetHealth";
 import { assetStatus } from "../lib/assetStatus";
 import { connectionsOf, floorLabel, type Connection } from "../lib/floors";
-import type { Asset, AssetDependency, AssetStatus } from "../types/api";
+import type { Asset, AssetDependency, AssetStatus, RiskHistoryPoint } from "../types/api";
 import { OperatingStateBadge } from "./OperatingStateBadge";
+import { RiskTrendChart } from "./RiskTrendChart";
 import { StatusBadge } from "./StatusBadge";
 import { TelemetryChart } from "./TelemetryChart";
 
@@ -34,6 +35,8 @@ interface AssetPanelProps {
   // Where "Show on map" goes; omitted on the map itself.
   mapHref?: string | null;
   edit?: AssetPanelEdit;
+  // Recent scores, oldest first. Optional: the panel is complete without them.
+  history?: RiskHistoryPoint[];
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -109,6 +112,7 @@ export function AssetPanel({
   closeLabel = "Close",
   mapHref = null,
   edit,
+  history = [],
 }: AssetPanelProps): React.JSX.Element {
   const { asset } = row;
   const telemetry = useAssetTelemetry(facilityId, asset.id);
@@ -171,6 +175,13 @@ export function AssetPanel({
         }
       />
       {row.scoredAt && <Fact label="Scored at" value={new Date(row.scoredAt).toLocaleString()} />}
+
+      {history.length > 0 && (
+        <>
+          <SectionHeading>Risk trend</SectionHeading>
+          <RiskTrendChart points={history} />
+        </>
+      )}
 
       <SectionHeading>Details</SectionHeading>
       <Fact label="Position" value={`(${asset.x.toFixed(1)}, ${asset.y.toFixed(1)})`} />

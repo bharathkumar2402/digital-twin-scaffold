@@ -1514,3 +1514,42 @@ textarea {
   font-size: 13px;
   color: var(--color-text-muted);
 }
+
+/* ---- Risk trend ---- */
+.trend {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trend-up {
+  color: var(--color-danger);
+}
+
+.trend-down {
+  color: #166534;
+}
+
+.trend-flat {
+  color: var(--color-text-muted);
+}
+
+.sparkline {
+  display: block;
+}
+
+.chart-caption {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.risk-chart circle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.chart-legend {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}

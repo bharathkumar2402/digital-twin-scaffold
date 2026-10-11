@@ -48,7 +48,13 @@ const score: RiskScore = {
 };
 
 function renderPanel(
-  props: { edit?: AssetPanelEdit; mapHref?: string | null; scored?: boolean; onJump?: () => void } = {}
+  props: {
+    edit?: AssetPanelEdit;
+    mapHref?: string | null;
+    scored?: boolean;
+    onJump?: () => void;
+    history?: { computed_at: string; score: number; rul_cycles: number | null }[];
+  } = {}
 ) {
   const row = buildHealthRows([pump], props.scored === false ? [] : [score])[0];
   render(
@@ -63,6 +69,7 @@ function renderPanel(
         onClose={vi.fn()}
         mapHref={props.mapHref}
         edit={props.edit}
+        history={props.history}
       />
     </MemoryRouter>
   );
@@ -98,6 +105,32 @@ describe("AssetPanel", () => {
     expect(within(panel).getByText(/ALARM – peak score 0.70 vs threshold 0.50/)).toBeInTheDocument();
     expect(within(panel).getByText("Acme")).toBeInTheDocument();
     expect(within(panel).getByText(/pump · L0/)).toBeInTheDocument();
+  });
+
+  it("shows a risk trend with a sparkline and the change, when there is history", () => {
+    renderPanel({
+      history: [
+        { computed_at: "2026-10-01T08:00:00Z", score: 55, rul_cycles: null },
+        { computed_at: "2026-10-01T11:00:00Z", score: 80, rul_cycles: null },
+      ],
+    });
+    expect(screen.getByText("Risk trend")).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: /Risk over the last 2 scores: from 55\.0 to 80\.0/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/▲ up 25\.0 pts in 3 h/)).toBeInTheDocument();
+  });
+
+  it("omits the trend section entirely when there is no history (or it failed to load)", () => {
+    renderPanel();
+    expect(screen.queryByText("Risk trend")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /Risk over the last/ })).not.toBeInTheDocument();
+  });
+
+  it("with a single past score, says so instead of drawing a trend", () => {
+    renderPanel({ history: [{ computed_at: "2026-10-01T08:00:00Z", score: 55, rul_cycles: null }] });
+    expect(screen.getByText("Only one score so far (55.0).")).toBeInTheDocument();
+    expect(screen.queryByText(/pts in/)).not.toBeInTheDocument();
   });
 
   it("says plainly when the asset has not been scored", () => {

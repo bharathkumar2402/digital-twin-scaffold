@@ -219,3 +219,87 @@ async def test_score_outside_valid_range_rejected_by_check_constraint(
             )
     finally:
         await conn_a.close()
+
+
+# --- U7: the risk-history query ---------------------------------------------------------------
+# GET /facilities/{id}/risk-history ranks each asset's scores with a window function. These tests
+# run that exact shape of SQL with the tenant filter DELIBERATELY OMITTED, so they prove
+# Postgres RLS alone keeps tenants apart - the route's own `WHERE tenant_id = ...` is a second
+# layer, not the only one.
+
+HISTORY_SQL = (
+    "SELECT asset_id, score FROM ("
+    "  SELECT asset_id, score, row_number() OVER ("
+    "    PARTITION BY asset_id ORDER BY computed_at DESC, id DESC) AS rank"
+    "  FROM risk_scores) ranked WHERE rank <= 10 ORDER BY asset_id, rank DESC"
+)
+
+
+async def test_history_query_without_a_tenant_filter_still_returns_only_own_rows(
+    migrated_db: PostgresContainer, tenants_facilities_assets
+) -> None:
+    tenant_a, tenant_b, facility_a, facility_b, asset_a, asset_b = tenants_facilities_assets
+    conn_a = await _scoped_connection(migrated_db, tenant_a)
+    conn_b = await _scoped_connection(migrated_db, tenant_b)
+    try:
+        for value in (11.0, 12.0, 13.0):
+            await _insert_score(
+                conn_a, tenant_id=tenant_a, facility_id=facility_a, asset_id=asset_a, score=value
+            )
+        await _insert_score(
+            conn_b, tenant_id=tenant_b, facility_id=facility_b, asset_id=asset_b, score=99.0
+        )
+
+        rows_b = await conn_b.fetch(HISTORY_SQL)
+        assert [(r["asset_id"], r["score"]) for r in rows_b] == [(asset_b, 99.0)]
+        rows_a = await conn_a.fetch(HISTORY_SQL)
+        assert {r["asset_id"] for r in rows_a} == {asset_a}
+        assert len(rows_a) == 3
+    finally:
+        await conn_a.close()
+        await conn_b.close()
+
+
+async def test_history_query_cannot_be_pointed_at_another_tenant_by_filtering_for_it(
+    migrated_db: PostgresContainer, tenants_facilities_assets
+) -> None:
+    """A caller-supplied filter for the victim's tenant, asset or facility id finds nothing."""
+    tenant_a, tenant_b, facility_a, _fb, asset_a, _ab = tenants_facilities_assets
+    conn_a = await _scoped_connection(migrated_db, tenant_a)
+    conn_b = await _scoped_connection(migrated_db, tenant_b)
+    try:
+        await _insert_score(
+            conn_a, tenant_id=tenant_a, facility_id=facility_a, asset_id=asset_a, score=77.0
+        )
+        by_tenant = await conn_b.fetch(
+            "SELECT score FROM risk_scores WHERE tenant_id = $1", tenant_a
+        )
+        by_asset = await conn_b.fetch("SELECT score FROM risk_scores WHERE asset_id = $1", asset_a)
+        by_facility = await conn_b.fetch(
+            "SELECT score FROM risk_scores WHERE facility_id = $1", facility_a
+        )
+        assert by_tenant == [] and by_asset == [] and by_facility == []
+    finally:
+        await conn_a.close()
+        await conn_b.close()
+
+
+async def test_history_query_fails_closed_with_no_or_empty_tenant_setting(
+    migrated_db: PostgresContainer, tenants_facilities_assets
+) -> None:
+    tenant_a, _tb, facility_a, _fb, asset_a, _ab = tenants_facilities_assets
+    scoped = await _scoped_connection(migrated_db, tenant_a)
+    await _insert_score(
+        scoped, tenant_id=tenant_a, facility_id=facility_a, asset_id=asset_a, score=5.0
+    )
+    await scoped.close()
+
+    unscoped = await asyncpg.connect(_dsn(migrated_db, APP_ROLE, APP_ROLE_PASSWORD))
+    try:
+        assert await unscoped.fetch(HISTORY_SQL) == []  # GUC never set
+        await unscoped.execute("SELECT set_config('app.current_tenant_id', '', false)")
+        assert (
+            await unscoped.fetch(HISTORY_SQL) == []
+        )  # GUC set to '' (the migration-0008 bug shape)
+    finally:
+        await unscoped.close()

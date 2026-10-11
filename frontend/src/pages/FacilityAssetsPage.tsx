@@ -10,6 +10,7 @@ import { HealthGate } from "../components/HealthGate";
 import { Section } from "../components/Section";
 import { useAssetDependencies } from "../hooks/useAssetDependencies";
 import { useFacilityHealth } from "../hooks/useFacilityHealth";
+import { useRiskHistory } from "../hooks/useRiskHistory";
 import { assetRowButtonId, filterByFloor } from "../lib/assetHealth";
 import {
   applyQuickFilter,
@@ -28,6 +29,7 @@ export function FacilityAssetsPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const health = useFacilityHealth(facilityId);
+  const history = useRiskHistory(facilityId);
   const dependenciesQuery = useAssetDependencies(facilityId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -189,6 +191,7 @@ export function FacilityAssetsPage(): React.JSX.Element {
                       if (href) navigate(href);
                     }}
                     mapHref={mapHrefFor(selectedRow.asset)}
+                    history={history.byAsset.get(selectedRow.asset.id)}
                     onClose={closePanel}
                   />
                 )}

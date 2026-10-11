@@ -5,12 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
 import { FacilityOverviewPage } from "./FacilityOverviewPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
+vi.mock("../hooks/useRiskHistory", () => ({ useRiskHistory: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
 
@@ -74,6 +76,7 @@ describe("FacilityOverviewPage", () => {
         ],
       })
     );
+    vi.mocked(useRiskHistory).mockReturnValue({ byAsset: new Map(), isError: false });
     vi.mocked(useAssets).mockReturnValue(
       query<ReturnType<typeof useAssets>>({
         data: [asset("a", "Aged Engine", 0), asset("b", "New Engine", 0), asset("c", "Mezz Pump", 1)],
@@ -111,6 +114,31 @@ describe("FacilityOverviewPage", () => {
       "href",
       "/facilities/f1/map/u1?asset=c"
     );
+  });
+
+  it("shows how a machine's risk moved, from the history route", () => {
+    vi.mocked(useRiskHistory).mockReturnValue({
+      byAsset: new Map([
+        [
+          "a",
+          [
+            { computed_at: "2026-10-01T08:00:00Z", score: 70, rul_cycles: null },
+            { computed_at: "2026-10-01T11:00:00Z", score: 95.8, rul_cycles: 3.6 },
+          ],
+        ],
+      ]),
+      isError: false,
+    });
+    renderPage();
+    const aged = screen.getByRole("listitem", { name: "Aged Engine" });
+    expect(aged).toHaveTextContent("▲ up 25.8 pts in 3 h");
+  });
+
+  it("still shows every card when the history request failed", () => {
+    vi.mocked(useRiskHistory).mockReturnValue({ byAsset: new Map(), isError: true });
+    renderPage();
+    expect(screen.getByRole("listitem", { name: "Aged Engine" })).toBeInTheDocument();
+    expect(screen.queryByText(/pts in/)).not.toBeInTheDocument();
   });
 
   it("shows an all-clear instead of an empty list when everything is healthy", () => {

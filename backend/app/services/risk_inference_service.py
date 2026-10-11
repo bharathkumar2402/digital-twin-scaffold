@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from xgboost import XGBClassifier
 
@@ -236,3 +236,51 @@ async def get_latest_risk_scores(
         if row.asset_id not in latest_by_asset:
             latest_by_asset[row.asset_id] = row
     return list(latest_by_asset.values())
+
+
+async def get_risk_history(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    limit_per_asset: int,
+) -> dict[uuid.UUID, list[tuple[datetime, float, float | None]]]:
+    """The last `limit_per_asset` scores of every asset in a facility, oldest first.
+
+    One bounded query: a window function ranks each asset's rows newest-first and keeps the top N,
+    so history that grows over time is never loaded in full (unlike `get_latest_risk_scores`).
+    Ties on `computed_at` are broken by `id`, so the same rows come back every time. Read-only.
+    Tenant isolation is double-layered: the caller's tenant is filtered explicitly here, and the
+    session is RLS-scoped as well.
+    """
+    await _get_facility_or_404(session, tenant_id=tenant_id, facility_id=facility_id)
+
+    rank = (
+        func.row_number()
+        .over(
+            partition_by=RiskScore.asset_id,
+            order_by=(RiskScore.computed_at.desc(), RiskScore.id.desc()),
+        )
+        .label("rank")
+    )
+    ranked = (
+        select(
+            RiskScore.asset_id.label("asset_id"),
+            RiskScore.computed_at.label("computed_at"),
+            RiskScore.score.label("score"),
+            RiskScore.rul_cycles.label("rul_cycles"),
+            rank,
+        )
+        .where(RiskScore.tenant_id == tenant_id, RiskScore.facility_id == facility_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(ranked.c.asset_id, ranked.c.computed_at, ranked.c.score, ranked.c.rul_cycles)
+        .where(ranked.c.rank <= limit_per_asset)
+        # rank descending = oldest first within each asset
+        .order_by(ranked.c.asset_id, ranked.c.rank.desc())
+    )
+    history: dict[uuid.UUID, list[tuple[datetime, float, float | None]]] = {}
+    for asset_id, computed_at, score, rul_cycles in result.all():
+        history.setdefault(asset_id, []).append((computed_at, float(score), rul_cycles))
+    return history

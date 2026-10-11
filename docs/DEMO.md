@@ -33,7 +33,7 @@ tenant/user/facility, draws and tiles three floor plans, creates the **Meridian 
 (44 machines on 3 floors, 60 dependency links, many crossing floors; the spec is
 `backend/scripts/demo_factory.py`), backfills telemetry and vibration waveforms, scores all 44
 machines, and runs the 5-agent pipeline once (about 3 minutes in total on a fresh stack). It prints the login
-and the map URL at the end. Flags: `--skip-migrate`, `--skip-models`, `--no-pipeline`.
+and the map URL at the end. Flags: `--skip-migrate`, `--skip-models`, `--no-pipeline`, `--history-days N`.
 Wipe everything with `docker compose -p twin-demo -f docker-compose.demo.yml down -v`. Do not use
 `--skip-models` on a freshly wiped stack (the models would not exist yet).
 
@@ -150,6 +150,18 @@ heuristic over the cascade, not a prediction).
 | Map page stuck on "Processing floor plan..." | The upload row must be `tiled`; re-run `demo_setup` on a fresh stack. |
 | Map looks blank/blurry or screenshots time out in browser automation | The tab is hidden: Chrome throttles MapLibre's animation frames and the map never fires `load`. Use a visible tab; not a product bug. |
 | Anything else | Fall back to step 7: `pytest tests/integration/test_degradation_e2e.py -v` needs only Docker. |
+
+## Risk history (trend charts)
+
+The demo scores each machine once, so a trend would be a flat line. `--history-days N` adds N past
+days of risk scores per machine (it is idempotent and works on an existing demo, for example
+`python -m scripts.demo_setup --skip-migrate --skip-models --no-pipeline --history-days 6`).
+It is a **scripted storyline built from real parts**: every point is the real risk model scoring a
+real AI4I 2020 held-out record, and only the *choice* of which record stands for which day is
+scripted (a machine that needs attention gets a rising path toward its real latest score, a
+healthy one gets records that score near it). Those rows are marked `factors_json.demo_history`;
+the latest score is the real one and is never touched. This is demo data, not telemetry history,
+and nothing in it is used for training (`scripts/demo_history.py`).
 
 ## Known limits
 

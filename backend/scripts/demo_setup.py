@@ -62,6 +62,7 @@ from app.services.risk_inference_service import score_facility
 from scripts.calibrate_simulator import DEFAULT_OUT
 from scripts.demo_factory import FLOORS, LINKS, MACHINES, Machine, machines_on, tile_prefix
 from scripts.demo_floorplan import build_and_upload
+from scripts.demo_history import backfill_risk_history
 from scripts.iot_data_generator import AI4I_SENSOR_PROFILES, generate_reading
 from scripts.seed_demo import DEMO_EMAIL, DEMO_FLOOR_UPLOAD_IDS, DEMO_PASSWORD, seed
 
@@ -435,6 +436,8 @@ async def main_async(args: argparse.Namespace) -> None:
         await backfill_engine_telemetry(tenant_id, ids, cal, end)
         await backfill_waveforms(tenant_id, ids, cal, end)
     await score_and_run_pipeline(tenant_id, facility_id, not args.no_pipeline)
+    if args.history_days > 0:
+        await backfill_risk_history(tenant_id, facility_id, ids, end, args.history_days, AI4I_CSV)
     names = {
         asset_id: next(m.name for m in MACHINES if m.key == key) for key, asset_id in ids.items()
     }
@@ -459,6 +462,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--skip-models", action="store_true", help="assume models are published")
     parser.add_argument(
         "--no-pipeline", action="store_true", help="do not run the 5-agent pipeline"
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=0,
+        metavar="N",
+        help="also add N past days of risk scores per machine (scripted storyline built from real "
+        "held-out records scored by the real model; see scripts/demo_history.py). Idempotent.",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

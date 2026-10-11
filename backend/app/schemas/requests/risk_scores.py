@@ -27,3 +27,22 @@ class RiskScoreComputeAcceptedResponse(BaseModel):
 
     task_id: str
     status: str = "queued"
+
+
+class RiskHistoryPoint(BaseModel):
+    """One past score. Deliberately minimal: no `factors_json` or model details."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    computed_at: datetime
+    score: float
+    rul_cycles: float | None = None
+
+
+class RiskHistorySeries(BaseModel):
+    """An asset's recent scores, oldest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: uuid.UUID
+    points: list[RiskHistoryPoint]

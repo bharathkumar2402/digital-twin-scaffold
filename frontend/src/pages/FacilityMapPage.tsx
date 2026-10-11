@@ -22,6 +22,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilities } from "../hooks/useFacilities";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
+import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import { buildHealthRows } from "../lib/assetHealth";
 import { assetBounds } from "../lib/fitAssets";
@@ -114,6 +115,7 @@ export function FacilityMapPage(): React.JSX.Element {
   const deleteDependency = useDeleteAssetDependency(facilityId ?? "");
 
   const riskScoresQuery = useRiskScores(facilityId ?? "");
+  const riskHistory = useRiskHistory(facilityId ?? "");
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -373,6 +375,7 @@ export function FacilityMapPage(): React.JSX.Element {
             onJump={goToAsset}
             onClose={() => setSelectedAssetId(null)}
             closeLabel="Back"
+            history={riskHistory.byAsset.get(selectedAsset.id)}
             edit={
               canEdit
                 ? {

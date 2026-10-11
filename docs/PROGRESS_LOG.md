@@ -70,7 +70,21 @@ Also the maintenance agent schedules a task for every asset (44), which inflates
 U6 (done): Analysis is answer-first - an Answer card (outcome, what-if impact tiles, executive summary), validation status always
 visible outside the collapsed "How this was decided" section (the four agent steps), suggestion chips (top attention assets)
 that fill the question box without running. Tests: 329 frontend; checked live. Note: a real what-if on the 44-asset demo
-plant took 28-30 s, right at the 30 s pipeline SLO (the SLO test used a smaller facility). Planned next:
+plant took 28-30 s, right at the 30 s pipeline SLO (the SLO test used a smaller facility). U7 (done): risk history - NEW backend read route `GET /facilities/{id}/risk-history?limit_per_asset=` (1-50, default 10; each asset's
+last N scores oldest first; only computed_at/score/rul_cycles) over the existing insert-only `risk_scores` table: no migration, no new
+table. One window-function query (never loads full history), explicit tenant filter + RLS session, facility-ownership 404. Tests: 20
+route tests (superuser harness: JWT tenant, other-tenant 404 with no leak, same-tenant-other-facility, limit abuse 0/-1/51/1e9/abc/1.5,
+window correctness, ties, response shape) + 3 RLS tests with the tenant filter deliberately omitted (own rows only, caller-supplied victim
+filters find nothing, fail-closed with no or empty GUC); mutation-checked (breaking the window bound or the facility filter fails the
+expected tests). Frontend: `lib/riskTrend.ts`, Sparkline, "Risk trend" in the asset panel and up/down badges on attention cards; all
+degrade silently if history fails. U7b: the trend is now "about a day earlier" (not "previous score": re-scores of identical data hid real climbs), the
+panel chart has shaded low/medium/high zones, labelled ends, a time axis, per-dot tooltips (hover + keyboard), a "entered high risk"
+marker and a legend, and `useRiskHistory` asks for 20 points per asset. `demo_setup --history-days N` (scripts/demo_history.py,
+idempotent, rows tagged `factors_json.demo_history`) adds a scripted storyline of real held-out records scored by the real model,
+so AC-1 climbs 7.7 -> 73.3 -> 95.8 and healthy machines stay flat; the Phase 3 scoring code is untouched. Tests: 391 frontend,
+14 demo-history unit tests.
+Open scalability note: `get_latest_risk_scores` loads ALL history rows into memory to keep the newest per asset; switch it to the same
+window/DISTINCT ON approach before history grows. Planned next:
 U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
 
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;

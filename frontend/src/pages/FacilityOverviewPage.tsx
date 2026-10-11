@@ -8,6 +8,7 @@ import { HealthGate } from "../components/HealthGate";
 import { KpiTiles } from "../components/KpiTiles";
 import { Section } from "../components/Section";
 import { useFacilityHealth } from "../hooks/useFacilityHealth";
+import { useRiskHistory } from "../hooks/useRiskHistory";
 import { summarizeHealth } from "../lib/assetHealth";
 import { latestScoredAt, topAttention } from "../lib/attention";
 
@@ -15,6 +16,7 @@ import { latestScoredAt, topAttention } from "../lib/attention";
 export function FacilityOverviewPage(): React.JSX.Element {
   const { facilityId = "" } = useParams<{ facilityId: string }>();
   const health = useFacilityHealth(facilityId);
+  const history = useRiskHistory(facilityId);
   const summary = useMemo(() => summarizeHealth(health.allRows), [health.allRows]);
   const attention = useMemo(() => topAttention(health.allRows, 5), [health.allRows]);
   const lastScoredAt = useMemo(() => latestScoredAt(health.allRows), [health.allRows]);
@@ -36,6 +38,7 @@ export function FacilityOverviewPage(): React.JSX.Element {
               floors={health.facility?.floors ?? []}
               lastScoredAt={lastScoredAt}
               unscored={summary.unscored}
+              history={history.byAsset}
             />
           </Section>
           <Section title="Floors">

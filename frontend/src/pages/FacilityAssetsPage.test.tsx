@@ -7,6 +7,7 @@ import { useAssets } from "../hooks/useAssets";
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
 import { FacilityAssetsPage } from "./FacilityAssetsPage";
@@ -14,6 +15,7 @@ import { FacilityAssetsPage } from "./FacilityAssetsPage";
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
 vi.mock("../hooks/useAssetDependencies", () => ({ useAssetDependencies: vi.fn() }));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
+vi.mock("../hooks/useRiskHistory", () => ({ useRiskHistory: vi.fn() }));
 vi.mock("../hooks/useAssetTelemetry", () => ({ useAssetTelemetry: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
@@ -78,6 +80,7 @@ describe("FacilityAssetsPage", () => {
     vi.mocked(useRiskScores).mockReturnValue(
       query<ReturnType<typeof useRiskScores>>({ data: [score("a", 95.8, 3.6), score("b", 0.4, 115.9)] })
     );
+    vi.mocked(useRiskHistory).mockReturnValue({ byAsset: new Map(), isError: false });
     vi.mocked(useAssetTelemetry).mockReturnValue(
       query<ReturnType<typeof useAssetTelemetry>>({ data: [] })
     );
@@ -184,6 +187,27 @@ describe("FacilityAssetsPage", () => {
 
     fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+
+  it("passes the selected asset's score history to the panel (and only that asset's)", () => {
+    vi.mocked(useRiskHistory).mockReturnValue({
+      byAsset: new Map([
+        [
+          "a",
+          [
+            { computed_at: "2026-10-01T08:00:00Z", score: 50, rul_cycles: null },
+            { computed_at: "2026-10-01T09:00:00Z", score: 95.8, rul_cycles: 3.6 },
+          ],
+        ],
+        ["b", [{ computed_at: "2026-10-01T08:00:00Z", score: 1, rul_cycles: null }]],
+      ]),
+      isError: false,
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+    const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
+    expect(within(panel).getByText(/▲ up 45\.8 pts in 1 h/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/Only one score/)).not.toBeInTheDocument();
   });
 
   it("shows a skeleton (busy, no table) while the data loads", () => {

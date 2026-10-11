@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildHealthRows } from "../lib/assetHealth";
 import { topAttention } from "../lib/attention";
-import type { Asset, FloorSummary, RiskScore } from "../types/api";
+import type { Asset, FloorSummary, RiskHistoryPoint, RiskScore } from "../types/api";
 import { AttentionList } from "./AttentionList";
 
 const asset = (id: string, name: string, floor: number): Asset => ({
@@ -39,7 +39,8 @@ function renderList(
   rows: ReturnType<typeof buildHealthRows>,
   limit = 5,
   lastScoredAt: string | null = null,
-  unscored = 0
+  unscored = 0,
+  history?: Map<string, RiskHistoryPoint[]>
 ) {
   render(
     <MemoryRouter>
@@ -49,10 +50,17 @@ function renderList(
         floors={floors}
         lastScoredAt={lastScoredAt}
         unscored={unscored}
+        history={history}
       />
     </MemoryRouter>
   );
 }
+
+const hp = (hour: number, score: number) => ({
+  computed_at: new Date(Date.UTC(2026, 9, 1, hour)).toISOString(),
+  score,
+  rul_cycles: null,
+});
 
 describe("AttentionList", () => {
   it("shows each machine with its verdict, why, and what to do, worst first", () => {
@@ -69,6 +77,43 @@ describe("AttentionList", () => {
     expect(within(cards[0]).getByText("Schedule maintenance now.")).toBeInTheDocument();
     expect(within(cards[1]).getByText("Watch closely")).toBeInTheDocument();
     expect(within(cards[0]).getByText("L0")).toBeInTheDocument();
+  });
+
+  it("shows how risk moved since the previous score, for a machine that got worse", () => {
+    renderList(
+      buildHealthRows([asset("a", "Aged Engine", 0)], [score("a", 80)]),
+      5,
+      null,
+      0,
+      new Map([["a", [hp(8, 60), hp(11, 80)]]])
+    );
+    expect(screen.getByText(/▲ up 20\.0 pts in 3 h/)).toBeInTheDocument();
+  });
+
+  it("shows an improvement too, but says nothing for a steady or unknown trend", () => {
+    const rows = buildHealthRows(
+      [asset("a", "Better", 0), asset("b", "Steady", 0), asset("c", "NoHistory", 0)],
+      [score("a", 90), score("b", 85), score("c", 80)]
+    );
+    renderList(
+      rows,
+      5,
+      null,
+      0,
+      new Map([
+        ["a", [hp(8, 99), hp(9, 90)]],
+        ["b", [hp(8, 85), hp(9, 85.5)]],
+      ])
+    );
+    expect(screen.getByText(/▼ down 9\.0 pts in 1 h/)).toBeInTheDocument();
+    expect(screen.queryByText(/steady/)).not.toBeInTheDocument();
+    expect(screen.queryAllByText(/pts in/)).toHaveLength(1);
+  });
+
+  it("renders fine with no history at all", () => {
+    renderList(buildHealthRows([asset("a", "Aged Engine", 0)], [score("a", 80)]));
+    expect(screen.getByRole("listitem", { name: "Aged Engine" })).toBeInTheDocument();
+    expect(screen.queryByText(/pts in/)).not.toBeInTheDocument();
   });
 
   it("links Details to the Assets tab and Show on map to the asset's floor map", () => {
