@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, Query, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rbac import require_roles
 from app.core.redis_client import get_redis
 from app.core.tenant_context import (
     TenantContext,
     get_tenant_context,
     get_timescale_scoped_session,
 )
+from app.models.user import Role
 from app.schemas.ml.alert_notification import AlertNotification
 from app.schemas.requests.telemetry import (
     TelemetryIngestRequest,
@@ -27,13 +29,18 @@ from app.services.telemetry_service import (
 
 router = APIRouter(tags=["telemetry"])
 
+# Writing sensor data is restricted: a viewer is read-only (and self-registration creates
+# viewers, so without this anyone who signs up could write telemetry). Real devices will need
+# per-device API keys; that is out of scope (docs/LIVE_DATA_PLAN.md D7).
+INGEST_ROLES = (Role.TECHNICIAN, Role.FACILITY_MANAGER, Role.TENANT_ADMIN, Role.SUPERADMIN)
+
 
 @router.post(
     "/telemetry", response_model=TelemetryIngestResponse, status_code=status.HTTP_201_CREATED
 )
 async def ingest_telemetry(
     body: TelemetryIngestRequest,
-    context: TenantContext = Depends(get_tenant_context),
+    context: TenantContext = Depends(require_roles(*INGEST_ROLES)),
     session: AsyncSession = Depends(get_timescale_scoped_session),
     redis: Redis = Depends(get_redis),
 ) -> TelemetryIngestResponse:

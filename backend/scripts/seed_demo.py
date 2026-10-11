@@ -31,6 +31,37 @@ DEMO_FLOOR_UPLOAD_IDS: dict[int, uuid.UUID] = {
 }
 DEMO_EMAIL = "demo@twinlabs.com"
 DEMO_PASSWORD = "demo-password-123"
+# Extra demo accounts (Phase L, D7/D8): one per role the UI and the ingest rule distinguish.
+# The simulator account is a technician used only by scripts/live_simulator.py (it may write
+# telemetry); the viewer is read-only and proves ingest is closed to it. Demo-only credentials.
+DEMO_TECHNICIAN_EMAIL = "technician@twinlabs.com"
+DEMO_VIEWER_EMAIL = "viewer@twinlabs.com"
+DEMO_SIMULATOR_EMAIL = "simulator@twinlabs.com"
+DEMO_EXTRA_PASSWORD = "demo-password-123"
+DEMO_EXTRA_ACCOUNTS: tuple[tuple[str, Role], ...] = (
+    (DEMO_TECHNICIAN_EMAIL, Role.TECHNICIAN),
+    (DEMO_VIEWER_EMAIL, Role.VIEWER),
+    (DEMO_SIMULATOR_EMAIL, Role.TECHNICIAN),
+)
+
+
+async def seed_extra_accounts(tenant_id: uuid.UUID) -> dict[str, Role]:
+    """Idempotently ensure the technician, viewer and simulator accounts; returns email -> role."""
+    ensured: dict[str, Role] = {}
+    for email, role in DEMO_EXTRA_ACCOUNTS:
+        async with async_session_factory() as session:
+            try:
+                await create_user_as_admin(
+                    session,
+                    tenant_id=tenant_id,
+                    email=email,
+                    password=DEMO_EXTRA_PASSWORD,
+                    role=role,
+                )
+            except EmailAlreadyRegisteredError:
+                pass  # already seeded on a prior run
+        ensured[email] = role
+    return ensured
 
 
 async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
@@ -77,6 +108,7 @@ async def seed() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
             session.add(facility)
             await session.commit()
 
+    await seed_extra_accounts(tenant_id)
     return tenant_id, user.id, facility.id
 
 
@@ -87,6 +119,8 @@ async def main() -> None:
     print(f"facility_id={facility_id}")
     print(f"email={DEMO_EMAIL}")
     print(f"password={DEMO_PASSWORD}")
+    for email, role in DEMO_EXTRA_ACCOUNTS:
+        print(f"{role.value}: {email} / {DEMO_EXTRA_PASSWORD}")
 
 
 if __name__ == "__main__":

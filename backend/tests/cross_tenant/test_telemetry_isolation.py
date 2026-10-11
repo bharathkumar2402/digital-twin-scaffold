@@ -199,17 +199,15 @@ async def _make_tenant(migrated_main_db: PostgresContainer, name: str) -> uuid.U
 async def _register_and_login(
     client: httpx.AsyncClient, *, tenant_id: uuid.UUID, email: str
 ) -> str:
-    await client.post(
-        "/register",
-        json={"tenant_id": str(tenant_id), "email": email, "password": "correct-horse-1"},
-    )
-    resp = await client.post(
-        "/login",
-        json={"tenant_id": str(tenant_id), "email": email, "password": "correct-horse-1"},
-    )
-    assert resp.status_code == 200, resp.text
-    access_token: str = resp.json()["access_token"]
-    return access_token
+    """A technician token for `tenant_id` (POST /telemetry is closed to viewers since L.1).
+
+    `/register` only ever creates viewers, so the ingesting identity is minted directly:
+    the route authorizes off the JWT claims and never looks the user up, and these tests
+    are about tenant isolation, not about who may ingest (see test_telemetry_authz.py).
+    """
+    from app.core.security import create_access_token
+
+    return create_access_token(user_id=uuid.uuid4(), tenant_id=tenant_id, role="technician")
 
 
 @pytest.fixture

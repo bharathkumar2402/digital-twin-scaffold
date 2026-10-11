@@ -10,6 +10,19 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.1 (ingest authorization + demo accounts; extra-scrutiny auth task): `POST /telemetry` now
+requires technician, facility_manager, tenant_admin or superadmin (`INGEST_ROLES` in `app/api/telemetry.py`, reusing
+`require_roles`); a viewer gets 403. Reason found while planning: `/register` creates viewers, so before this anyone
+who signed up could write sensor data. `scripts/seed_demo.py` now also seeds technician, viewer and simulator
+accounts (`seed_extra_accounts`, idempotent); `docs/DEMO.md` has the role table and a copy-paste check. Tests
+(`tests/cross_tenant/test_telemetry_authz.py`, 20 cases): per-role matrix; viewer 403 AND zero rows written; unknown
+or oddly-cased roles 403 (not 500/201); no/garbage/expired token, refresh token, wrong-secret forged `tenant_admin`
+claim, and `alg: none` token all 401; forged `tenant_id` in the body (top level and per reading) ignored - rows land
+only under the caller's tenant; viewer can still read telemetry; the seed script creates each role once and each
+account logs in with the promised role. Mutation check: with the guard removed 8 of them fail. The existing
+`test_telemetry_isolation.py` had to mint technician tokens (it used `/register`, i.e. viewers); its isolation
+assertions are unchanged and still pass (62 passed across telemetry, feature-engineering, users and auth suites).
+
 Note on Phase L task L.0 (baseline measurements; measured 2026-10-11, `backend/scripts/measure_live_load.py`,
 raw numbers in `backend/data/processed/measure_live_load.json`; no product code changed). Full table in
 `docs/LIVE_DATA_PLAN.md` "Baseline measurements". Headlines: (1) **TimescaleDB 2.29.2 cannot compress a table with

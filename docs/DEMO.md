@@ -59,6 +59,37 @@ machines grouped by floor with search and High risk / Vibration alarm filters; p
 floor opens that floor with it selected (`?asset=<id>` in the URL); an asset's detail panel tags links to
 other floors (`L1`, `L2`) and jumps there. The **Overview**, **Assets** and **Analysis** tabs hold the model and agent results (the old single Results page was split; `/results` URLs redirect).
 
+### Demo accounts and what each role may do
+
+`python -m scripts.seed_demo` (run by `demo_setup`, safe to repeat) creates these accounts in the demo tenant
+(`d3500000-0000-4000-8000-000000000001`). The **Use demo account** button signs in as the admin.
+
+| Role | Email | Password | May write telemetry (`POST /telemetry`)? |
+|---|---|---|---|
+| tenant_admin | `demo@twinlabs.com` | `demo-password-123` | yes |
+| technician | `technician@twinlabs.com` | `demo-password-123` | yes |
+| viewer | `viewer@twinlabs.com` | `demo-password-123` | **no** (403); reads everything else |
+| technician (for the live simulator, Phase L task L.2) | `simulator@twinlabs.com` | `demo-password-123` | yes |
+
+Sensor data can only be written by technician, facility_manager, tenant_admin and superadmin. Self-registration
+creates viewers, so signing up does not grant write access. Real devices will need per-device API keys (not built).
+
+Check it yourself (API on :8000; replace `ASSET_ID` with any UUID):
+
+```powershell
+$t = "d3500000-0000-4000-8000-000000000001"
+foreach ($e in "viewer","technician") {
+  $tok = (Invoke-RestMethod -Method Post localhost:8000/login -ContentType application/json `
+    -Body (@{tenant_id=$t; email="$e@twinlabs.com"; password="demo-password-123"} | ConvertTo-Json)).access_token
+  try { (Invoke-WebRequest -Method Post localhost:8000/telemetry -ContentType application/json `
+      -Headers @{Authorization="Bearer $tok"} `
+      -Body '{"readings":[{"asset_id":"ASSET_ID","sensor_type":"probe","value":1,"unit":"x","timestamp":"2026-01-01T00:00:00Z"}]}'
+    ).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
+}   # prints 403 for the viewer, 201 for the technician
+```
+
+(The API process must be restarted to pick up the L.1 code. The probe row is harmless; delete it afterwards.)
+
 ## 3. Demo script (about 10 minutes)
 
 | # | Show | Say |

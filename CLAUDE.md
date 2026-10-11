@@ -185,7 +185,7 @@ rather than building it — that scope boundary is deliberate and documented in
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine),
 and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra ML models) is closed too. The usability overhaul (UI U1-U8) is closed. **Phase L (live data loop) is next, then Phase 5.**
 
-- Next task: **Phase L, task L.1: ingest authorization + demo accounts** (extra scrutiny: auth). L.0 is done; its numbers are in `docs/LIVE_DATA_PLAN.md` "Baseline measurements" (compression impossible with RLS -> retention only; ingest and scoring slow down as rows grow, fix the anomaly baseline query in L.2). For the live data loop (see `docs/LIVE_DATA_PLAN.md`
+- Next task: **Phase L, task L.2: stateful live simulator** (L.0 and L.1 done: numbers in `docs/LIVE_DATA_PLAN.md` "Baseline measurements" - compression impossible with RLS so retention only, ingest slows as rows grow so fix the anomaly baseline query first; `POST /telemetry` is now closed to viewers and `simulator@twinlabs.com` is the technician account the simulator logs in with, see `docs/DEMO.md`). For the live data loop (see `docs/LIVE_DATA_PLAN.md`
   and "Phase L" in `docs/PHASE_PLAN.md`; decisions D1-D10 are already made, do not re-ask). Phase L comes
   **before** Phase 5 by decision (demo value; it adds no tenant table). After Phase L: **Phase 5, task 1: RLS
   policy audit** (Issue #32, automated audit script asserting every table in the main Postgres and
