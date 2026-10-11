@@ -11,6 +11,7 @@ function asset(id: string, name: string): Asset {
     facility_id: "f1",
     name,
     type: "engine",
+    floor_level: 0,
     x: 0,
     y: 0,
     status: "operational",

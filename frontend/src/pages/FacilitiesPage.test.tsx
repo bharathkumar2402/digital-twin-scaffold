@@ -34,8 +34,8 @@ describe("FacilitiesPage", () => {
   it("lists each facility with links to its map and results", () => {
     setFacilities({
       data: [
-        { id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u1", asset_count: 6 },
-        { id: "f2", name: "Annex", latest_map_upload_id: null, asset_count: 1 },
+        { id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u1", asset_count: 6, floors: [] },
+        { id: "f2", name: "Annex", latest_map_upload_id: null, asset_count: 1, floors: [] },
       ],
     });
     renderPage();
@@ -53,7 +53,7 @@ describe("FacilitiesPage", () => {
   });
 
   it("does not offer a map for a facility that has no floor plan, and says so", () => {
-    setFacilities({ data: [{ id: "f2", name: "Annex", latest_map_upload_id: null, asset_count: 1 }] });
+    setFacilities({ data: [{ id: "f2", name: "Annex", latest_map_upload_id: null, asset_count: 1, floors: [] }] });
     renderPage();
     const annex = screen.getByRole("article", { name: "Annex" });
     expect(within(annex).queryByRole("link", { name: "Open map" })).not.toBeInTheDocument();

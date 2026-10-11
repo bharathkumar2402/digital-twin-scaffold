@@ -304,3 +304,18 @@ async def test_map_upload_accepts_a_floor_and_rejects_nonsense(
         assert bad.status_code == 422
     finally:
         await _cleanup(migrated_db)
+
+
+async def test_the_map_status_endpoint_reports_which_floor_the_map_is(
+    client: httpx.AsyncClient, migrated_db: PostgresContainer
+) -> None:
+    """The map page learns which floor it is showing from this response; it once always said 0."""
+    ids = await _seed_plant(migrated_db)
+    try:
+        expected = (("l0", 0, "Ground floor"), ("l1", 1, "First floor"), ("l2", 2, None))
+        for key, level, name in expected:
+            url = f"/facilities/{ids['fa']}/map/{ids[key]}"
+            body = (await client.get(url, headers=_auth(ids["ta"]))).json()
+            assert body["floor_level"] == level and body["floor_name"] == name
+    finally:
+        await _cleanup(migrated_db)

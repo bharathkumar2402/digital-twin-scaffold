@@ -16,6 +16,7 @@ const asset: Asset = {
   facility_id: "f1",
   name: "Pump 7",
   type: "pump",
+  floor_level: 0,
   x: 10,
   y: 20,
   status: "operational",

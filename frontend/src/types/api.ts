@@ -24,6 +24,8 @@ export interface FacilityMapUploadStatusResponse {
   original_filename: string;
   format: string;
   status: FacilityMapUploadStatus;
+  floor_level?: number;
+  floor_name?: string | null;
   tile_prefix: string | null;
   tile_url_template: string | null;
 }
@@ -39,6 +41,8 @@ export interface Asset {
   facility_id: string;
   name: string;
   type: string;
+  // Which floor the asset stands on (0 = ground); x/y are pixels in that floor's map.
+  floor_level: number;
   x: number;
   y: number;
   status: AssetStatus;
@@ -50,6 +54,7 @@ export interface Asset {
 export interface AssetCreateRequest {
   name: string;
   type: string;
+  floor_level?: number;
   x: number;
   y: number;
   status?: AssetStatus;
@@ -223,5 +228,15 @@ export interface FacilitySummary {
   name: string;
   // Newest floor-plan upload that finished tiling; null if the facility has no map yet.
   latest_map_upload_id: string | null;
+  asset_count: number;
+  // One entry per floor that has a finished map, lowest level first.
+  floors: FloorSummary[];
+}
+
+// Mirrors backend/app/schemas/requests/facilities.py's FloorResponse.
+export interface FloorSummary {
+  level: number;
+  name: string;
+  map_upload_id: string;
   asset_count: number;
 }

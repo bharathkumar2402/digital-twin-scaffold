@@ -70,6 +70,8 @@ async def get_facility_map_upload(
         original_filename=upload.original_filename,
         format=upload.format,
         status=upload.status.value,
+        floor_level=upload.floor_level,
+        floor_name=upload.floor_name,
         tile_prefix=upload.tile_prefix,
         tile_url_template=tile_url_template,
     )

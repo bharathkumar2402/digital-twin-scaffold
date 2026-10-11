@@ -27,6 +27,7 @@ const asset = (id: string, name: string): Asset => ({
   facility_id: "f1",
   name,
   type: "engine",
+  floor_level: 0,
   x: 0,
   y: 0,
   status: "operational",
@@ -67,7 +68,7 @@ describe("FacilityResultsPage", () => {
     >);
     vi.mocked(useFacilities).mockReturnValue(
       query<ReturnType<typeof useFacilities>>({
-        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u9", asset_count: 2 }],
+        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u9", asset_count: 2, floors: [] }],
       })
     );
     vi.mocked(useAssets).mockReturnValue(
@@ -105,7 +106,7 @@ describe("FacilityResultsPage", () => {
   it("disables the Map tab when the facility has no floor plan yet", () => {
     vi.mocked(useFacilities).mockReturnValue(
       query<ReturnType<typeof useFacilities>>({
-        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: null, asset_count: 2 }],
+        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: null, asset_count: 2, floors: [] }],
       })
     );
     renderPage("/facilities/f1/results");

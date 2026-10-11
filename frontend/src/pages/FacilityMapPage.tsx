@@ -1,12 +1,16 @@
 import type maplibregl from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { AlertToast } from "../components/AlertToast";
 import { AppShell } from "../components/AppShell";
+import { AssetBrowser } from "../components/AssetBrowser";
+import { AssetHoverTip } from "../components/AssetHoverTip";
 import { AssetLayer } from "../components/AssetLayer";
 import { DependencyLayer } from "../components/DependencyLayer";
 import { FacilityMap } from "../components/FacilityMap";
+import { FloorSwitcher } from "../components/FloorSwitcher";
+import { SelectionLayer } from "../components/SelectionLayer";
 import { TelemetryChart } from "../components/TelemetryChart";
 import {
   useAssetDependencies,
@@ -17,9 +21,20 @@ import { useAlertsSocket } from "../hooks/useAlertsSocket";
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
+import { useFacilities } from "../hooks/useFacilities";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
 import { useRiskScores } from "../hooks/useRiskScores";
+import { buildHealthRows } from "../lib/assetHealth";
 import { assetBounds } from "../lib/fitAssets";
+import {
+  assetsOnFloor,
+  connectionsOf,
+  floorBadges,
+  floorLabel,
+  floorOfUpload,
+  type Connection,
+} from "../lib/floors";
+import { pixelToLngLat } from "../lib/mapCoords";
 import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 
 // Mirrors backend/app/core/rbac.py's WRITE_ROLES in app/api/assets.py - technician and
@@ -27,6 +42,8 @@ import type { Asset, AssetDependency, AssetStatus } from "../types/api";
 const WRITE_ROLES = new Set(["superadmin", "tenant_admin", "facility_manager"]);
 
 const SIDEBAR_WIDTH = 320;
+// Zoom used when centring on one asset (the whole-floor fit is capped at 3.4).
+const FOCUS_ZOOM = 3;
 
 interface NewAssetDraft {
   x: number;
@@ -80,7 +97,15 @@ export function FacilityMapPage(): React.JSX.Element {
   const canEdit = role !== null && WRITE_ROLES.has(role);
   const { alerts, dismiss } = useAlertsSocket();
 
-  const [map, setMap] = useState<maplibregl.Map | null>(null);
+  // Each floor is its own map instance, destroyed when the floor changes. A map is only handed to
+  // the layers while the upload it was built for is still the one on screen - otherwise they would
+  // touch a destroyed map for a render.
+  const [mapState, setMapState] = useState<{ map: maplibregl.Map; uploadId: string } | null>(null);
+  const map = mapState && mapState.uploadId === uploadId ? mapState.map : null;
+  const handleMapLoad = useCallback(
+    (loaded: maplibregl.Map) => setMapState({ map: loaded, uploadId: uploadId ?? "" }),
+    [uploadId]
+  );
   const [addMode, setAddMode] = useState(false);
   const [linkMode, setLinkMode] = useState(false);
   const [pendingParentId, setPendingParentId] = useState<string | null>(null);
@@ -98,16 +123,47 @@ export function FacilityMapPage(): React.JSX.Element {
 
   const riskScoresQuery = useRiskScores(facilityId ?? "");
 
-  const assets = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
-  const dependencies = useMemo(() => dependenciesQuery.data ?? [], [dependenciesQuery.data]);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const facilitiesQuery = useFacilities();
+  const floors = useMemo(
+    () => facilitiesQuery.data?.find((f) => f.id === facilityId)?.floors ?? [],
+    [facilitiesQuery.data, facilityId]
+  );
+
+  const allAssets = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
+  const allDependencies = useMemo(() => dependenciesQuery.data ?? [], [dependenciesQuery.data]);
+  const assetsById = useMemo(() => new Map(allAssets.map((asset) => [asset.id, asset])), [allAssets]);
+
+  // Each floor is its own map. Which floor this one is comes from the upload itself, or from the
+  // facility's floor list; if neither says (an old facility), every asset is shown as before.
+  const currentLevel: number | undefined =
+    data?.floor_level ?? floorOfUpload(floors, uploadId ?? "")?.level;
+  const assets = useMemo(
+    () => (currentLevel === undefined ? allAssets : assetsOnFloor(allAssets, currentLevel)),
+    [allAssets, currentLevel]
+  );
+  // Only links between assets on this floor are drawn; a link to another floor appears in the
+  // asset's detail panel instead (a line cannot join two separate maps).
+  const dependencies = useMemo(() => {
+    const here = new Set(assets.map((asset) => asset.id));
+    return allDependencies.filter(
+      (dep) => here.has(dep.parent_asset_id) && here.has(dep.child_asset_id)
+    );
+  }, [assets, allDependencies]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
-  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
+
   // Highest-computed_at score per asset - get_latest_risk_scores already returns at
   // most one row per asset, but the map lookup itself doesn't assume that ordering.
   const riskScoresByAssetId = useMemo(() => {
     const scores = riskScoresQuery.data ?? [];
     return new Map(scores.map((riskScore) => [riskScore.asset_id, riskScore.score]));
   }, [riskScoresQuery.data]);
+  const healthRows = useMemo(
+    () => buildHealthRows(allAssets, riskScoresQuery.data ?? []),
+    [allAssets, riskScoresQuery.data]
+  );
+  const badges = useMemo(() => floorBadges(floors, healthRows), [floors, healthRows]);
 
   // Open framed on the equipment (not on the whole world), once per map; "Fit view" re-frames.
   const fitToAssets = useCallback(
@@ -126,13 +182,48 @@ export function FacilityMapPage(): React.JSX.Element {
     },
     [map, assets]
   );
-  const hasFittedRef = useRef(false);
+  // Switching floors creates a new map instance, so "fitted" is tracked per map, not once ever.
+  const fittedMapRef = useRef<maplibregl.Map | null>(null);
+  // An asset picked from another floor arrives as ?asset=<id>: it is shown selected and centred
+  // instead of the whole-floor fit.
+  const wantedAssetId = searchParams.get("asset");
   useEffect(() => {
-    if (map && assets.length > 0 && !hasFittedRef.current) {
-      hasFittedRef.current = true;
+    if (!map || assets.length === 0 || fittedMapRef.current === map) return;
+    fittedMapRef.current = map;
+    const wanted = wantedAssetId ? assets.find((a) => a.id === wantedAssetId) : undefined;
+    if (wanted) {
+      setSelectedAssetId(wanted.id);
+      map.jumpTo({ center: pixelToLngLat(wanted.x, wanted.y), zoom: FOCUS_ZOOM });
+      setSearchParams({}, { replace: true });
+    } else {
       fitToAssets(false);
     }
-  }, [map, assets.length, fitToAssets]);
+  }, [map, assets, wantedAssetId, fitToAssets, setSearchParams]);
+
+  // A selection belongs to the floor it was made on.
+  useEffect(() => {
+    setSelectedAssetId((current) => (current && !assets.some((a) => a.id === current) && !wantedAssetId ? null : current));
+  }, [assets, wantedAssetId]);
+
+  // Pick an asset from a list: on this floor, select it and bring it into view; on another floor,
+  // open that floor's map with the asset preselected.
+  const goToAsset = useCallback(
+    (asset: Asset) => {
+      if (currentLevel === undefined || asset.floor_level === currentLevel) {
+        setNewAssetDraft(null);
+        setSelectedAssetId(asset.id);
+        map?.easeTo({
+          center: pixelToLngLat(asset.x, asset.y),
+          zoom: Math.max(map.getZoom(), FOCUS_ZOOM),
+          duration: 500,
+        });
+        return;
+      }
+      const floor = floors.find((f) => f.level === asset.floor_level);
+      if (floor) navigate(`/facilities/${facilityId}/map/${floor.map_upload_id}?asset=${asset.id}`);
+    },
+    [currentLevel, map, floors, navigate, facilityId]
+  );
 
   if (!facilityId || !uploadId) {
     return <CenteredMessage isError>Missing facility or upload id in the URL.</CenteredMessage>;
@@ -155,8 +246,11 @@ export function FacilityMapPage(): React.JSX.Element {
     <div className="map-layout">
       <div className="map-stage">
         <AlertToast alerts={alerts} onDismiss={dismiss} />
-        <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={setMap} />
+        <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={handleMapLoad} />
         <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
+        <SelectionLayer map={map} asset={selectedAsset} />
+        <AssetHoverTip map={map} assets={assets} riskScores={riskScoresByAssetId} />
+        <FloorSwitcher facilityId={facilityId} badges={badges} currentLevel={currentLevel} />
         <AssetLayer
           map={map}
           assets={assets}
@@ -257,7 +351,13 @@ export function FacilityMapPage(): React.JSX.Element {
             onCancel={() => setNewAssetDraft(null)}
             onSubmit={(name, type) => {
               createAsset.mutate(
-                { name, type, x: newAssetDraft.x, y: newAssetDraft.y },
+                {
+                  name,
+                  type,
+                  x: newAssetDraft.x,
+                  y: newAssetDraft.y,
+                  ...(currentLevel === undefined ? {} : { floor_level: currentLevel }),
+                },
                 {
                   onSuccess: () => {
                     setNewAssetDraft(null);
@@ -277,8 +377,10 @@ export function FacilityMapPage(): React.JSX.Element {
             canEdit={canEdit}
             isSaving={updateAsset.isPending}
             isDeleting={deleteAsset.isPending}
-            dependencies={dependencies}
+            dependencies={allDependencies}
             assetsById={assetsById}
+            currentLevel={currentLevel}
+            onJump={goToAsset}
             isDeletingDependency={deleteDependency.isPending}
             onUpdate={(updates) => updateAsset.mutate({ assetId: selectedAsset.id, body: updates })}
             onDelete={() => {
@@ -292,40 +394,13 @@ export function FacilityMapPage(): React.JSX.Element {
         )}
 
         {!newAssetDraft && !selectedAsset && (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <h3 style={{ fontSize: 15 }}>Assets</h3>
-              <p style={{ fontSize: 12.5, margin: 0 }}>{assets.length} on this facility</p>
-            </div>
-            {assetsQuery.isPending && <p style={{ fontSize: 13 }}>Loading assets...</p>}
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-              {assets.map((asset) => (
-                <li key={asset.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedAssetId(asset.id)}
-                    className="card"
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                      background: "var(--color-surface-alt)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                  >
-                    <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--color-text)" }}>
-                      {asset.name}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
-                      <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{asset.type}</span>
-                      <StatusBadge status={asset.status} />
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
+          <AssetBrowser
+            rows={healthRows}
+            floors={floors}
+            currentLevel={currentLevel}
+            isLoading={assetsQuery.isPending}
+            onPick={goToAsset}
+          />
         )}
       </div>
     </div>
@@ -465,6 +540,8 @@ function AssetDetailPanel({
   isDeleting,
   dependencies,
   assetsById,
+  currentLevel,
+  onJump,
   isDeletingDependency,
   onUpdate,
   onDelete,
@@ -478,6 +555,8 @@ function AssetDetailPanel({
   isDeleting: boolean;
   dependencies: AssetDependency[];
   assetsById: Map<string, Asset>;
+  currentLevel: number | undefined;
+  onJump: (asset: Asset) => void;
   isDeletingDependency: boolean;
   onUpdate: (updates: { name?: string; type?: string; status?: AssetStatus }) => void;
   onDelete: () => void;
@@ -488,8 +567,7 @@ function AssetDetailPanel({
   // parent depends_on child (see AssetDependency's docstring in types/api.ts) - so
   // "depends on" (upstream) is where this asset is the parent, "depended on by"
   // (downstream) is where it's the child.
-  const dependsOn = dependencies.filter((dep) => dep.parent_asset_id === asset.id);
-  const dependedOnBy = dependencies.filter((dep) => dep.child_asset_id === asset.id);
+  const { dependsOn, dependedOnBy } = connectionsOf(asset.id, dependencies, assetsById);
 
   return (
     <div>
@@ -502,6 +580,7 @@ function AssetDetailPanel({
       </div>
 
       <dl className="card" style={{ padding: "10px 12px", margin: "0 0 18px", background: "var(--color-surface-alt)" }}>
+        <DetailRow label="Floor">{floorLabel(asset.floor_level)}</DetailRow>
         <DetailRow label="Position">
           ({asset.x.toFixed(1)}, {asset.y.toFixed(1)})
         </DetailRow>
@@ -546,7 +625,8 @@ function AssetDetailPanel({
       <SectionHeading>Depends on</SectionHeading>
       <DependencyList
         items={dependsOn}
-        resolveName={(dep) => assetsById.get(dep.child_asset_id)?.name ?? dep.child_asset_id}
+        currentLevel={currentLevel}
+        onJump={onJump}
         canEdit={canEdit}
         isDeleting={isDeletingDependency}
         onDelete={onDeleteDependency}
@@ -555,7 +635,8 @@ function AssetDetailPanel({
       <SectionHeading>Depended on by</SectionHeading>
       <DependencyList
         items={dependedOnBy}
-        resolveName={(dep) => assetsById.get(dep.parent_asset_id)?.name ?? dep.parent_asset_id}
+        currentLevel={currentLevel}
+        onJump={onJump}
         canEdit={canEdit}
         isDeleting={isDeletingDependency}
         onDelete={onDeleteDependency}
@@ -604,13 +685,15 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function DependencyList({
   items,
-  resolveName,
+  currentLevel,
+  onJump,
   canEdit,
   isDeleting,
   onDelete,
 }: {
-  items: AssetDependency[];
-  resolveName: (dep: AssetDependency) => string;
+  items: Connection[];
+  currentLevel: number | undefined;
+  onJump: (asset: Asset) => void;
   canEdit: boolean;
   isDeleting: boolean;
   onDelete: (dependencyId: string) => void;
@@ -620,9 +703,9 @@ function DependencyList({
   }
   return (
     <ul style={{ listStyle: "none", padding: 0, margin: "0 0 4px", display: "flex", flexDirection: "column", gap: 6 }}>
-      {items.map((dep) => (
+      {items.map((conn) => (
         <li
-          key={dep.id}
+          key={conn.dependencyId}
           className="card"
           style={{
             display: "flex",
@@ -633,13 +716,27 @@ function DependencyList({
             background: "var(--color-surface-alt)",
           }}
         >
-          <span>{resolveName(dep)}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <button
+              type="button"
+              className="link-button"
+              title={`Show ${conn.asset.name} on the map`}
+              onClick={() => onJump(conn.asset)}
+            >
+              {conn.asset.name}
+            </button>
+            {currentLevel !== undefined && conn.asset.floor_level !== currentLevel && (
+              <span className="floor-tag" title="On another floor - click the name to go there">
+                {floorLabel(conn.asset.floor_level)}
+              </span>
+            )}
+          </span>
           {canEdit && (
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               disabled={isDeleting}
-              onClick={() => onDelete(dep.id)}
+              onClick={() => onDelete(conn.dependencyId)}
             >
               Unlink
             </button>
