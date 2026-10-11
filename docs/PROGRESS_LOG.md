@@ -51,6 +51,16 @@ dict was expected; harmless at runtime, fixed with `dict(...)` and a new unit te
 as `failed` and re-raised); and the never-working `agent-runner` compose service was removed. `ruff` and `mypy`
 are clean again.
 
+Note on UI U1-U3 (usability overhaul for managers and technicians; no issue): U1 plain-language asset status
+(`lib/assetStatus.ts`: Failing soon / Vibration warning / Watch closely / Healthy / Not enough data, with reasons and a
+suggested action) plus glossary tooltips; U2 one shared `AssetPanel` for Results and Map (replaces the old drawer and
+the map's own sidebar panel; edit controls only when the host passes edit handlers); U3 the single Results page split
+into role-aware tabs: Overview (KPIs + floor cards linking to Assets), Assets (table + search + quick filters +
+floor filter, state in the URL), Analysis (facility-wide, hidden for technician/viewer), and an About-the-models page;
+`/results` redirects (to Assets when a `?floor=` is present). Tests: 254 frontend. Checked in a real browser on the Meridian
+plant (old /results URL redirects via sign-in to /overview; floor card -> /assets?floor=0; quick filter; Analysis tab). Planned next: U4 Overview "Needs attention", U5 technician Work view,
+U6 answer-first Analysis, U7 risk history + sparkline (backend read route), U8 responsive/keyboard pass + Playwright.
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
 (UI hides it for non-completed runs); `docs/DATASETS.md` is unchanged (no new data).

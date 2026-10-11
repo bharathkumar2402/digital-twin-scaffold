@@ -11,7 +11,7 @@ export function FacilitiesPage(): React.JSX.Element {
       <div className="page">
         <div className="page-head">
           <h2>Your facilities</h2>
-          <p>Pick a facility to open its map or its results.</p>
+          <p>Pick a facility to open its map or its overview.</p>
         </div>
 
         {isPending && <p>Loading facilities...</p>}
@@ -45,8 +45,8 @@ export function FacilitiesPage(): React.JSX.Element {
                     Open map
                   </span>
                 )}
-                <Link className="btn" to={`/facilities/${facility.id}/results`}>
-                  Results
+                <Link className="btn" to={`/facilities/${facility.id}/overview`}>
+                  Overview
                 </Link>
               </div>
             </article>

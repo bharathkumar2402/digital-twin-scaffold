@@ -57,7 +57,7 @@ their equipment pads, coloured by risk (red = high), with the dependency lines, 
 **Fit view**. The floor switcher (top right) moves between the three floors; the sidebar lists all 44
 machines grouped by floor with search and High risk / Vibration alarm filters; picking a machine on another
 floor opens that floor with it selected (`?asset=<id>` in the URL); an asset's detail panel tags links to
-other floors (`L1`, `L2`) and jumps there. **Results** is the model/agent page.
+other floors (`L1`, `L2`) and jumps there. The **Overview**, **Assets** and **Analysis** tabs hold the model and agent results (the old single Results page was split; `/results` URLs redirect).
 
 ## 3. Demo script (about 10 minutes)
 
@@ -65,10 +65,10 @@ other floors (`L1`, `L2`) and jumps there. **Results** is the model/agent page.
 |---|---|---|
 | 1 | Facility picker, then **Open map** | A private spatial map of the facility; assets are nodes coloured by risk, with their dependencies. The floor plan is a generated demo drawing (`scripts/demo_floorplan.py`); a real upload goes through the sandboxed upload worker (needs the extra sandbox container). |
 | 2 | Click an asset: telemetry chart | Live telemetry per asset, stored in TimescaleDB under row-level security per tenant. |
-| 3 | Click the **Results** tab in the top bar | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
-| 4 | Results > Asset health table | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. On a multi-floor plant, the floor chips above the table filter the table and KPI tiles (and set `?floor=N` in the URL); each chip also shows that floor's high-risk and alarm counts. Agent analysis below it stays facility-wide. |
+| 3 | Click the **Overview** tab, then **Assets** | One page for everything the models and agents produce. Everything the UI does is a tenant-scoped API (`localhost:8000/docs`). |
+| 4 | Assets tab > health table (status column; search and quick filters) | Three real-data models: risk (AI4I 2020), remaining useful life (NASA C-MAPSS), vibration anomaly (NASA IMS bearings). Assets without the risk model's sensors show "not scored", not a guess. On a multi-floor plant, the floor chips above the table filter the table and KPI tiles (and set `?floor=N` in the URL); each chip also shows that floor's high-risk and alarm counts. Agent analysis below it stays facility-wide. |
 | 5 | Click `Air Compressor AC-1`, then compare `Air Compressor AC-2` | AC-1: risk 95.8, RUL 3.1 cycles, vibration alarm. AC-2: has an RUL but no alarm. `Cooling Water Pump CWP-2` shows an *early* vibration warning while its risk is still low. The drawer shows which model version and dataset produced each number. The telemetry is a simulator calibrated from the real datasets. |
-| 6 | Results > Agent analysis: type `What if Air Compressor AC-1 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
+| 6 | Analysis tab: type `What if Air Compressor AC-1 fails?`, Run analysis (about 10 s) | Five agents: planner, risk assessment, maintenance + inventory, route optimization, simulation decision. Every agent output is schema-validated; validation errors are always shown. Then try `What if the Flux Capacitor fails?`: the run halts and says why instead of inventing an answer. |
 | 7 | `pytest tests/integration/test_degradation_e2e.py -v` | The same story as an automated test on fresh containers: trains the models, simulates, scores, asserts. |
 
 Headline numbers on the Meridian plant (44/44 machines scored): `Air Compressor AC-1` risk 95.8 / RUL 3.1 /
@@ -134,7 +134,7 @@ heuristic over the cascade, not a prediction).
 - The agents are deterministic tools, not an LLM: scheduling, routing and the cascade are rule-based
   / solver-based (OR-Tools, NetworkX). Downtime is a heuristic and the technician roster is a built-in
   demo roster.
-- The Results page shows model outputs and the agent run; "About these models" carries the
+- The Overview, Assets and Analysis tabs show model outputs and the agent run; the "About the models" page (top bar) carries the
   headline metrics as static text copied from `docs/DATASETS.md` (dated), not live numbers. The
   "why" text beside each risk priority is a rule-based explanation over recent telemetry, not the
   model's own reasoning.
@@ -157,5 +157,5 @@ heuristic over the cascade, not a prediction).
   The compose file's old `agent-runner` service pointed at a module that never existed and was removed.
 - Floor plans are generated drawings; filler map tiles only cover zoom 0-5.
 - The technician roster is a single built-in technician and downtime is a heuristic.
-- The Results page's "why" text is rule-based, and the model cards are static copies of `docs/DATASETS.md`.
+- The "why" text is rule-based, and the model cards are static copies of `docs/DATASETS.md`.
 - `/facilities` is read-only (no create or edit).

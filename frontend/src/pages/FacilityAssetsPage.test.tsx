@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useRiskScores } from "../hooks/useRiskScores";
 import type { Asset, RiskScore } from "../types/api";
-import { FacilityResultsPage } from "./FacilityResultsPage";
+import { FacilityAssetsPage } from "./FacilityAssetsPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
 vi.mock("../hooks/useAssetDependencies", () => ({ useAssetDependencies: vi.fn() }));
@@ -17,13 +17,6 @@ vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 vi.mock("../hooks/useAssetTelemetry", () => ({ useAssetTelemetry: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
-// The analysis panel has its own tests; here only whether the page wires it correctly.
-vi.mock("../components/AgentAnalysisPanel", () => ({
-  AgentAnalysisPanel: (props: { canRun: boolean; assetNames: Map<string, string> }) => (
-    <div data-testid="analysis" data-can-run={String(props.canRun)} data-names={props.assetNames.size} />
-  ),
-}));
-
 function LocationProbe(): React.JSX.Element {
   const { search } = useLocation();
   return <div data-testid="search">{search}</div>;
@@ -58,18 +51,18 @@ function query<T>(over: Record<string, unknown>) {
   return { data: undefined, isPending: false, isError: false, ...over } as T;
 }
 
-function renderPage(url = "/facilities/f1/results?upload=u9") {
+function renderPage(url = "/facilities/f1/assets?upload=u9") {
   render(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
-        <Route path="/facilities/:facilityId/results" element={<FacilityResultsPage />} />
+        <Route path="/facilities/:facilityId/assets" element={<FacilityAssetsPage />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>
   );
 }
 
-describe("FacilityResultsPage", () => {
+describe("FacilityAssetsPage", () => {
   beforeEach(() => {
     vi.mocked(useAuth).mockReturnValue({ role: "facility_manager", logout: vi.fn() } as unknown as ReturnType<
       typeof useAuth
@@ -93,65 +86,65 @@ describe("FacilityResultsPage", () => {
     );
   });
 
-  it("shows the health table, the analysis panel and the model cards", () => {
+  it("shows the health table with a status per asset, and nothing from other tabs", () => {
     renderPage();
     expect(screen.getByRole("region", { name: "Asset health" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Asset health" })).toBeInTheDocument();
-    expect(screen.getByTestId("analysis")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "About these models" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Facility summary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "About these models" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Agent analysis" })).not.toBeInTheDocument();
   });
 
-  it("passes the real asset names to the analysis panel", () => {
-    renderPage();
-    expect(screen.getByTestId("analysis")).toHaveAttribute("data-names", "2");
-  });
+  describe("search and quick filters", () => {
+    const rowNames = () =>
+      within(screen.getByRole("table", { name: "Asset health" }))
+        .getAllByRole("button")
+        .map((b) => b.textContent);
 
-  it("shows the facility name and Map / Results tabs in the shell, with the map's real upload id", () => {
-    renderPage("/facilities/f1/results");
-    const nav = screen.getByRole("navigation", { name: "Facility" });
-    expect(within(nav).getByText("Demo Plant 1")).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Map" })).toHaveAttribute("href", "/facilities/f1/map/u9");
-    expect(within(nav).getByRole("link", { name: "Results" })).toHaveClass("nav-active");
-  });
+    it("searches by name, case-insensitively", () => {
+      renderPage();
+      fireEvent.change(screen.getByLabelText("Search assets"), { target: { value: "aGeD" } });
+      expect(rowNames()).toEqual(["Aged Engine"]);
+    });
 
-  it("disables the Map tab when the facility has no floor plan yet", () => {
-    vi.mocked(useFacilities).mockReturnValue(
-      query<ReturnType<typeof useFacilities>>({
-        data: [{ id: "f1", name: "Demo Plant 1", latest_map_upload_id: null, asset_count: 2, floors: [] }],
-      })
-    );
-    renderPage("/facilities/f1/results");
-    const nav = screen.getByRole("navigation", { name: "Facility" });
-    expect(within(nav).queryByRole("link", { name: "Map" })).not.toBeInTheDocument();
-    expect(within(nav).getByText("Map")).toHaveClass("nav-disabled");
-  });
+    it("filters to assets that need attention and writes ?show= to the URL", () => {
+      // New Engine: low risk and no vibration alarm, so genuinely healthy.
+      vi.mocked(useRiskScores).mockReturnValue(
+        query<ReturnType<typeof useRiskScores>>({
+          data: [score("a", 95.8, 3.6), { ...score("b", 0.4, 115.9), factors_json: {} }],
+        })
+      );
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "Needs attention" }));
+      expect(rowNames()).toEqual(["Aged Engine"]);
+      expect(screen.getByTestId("search")).toHaveTextContent("show=attention");
+      expect(screen.getByRole("button", { name: "Needs attention" })).toHaveAttribute("aria-pressed", "true");
+    });
 
-  it("summarises the facility in KPI tiles above the table", () => {
-    renderPage();
-    const kpis = screen.getByRole("group", { name: "Facility summary" });
-    expect(within(kpis).getByText("Assets monitored")).toBeInTheDocument();
-    expect(within(kpis).getByText("High risk")).toBeInTheDocument();
-    // two assets, one in the high band (95.8), one alarm, shortest RUL 3.6 on the aged engine
-    expect(within(kpis).getByText("3.6 cycles")).toBeInTheDocument();
-    expect(within(kpis).getByText("Aged Engine")).toBeInTheDocument();
-  });
+    it("restores a quick filter from the URL and ignores an unknown one", () => {
+      renderPage("/facilities/f1/assets?show=alarms");
+      expect(rowNames()).toEqual(["Aged Engine", "New Engine"]);
+      cleanup();
+      renderPage("/facilities/f1/assets?show=nonsense");
+      expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    });
 
-  it.each([
-    ["superadmin", true],
-    ["tenant_admin", true],
-    ["facility_manager", true],
-    ["technician", false],
-    ["viewer", false],
-  ])("role %s may run analyses: %s", (role, allowed) => {
-    vi.mocked(useAuth).mockReturnValue({ role } as ReturnType<typeof useAuth>);
-    renderPage();
-    expect(screen.getByTestId("analysis")).toHaveAttribute("data-can-run", String(allowed));
-  });
+    it("shows 'No assets match' with a way back when nothing matches", () => {
+      renderPage();
+      fireEvent.change(screen.getByLabelText("Search assets"), { target: { value: "zzz" } });
+      expect(screen.getByText("No assets match")).toBeInTheDocument();
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(rowNames()).toEqual(["Aged Engine", "New Engine"]);
+    });
 
-  it("does not offer running when the role is unknown", () => {
-    vi.mocked(useAuth).mockReturnValue({ role: null } as ReturnType<typeof useAuth>);
-    renderPage();
-    expect(screen.getByTestId("analysis")).toHaveAttribute("data-can-run", "false");
+    it("closes the panel when the selected asset no longer matches the search", () => {
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
+      expect(screen.getByRole("complementary")).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Search assets"), { target: { value: "new" } });
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    });
   });
 
   it("opens the detail drawer for a clicked asset with its RUL and vibration provenance", () => {
@@ -176,7 +169,6 @@ describe("FacilityResultsPage", () => {
     renderPage();
     expect(screen.getByRole("status", { name: "Loading results" })).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Facility summary" })).not.toBeInTheDocument();
   });
 
   it("surfaces a load failure naming what failed, and Retry refetches only that query", () => {
@@ -257,7 +249,7 @@ describe("FacilityResultsPage", () => {
         .map((b) => b.textContent);
 
     it("offers all floors plus each floor with its own counts", () => {
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       const group = screen.getByRole("group", { name: "Filter by floor" });
       expect(within(group).getByRole("button", { name: /All floors/ })).toHaveAttribute("aria-pressed", "true");
       expect(within(group).getByRole("button", { name: /Ground.*2 assets.*1 high risk/ })).toBeInTheDocument();
@@ -265,30 +257,27 @@ describe("FacilityResultsPage", () => {
       expect(tableNames()).toHaveLength(3);
     });
 
-    it("filters the table and KPI tiles to the chosen floor and writes ?floor= to the URL", () => {
-      renderPage("/facilities/f1/results?upload=u9");
+    it("filters the table to the chosen floor and writes ?floor= to the URL", () => {
+      renderPage("/facilities/f1/assets?upload=u9");
       fireEvent.click(screen.getByRole("button", { name: /Mezzanine/ }));
       expect(tableNames()).toEqual(["Mezz Pump"]);
       expect(screen.getByTestId("search")).toHaveTextContent("floor=1");
       expect(screen.getByTestId("search")).toHaveTextContent("upload=u9");
-      const kpis = screen.getByRole("group", { name: "Summary for Mezzanine" });
-      expect(within(kpis).getByText("Mezz Pump")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Mezzanine/ })).toHaveAttribute("aria-pressed", "true");
     });
 
     it("restores the filter from the URL", () => {
-      renderPage("/facilities/f1/results?floor=0");
+      renderPage("/facilities/f1/assets?floor=0");
       expect(tableNames()).toEqual(["Ground Press", "Ground Lathe"]);
     });
 
     it.each(["abc", "7", "", "1.5"])("falls back to all floors for ?floor=%s", (bad) => {
-      renderPage(`/facilities/f1/results?floor=${bad}`);
+      renderPage(`/facilities/f1/assets?floor=${bad}`);
       expect(tableNames()).toHaveLength(3);
-      expect(screen.getByRole("group", { name: "Facility summary" })).toBeInTheDocument();
     });
 
     it("closes the detail drawer when the selected asset's floor is filtered out", () => {
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: "Ground Press" }));
       expect(screen.getByRole("complementary", { name: "Details for Ground Press" })).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: /Mezzanine/ }));
@@ -298,18 +287,13 @@ describe("FacilityResultsPage", () => {
     });
 
     it("shows an empty state with a way back for a floor that has no assets", () => {
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: /Roof/ }));
       expect(screen.getByText("No assets on Roof")).toBeInTheDocument();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Show all floors" }));
       expect(tableNames()).toHaveLength(3);
       expect(screen.getByTestId("search")).not.toHaveTextContent("floor=");
-    });
-
-    it("labels agent analysis as facility-wide", () => {
-      renderPage("/facilities/f1/results?floor=1");
-      expect(screen.getByText(/whole facility, whichever floor/)).toBeInTheDocument();
     });
   });
 
@@ -345,7 +329,7 @@ describe("FacilityResultsPage", () => {
 
     it("opens beside the table (not below it) with a Show on map link to the asset's floor", () => {
       withGroundMap();
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
       const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
       expect(panel.parentElement).toHaveClass("results-split");
@@ -357,7 +341,7 @@ describe("FacilityResultsPage", () => {
     });
 
     it("hides Show on map when the asset's floor has no finished map", () => {
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
       const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
       expect(within(panel).queryByRole("link", { name: "Show on map" })).not.toBeInTheDocument();
@@ -369,7 +353,7 @@ describe("FacilityResultsPage", () => {
           data: [{ id: "d1", facility_id: "f1", parent_asset_id: "a", child_asset_id: "b" }],
         })
       );
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
       const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
       expect(within(panel).getByRole("button", { name: "New Engine" })).toBeInTheDocument();
@@ -385,7 +369,7 @@ describe("FacilityResultsPage", () => {
           data: [{ id: "d1", facility_id: "f1", parent_asset_id: "a", child_asset_id: "b" }],
         })
       );
-      renderPage("/facilities/f1/results");
+      renderPage("/facilities/f1/assets");
       fireEvent.click(screen.getByRole("button", { name: "Aged Engine" }));
       const panel = screen.getByRole("complementary", { name: "Details for Aged Engine" });
       fireEvent.click(within(panel).getByRole("button", { name: "New Engine" }));

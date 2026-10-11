@@ -1276,3 +1276,46 @@ textarea {
 .results-split .risk-bar {
   display: none;
 }
+
+/* ---- Tabs: top-bar link, overview floor cards, assets filter bar ---- */
+.topbar-link {
+  color: #cbd5e1;
+  font-size: 13px;
+  text-decoration: none;
+  margin-right: 14px;
+}
+
+.topbar-link:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.floor-link {
+  text-decoration: none;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.filter-bar .input {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+.quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick-filters .btn[aria-pressed="true"] {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}

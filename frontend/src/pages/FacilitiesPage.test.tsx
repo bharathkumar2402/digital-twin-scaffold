@@ -31,7 +31,7 @@ describe("FacilitiesPage", () => {
     vi.mocked(useAuth).mockReturnValue({ logout: vi.fn() } as unknown as ReturnType<typeof useAuth>);
   });
 
-  it("lists each facility with links to its map and results", () => {
+  it("lists each facility with links to its map and overview", () => {
     setFacilities({
       data: [
         { id: "f1", name: "Demo Plant 1", latest_map_upload_id: "u1", asset_count: 6, floors: [] },
@@ -46,9 +46,9 @@ describe("FacilitiesPage", () => {
       "href",
       "/facilities/f1/map/u1"
     );
-    expect(within(demo).getByRole("link", { name: "Results" })).toHaveAttribute(
+    expect(within(demo).getByRole("link", { name: "Overview" })).toHaveAttribute(
       "href",
-      "/facilities/f1/results"
+      "/facilities/f1/overview"
     );
   });
 
@@ -58,7 +58,7 @@ describe("FacilitiesPage", () => {
     const annex = screen.getByRole("article", { name: "Annex" });
     expect(within(annex).queryByRole("link", { name: "Open map" })).not.toBeInTheDocument();
     expect(within(annex).getByText(/1 asset \u00b7 no floor plan yet/)).toBeInTheDocument();
-    expect(within(annex).getByRole("link", { name: "Results" })).toBeInTheDocument();
+    expect(within(annex).getByRole("link", { name: "Overview" })).toBeInTheDocument();
   });
 
   it("explains an empty account, a load failure and loading", () => {
