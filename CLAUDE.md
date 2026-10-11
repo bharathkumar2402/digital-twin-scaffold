@@ -183,18 +183,21 @@ rather than building it — that scope boundary is deliberate and documented in
 > re-explaining it every session.
 
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine),
-and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra ML models) is closed too. Phase 5 is next.
+and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra ML models) is closed too. The usability overhaul (UI U1-U8) is closed. **Phase L (live data loop) is next, then Phase 5.**
 
-- Next task: **Phase 5, task 1: RLS policy audit** (Issue #32, automated audit script asserting
-  every table in the main Postgres and TimescaleDB databases has RLS enabled and a tenant_id policy).
+- Next task: **Phase L, task L.0: baseline measurements** for the live data loop (see `docs/LIVE_DATA_PLAN.md`
+  and "Phase L" in `docs/PHASE_PLAN.md`; decisions D1-D10 are already made, do not re-ask). Phase L comes
+  **before** Phase 5 by decision (demo value; it adds no tenant table). After Phase L: **Phase 5, task 1: RLS
+  policy audit** (Issue #32, automated audit script asserting every table in the main Postgres and
+  TimescaleDB databases has RLS enabled and a tenant_id policy; extra-scrutiny task).
   Phase 3b (tasks 3b.1-3b.8) is closed with all Definition of Done items met; the audit and
   the follow-up gap fixes are in `docs/PROGRESS_LOG.md`.
 
 **Handoff (as of 2026-10-12, on `main`).** The usability overhaul U1-U8 (role-aware tabs, plain-language status, shared asset panel, needs-attention list, technician Work tab, answer-first Analysis, risk history + trend chart, phone/keyboard/accessibility pass, `npm run e2e`) and the routing priority fix are done and pushed; see `docs/PROGRESS_LOG.md`.
 Beyond the numbered tasks, the demo was upgraded to multi-floor facilities and a 44-machine, 3-floor plant
 ("Meridian Components Plant"); details and verification in `docs/PROGRESS_LOG.md`, how to run it in
-`docs/DEMO.md`. Step 3 (Results page polish) and Step 4 (leftover docs) are done. Now start the real
-tracker: **Phase 5 task 1 (RLS audit, issue #32)** - extra-scrutiny task: propose adversarial tests before building.
+`docs/DEMO.md`. Step 3 (Results page polish) and Step 4 (leftover docs) are done. Now do **Phase L (live data loop, L.0 first)**, then the
+real tracker: **Phase 5 task 1 (RLS audit, issue #32)** - extra-scrutiny task: propose adversarial tests before building.
 Working notes: never `ruff format`/`ruff --fix` across all of `app/`; a few files show as modified only from
 line-ending bookkeeping (`core/tenant_context.py`, `ml/synthetic_data.py`, `models/asset_dependency.py`,
 `sandbox/{convert,sanitize,storage}.py`, `services/telemetry_service.py`, `workers/callback_tasks.py`) - never

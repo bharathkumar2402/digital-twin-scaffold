@@ -113,6 +113,13 @@ phone-width pass and an axe audit with contrast of all 7 screens: zero violation
 a pre-existing `eslint .` error in vite.config.ts. Tests: 457 frontend + 8 e2e. Not covered: a real phone/Safari, screen-reader listening tests,
 the technician login (the demo only seeds a manager). The UI plan U1-U8 is complete.
 
+Note on the live-data plan (2026-10-12; planning only, no code): the demo is a static snapshot (telemetry written once by
+`demo_setup`, newest reading hours old; no scheduler, no UI push except alert toasts). `docs/LIVE_DATA_PLAN.md` records the decisions
+(15 s simulator tick, real timestamps, AC-2 degradation storyline, 60 s scheduled scoring, push + 60 s polling fallback, stale = 5 min,
+auto analysis in the worker <= 1 per 10 min, retention 14 d) and `PHASE_PLAN.md` has Phase L (L.0-L.10). FOUND while planning: `POST
+/telemetry` has no role check - a viewer can write sensor data (fix = L.1); the old generator is stateless and would feed the risk model
+incoherent snapshots (the new simulator must be stateful and AI4I-calibrated); TimescaleDB compression may not work with RLS (verify in L.0).
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
 (UI hides it for non-completed runs); `docs/DATASETS.md` is unchanged (no new data).

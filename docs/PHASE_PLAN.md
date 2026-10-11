@@ -206,6 +206,75 @@ three people are building on top of it. Get the skeleton right, then parallelize
 
 ---
 
+## Phase L — Live Data Loop (inserted before Phase 5; planned 2026-10-12, nothing built yet)
+
+**Goal:** make the demo behave like a running facility: realistic data arrives continuously, anomalies alert,
+models re-score on a schedule, and screens and analyses update without clicks. Full rationale, decisions D1-D10,
+architecture, gotchas, performance budget and risks: **`docs/LIVE_DATA_PLAN.md`** (read it first).
+
+**Scope boundary:** simulated data through the real `POST /telemetry` path only. No new tenant table (so no new
+RLS policy), no real device protocols, no HA data layer (rule 5). Live RUL channels and vibration waveforms are
+stretch task L.10.
+
+**Claude Code sessions (in order; one task per session, human gate before every commit)**
+
+0. **L.0 Baseline measurements** — `scripts/measure_live_load.py`: ingest throughput and p95, scoring time for 44
+   assets vs. rows stored (e.g. 30 k / 300 k / 3 M), API latency under load, and **whether TimescaleDB
+   compression works with RLS on `sensor_readings`**. Record the numbers in `docs/LIVE_DATA_PLAN.md` and
+   `docs/PROGRESS_LOG.md`; adjust D1/D4/D10 if the numbers demand it. No product code changes.
+1. **L.1 Ingest authorization + demo accounts** *(extra scrutiny: auth)* — restrict `POST /telemetry` to
+   technician / facility_manager / tenant_admin / superadmin (viewer -> 403); seed a **technician** and a **viewer**
+   demo account in `scripts/seed_demo.py` (+ the simulator's own technician account) and show them in
+   `docs/DEMO.md`. Adversarial tests: viewer 403, no token 401, every role matrix row, cross-tenant ingest still
+   isolated (existing `test_telemetry_isolation.py` green), a forged `tenant_id` in the body is ignored.
+2. **L.2 Stateful live simulator** — `scripts/live_simulator.py` (host process, logs in, posts the five coherent
+   AI4I sensors together every `SIM_TICK_SECONDS`=15 s; per-machine state; deterministic with `--seed`;
+   `--storyline off|once|loop`, `inject <machine> <fault>`; backoff + re-login when the API is down; clean
+   shutdown). Calibrate from `docs/DATASETS.md` AI4I statistics (rule 8; update that doc in the same PR).
+   Tests: tool wear never decreases, `process_temp - air_temp` stays in the dataset range, values stay in the
+   dataset's ranges, same seed -> same stream, storyline phases happen in order and only once, batch size < 1000,
+   API-down recovery, never imports training code.
+3. **L.3 Stale-data awareness** — expose each asset's last reading time (cheapest correct source, decide in the
+   plan step) and add a **"No recent data"** status (stale = no reading for 5 min) to `lib/assetStatus.ts`, the
+   Overview/Assets/Map/Work screens and the e2e suite. Tests: boundary at exactly 5 min, never shown as Healthy,
+   recovers when data resumes, unscored vs stale are different states.
+4. **L.4 Scheduled scoring** — Celery beat (`beat_schedule` in `app/core/celery_app.py`) running
+   `score_all_facilities` every 60 s: skip when no new readings, Redis lock against overlap, per-tenant
+   isolation, publishes `scores_updated` on the tenant's channel. Replace `get_latest_risk_scores` with a
+   `DISTINCT ON` query. Tests: skip-when-unchanged, lock prevents overlap, a failing facility does not stop the
+   others, tenant A's event never reaches tenant B's channel.
+5. **L.5 History downsampling** *(extra scrutiny: reads an RLS table)* — `risk-history?bucket=hour|day` (newest
+   score per bucket) so multi-day trends survive 60 s scoring; keep the existing bounds and adversarial tests
+   (limits, cross-tenant 404, RLS-level tests with the tenant filter omitted, mutation check).
+6. **L.6 Live UI** — typed WebSocket messages (`alert`, `scores_updated`), React Query invalidation, "Updated N
+   min ago", 60 s polling fallback when the socket drops, open telemetry chart refetches every ~15 s. Tests:
+   message handling, fallback, no refetch storm (debounced invalidation), Playwright: toast appears and Needs
+   attention updates without reload.
+7. **L.7 Automatic analysis in the worker** *(rule 4 + rule 1)* — `run_scheduled_analysis`: triggered by a
+   debounced "machine newly high risk" event, <= 1 run per facility per 10 min, Redis lock, one at start-up if
+   none exists, never inside an API request; `agent_runs.trigger` records why. Tests: storm of anomalies -> one run,
+   overlapping triggers -> one run, a failed run is recorded and does not block the next, validation rules intact,
+   Work tab picks up the new plan.
+8. **L.8 Data hygiene** *(extra scrutiny: migration on an RLS table)* — Timescale retention 14 days (compression
+   only if L.0 proved it works with RLS), in the timescale migration chain. Tests: policies still enforce RLS after
+   the migration; old chunks dropped, new data kept.
+9. **L.9 One-command live demo + e2e + docs** — `scripts/demo_up.ps1` (API, worker, beat, simulator, frontend),
+   `docs/DEMO.md` "live mode", Playwright live spec (storyline machine appears in Needs attention within the time
+   budget; stopping the simulator produces "No recent data"), final Definition-of-Done audit against
+   `docs/LIVE_DATA_PLAN.md`.
+10. **L.10 (stretch) live RUL channels and vibration waveforms** — stream engine channels; add a validated waveform
+    upload endpoint (size/shape checks, tenant-prefixed MinIO keys).
+
+**Definition of Done** (details in `docs/LIVE_DATA_PLAN.md`)
+- [ ] With stack + simulator up and no clicks: chart extends, scores change, storyline machine reaches Needs attention with a toast, an automatic analysis updates the Work tab
+- [ ] Stopping the simulator shows "No recent data" within ~6 min; restarting recovers
+- [ ] Anomaly burst -> one alert per cooldown and <= 1 analysis per 10 min (rule 4)
+- [ ] Viewer cannot ingest telemetry; cross-tenant tests unchanged and green
+- [ ] Performance budget met and recorded (ingest, scoring, API latency, DB growth)
+- [ ] `ruff`, `mypy`, `eslint`, unit, integration and `npm run e2e` all green; docs updated
+
+---
+
 ## Phase 5 — Multi-Tenancy & Hardening (Weeks 22–25)
 
 **Goal:** Prove tenant isolation under adversarial testing, get one real service running
