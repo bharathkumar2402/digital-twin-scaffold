@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 
 import { useAssetTelemetry } from "../hooks/useAssetTelemetry";
 import { formatRul, type AssetHealthRow } from "../lib/assetHealth";
+import { assetStatus } from "../lib/assetStatus";
+import { StatusBadge } from "./StatusBadge";
 import { TelemetryChart } from "./TelemetryChart";
 
 interface AssetDetailDrawerProps {
@@ -26,6 +28,7 @@ export function AssetDetailDrawer({
 }: AssetDetailDrawerProps): React.JSX.Element {
   const telemetry = useAssetTelemetry(facilityId, row.asset.id);
   const vib = row.vibration;
+  const status = assetStatus(row);
   const ref = useRef<HTMLElement>(null);
 
   // Move keyboard/screen-reader focus into the drawer when it opens or switches asset.
@@ -48,7 +51,11 @@ export function AssetDetailDrawer({
         </button>
       </div>
 
-      <Fact label="Status" value={row.asset.status} />
+      <p className="status-line">
+        <StatusBadge status={status} /> {status.reasons.join("; ")}. <strong>{status.action}.</strong>
+      </p>
+
+      <Fact label="Operating state" value={row.asset.status} />
       <Fact
         label="Risk score"
         value={

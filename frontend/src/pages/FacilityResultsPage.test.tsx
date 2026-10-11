@@ -156,7 +156,10 @@ describe("FacilityResultsPage", () => {
     const drawer = screen.getByRole("complementary", { name: "Details for Aged Engine" });
     expect(within(drawer).getByText(/ALARM/)).toBeInTheDocument();
     expect(within(drawer).getByText(/peak score 0.73 vs threshold 0.55/)).toBeInTheDocument();
-    expect(within(drawer).getByText(/3.6 cycles/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/3\.6 cycles \(/)).toBeInTheDocument();
+    // plain-language verdict first: what it is, why, and what to do
+    expect(within(drawer).getByText("Failing soon")).toBeInTheDocument();
+    expect(within(drawer).getByText("Schedule maintenance now.")).toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();

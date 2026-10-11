@@ -1,4 +1,5 @@
 import type { HealthSummary } from "../lib/assetHealth";
+import { RUL_URGENT_CYCLES } from "../lib/assetStatus";
 
 function Tile({
   label,
@@ -57,7 +58,7 @@ export function KpiTiles({
         label="Shortest remaining life"
         value={summary.shortestRul ? `${summary.shortestRul.cycles.toFixed(1)} cycles` : "\u2014"}
         note={summary.shortestRul ? summary.shortestRul.assetName : "no RUL available"}
-        tone={summary.shortestRul !== null && summary.shortestRul.cycles <= 30 ? "danger" : "neutral"}
+        tone={summary.shortestRul !== null && summary.shortestRul.cycles <= RUL_URGENT_CYCLES ? "danger" : "neutral"}
       />
     </div>
   );

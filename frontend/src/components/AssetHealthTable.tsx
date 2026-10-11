@@ -1,4 +1,7 @@
 import { assetRowButtonId, formatRul, RISK_BAND_COLOR, riskBand, type AssetHealthRow } from "../lib/assetHealth";
+import { assetStatus } from "../lib/assetStatus";
+import { StatusBadge } from "./StatusBadge";
+import { Term } from "./Term";
 
 interface AssetHealthTableProps {
   rows: AssetHealthRow[];
@@ -45,10 +48,19 @@ export function AssetHealthTable({
       <thead>
         <tr>
           <th>Asset</th>
+          <th>
+            <Term term="status">Status</Term>
+          </th>
           <th>Type</th>
-          <th>Risk (0-100)</th>
-          <th>Remaining life (cycles)</th>
-          <th>Vibration</th>
+          <th>
+            <Term term="risk">Risk (0-100)</Term>
+          </th>
+          <th>
+            <Term term="rul">Remaining life (cycles)</Term>
+          </th>
+          <th>
+            <Term term="vibration">Vibration</Term>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -73,6 +85,9 @@ export function AssetHealthTable({
                 >
                   {row.asset.name}
                 </button>
+              </td>
+              <td>
+                <StatusBadge status={assetStatus(row)} />
               </td>
               <td>{row.asset.type}</td>
               <td>

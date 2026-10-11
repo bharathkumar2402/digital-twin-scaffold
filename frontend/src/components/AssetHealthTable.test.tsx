@@ -119,6 +119,24 @@ describe("AssetHealthTable", () => {
     expect(screen.getAllByRole("row")[1]).toHaveAttribute("aria-current", "true");
   });
 
+  it("shows a plain-language status per row, with the reason and action on hover", () => {
+    renderTable(
+      [aged, fresh, lonely],
+      [score("a", 95.8, { rul_cycles: 3.6 }), score("b", 4)]
+    );
+    const rows = screen.getAllByRole("row").slice(1);
+    const failing = within(rows[0]).getByText("Failing soon");
+    expect(failing).toHaveAttribute("title", expect.stringContaining("Schedule maintenance now"));
+    expect(within(rows[1]).getByText("Healthy")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Not enough data")).toBeInTheDocument();
+  });
+
+  it("explains the jargon column headers", () => {
+    renderTable([aged], [score("a", 50)]);
+    expect(screen.getByRole("note", { name: /Remaining life \(cycles\): Remaining useful life/ })).toBeInTheDocument();
+    expect(screen.getByRole("note", { name: /^Risk \(0-100\): How likely/ })).toBeInTheDocument();
+  });
+
   it("handles an empty facility", () => {
     renderTable([], []);
     expect(screen.getByText(/no assets yet/i)).toBeInTheDocument();
