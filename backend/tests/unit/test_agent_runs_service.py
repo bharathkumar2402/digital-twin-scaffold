@@ -11,23 +11,17 @@ Asserts on:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.agents.state import FacilityTwinState
 from app.core.tenant_context import TenantContext, get_tenant_context, get_tenant_scoped_session
 from app.main import app
 from app.models.agent_run import AgentRun
 from app.models.user import Role
-from app.schemas.requests.agent_runs import (
-    AgentRunDetailResponse,
-    AgentRunResponse,
-    AgentRunTriggerRequest,
-)
 from app.services.agent_run_service import (
     execute_and_record_pipeline,
     get_agent_run,
@@ -116,7 +110,7 @@ async def test_list_agent_runs_service(
         validation_errors_json=[],
         decision_report="Concluded successfully",
         confidence=0.95,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
     mock_result = MagicMock()
@@ -149,7 +143,7 @@ async def test_get_agent_run_service(
         duration_ms=890,
         state_snapshot_json={},
         validation_errors_json=[],
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
     mock_result = MagicMock()
@@ -234,7 +228,7 @@ async def test_agent_runs_api_routes(
         validation_errors_json=[],
         decision_report="Executive summary",
         confidence=0.94,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
     app.dependency_overrides[get_tenant_context] = lambda: tenant_ctx
@@ -275,3 +269,30 @@ async def test_agent_runs_api_routes(
                     assert res_404.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_pipeline_crash_is_recorded_as_failed_run_and_reraised(
+    mock_session: AsyncMock,
+    sample_tenant_id: uuid.UUID,
+    sample_facility_id: uuid.UUID,
+) -> None:
+    """A pipeline that blows up must still leave a 'failed' row (with a plain-dict snapshot)."""
+    with patch(
+        "app.services.agent_run_service.run_facility_twin_pipeline",
+        new=AsyncMock(side_effect=RuntimeError("boom")),
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await execute_and_record_pipeline(
+                mock_session, tenant_id=sample_tenant_id, facility_id=sample_facility_id
+            )
+
+    mock_session.add.assert_called_once()
+    run = mock_session.add.call_args.args[0]
+    assert run.status == "failed"
+    assert run.decision_report is None
+    assert run.confidence == 0.0
+    assert "boom" in run.validation_errors_json[0]
+    assert type(run.state_snapshot_json) is dict
+    assert run.state_snapshot_json["facility_id"] == str(sample_facility_id)
+    mock_session.commit.assert_awaited()

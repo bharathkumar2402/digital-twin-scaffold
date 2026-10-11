@@ -31,15 +31,6 @@ services:
     depends_on:
       - redis
 
-  agent-runner:
-    build:
-      context: ../../backend
-      dockerfile: Dockerfile
-    command: ["python", "-m", "app.agents.runner"]
-    env_file: .env
-    depends_on:
-      - redis
-
   upload-sandbox:
     # Isolated worker for floor-plan file processing. No shared volume/filesystem with
     # the main API, and — unlike every other backend service here — NOT `env_file:

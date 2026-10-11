@@ -20,7 +20,6 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 
 from app.agents.simulation_decision import (
-    real_simulation_decision_callable,
     simulation_decision_node,
 )
 from app.agents.state import create_initial_state
@@ -30,7 +29,6 @@ from app.agents.tools.cascade_simulator_tool import (
     simulate_failure_cascade,
 )
 from app.agents.tools.decision_synthesizer_tool import synthesize_executive_decision
-from app.agents.validation import validate_agent_output
 from app.schemas.agent_outputs.simulation_decision import (
     CascadeImpactReport,
     SimulationDecisionOutput,
@@ -56,7 +54,12 @@ def linear_topology() -> tuple[nx.DiGraph, uuid.UUID, uuid.UUID, uuid.UUID]:
 
     assets = [
         {"id": pump_id, "name": "Primary Feed Pump 7", "type": "pump", "zone": "Intake Zone"},
-        {"id": hx_id, "name": "Heat Exchanger Alpha", "type": "heat_exchanger", "zone": "Thermal Loop"},
+        {
+            "id": hx_id,
+            "name": "Heat Exchanger Alpha",
+            "type": "heat_exchanger",
+            "zone": "Thermal Loop",
+        },
         {"id": turbine_id, "name": "Turbine Gen 1", "type": "turbine", "zone": "Power Block"},
     ]
     deps = [

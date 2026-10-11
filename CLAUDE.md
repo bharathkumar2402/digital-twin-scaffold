@@ -193,7 +193,7 @@ and Phase 4 (5-Agent LangGraph Pipeline) are **fully closed**. Phase 3b (extra M
 **Handoff (as of 2026-10-11, branch `phase-3b.1-cmapss-profile`, ahead of `main` by ~19 commits).**
 Beyond the numbered tasks, the demo was upgraded to multi-floor facilities and a 44-machine, 3-floor plant
 ("Meridian Components Plant"); details and verification in `docs/PROGRESS_LOG.md`, how to run it in
-`docs/DEMO.md`. Step 3 (Results page polish) and Step 4 (leftover docs) are done. Open item: the compose `agent-runner` service points at a missing module (see DEMO.md Known limits). Now start the real
+`docs/DEMO.md`. Step 3 (Results page polish) and Step 4 (leftover docs) are done. Now start the real
 tracker: **Phase 5 task 1 (RLS audit, issue #32)** - extra-scrutiny task: propose adversarial tests before building.
 Working notes: never `ruff format`/`ruff --fix` across all of `app/`; a few files show as modified only from
 line-ending bookkeeping (`core/tenant_context.py`, `ml/synthetic_data.py`, `models/asset_dependency.py`,

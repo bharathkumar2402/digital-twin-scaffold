@@ -153,9 +153,8 @@ heuristic over the cascade, not a prediction).
 
 ## Known limits
 
-- `docker-compose.yml` defines an `agent-runner` service whose command (`python -m app.agents.runner`) points at
-  a module that does not exist. The demo does not need it: analyses run in the API process
-  (`POST /facilities/{id}/agent-runs`). Do not start that service; removing or implementing it is open.
+- Analyses run in the API process (`POST /facilities/{id}/agent-runs`, about 10 s), not in a background worker.
+  The compose file's old `agent-runner` service pointed at a module that never existed and was removed.
 - Floor plans are generated drawings; filler map tiles only cover zoom 0-5.
 - The technician roster is a single built-in technician and downtime is a heuristic.
 - The Results page's "why" text is rule-based, and the model cards are static copies of `docs/DATASETS.md`.

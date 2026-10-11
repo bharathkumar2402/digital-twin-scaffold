@@ -44,9 +44,16 @@ Note on Step 4 (leftover docs; no issue): `docs/DEMO.md` now describes the floor
 section, including the dangling `agent-runner` compose service (documented, not fixed: it is agent-layer work for
 a separate task). Corrected the stale "no facility picker" limit above.
 
+Note on the audit fixes (2026-10-11; no issue): a full audit of phases 1-4 (519 unit, 191 integration + cross-tenant,
+184 frontend tests all passing) found only hygiene problems, now fixed: 40 `ruff` errors in 9 agent files (unused
+imports, long lines, two unused variables) and one `mypy` error (the pipeline-crash path passed a TypedDict where a
+dict was expected; harmless at runtime, fixed with `dict(...)` and a new unit test that a crashed run is recorded
+as `failed` and re-raised); and the never-working `agent-runner` compose service was removed. `ruff` and `mypy`
+are clean again.
+
 Known gaps: floor plans are generated drawings (real uploads still go through the sandbox path); filler tiles only to zoom 5;
 the technician roster is a single built-in technician; downtime is a heuristic; a halted run shows the last agent's confidence
-(UI hides it for non-completed runs); `app/agents/runner.py` referenced by the compose file does not exist; `docs/DATASETS.md` is unchanged (no new data).
+(UI hides it for non-completed runs); `docs/DATASETS.md` is unchanged (no new data).
 
 Note on the UI/login overhaul (follow-up to the Results page; no issue): triggered by "the login keeps
 failing, the UI is plain HTML and the asset map is not proper". Fixed at the root, not patched:

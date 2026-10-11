@@ -162,7 +162,6 @@ def solve_cvrp_routes(
         fix_start_cumul_to_zero=True,
         name="Time",
     )
-    time_dimension = routing.GetDimensionOrDie("Time")
 
     # 5. Allow dropping tasks with penalty so solver finds best partial solution if overloaded
     drop_penalty = 1_000_000

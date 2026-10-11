@@ -21,7 +21,6 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 
 from app.agents.route_optimization import (
-    real_route_optimization_callable,
     route_optimization_node,
 )
 from app.agents.state import create_initial_state
@@ -36,7 +35,6 @@ from app.agents.tools.route_solver_tool import (
     MULTI_TECHNICIAN_ROSTER,
     solve_cvrp_routes,
 )
-from app.agents.validation import validate_agent_output
 from app.schemas.agent_outputs.route_optimization import RouteOptimizationOutput
 
 

@@ -38,11 +38,18 @@ def synthesize_executive_decision(
     routes = dispatch_routes or []
 
     # 1. Determine High/Critical Risk Counts
-    critical_risks = [r for r in risks if r.get("risk_tier") == "critical" or float(r.get("risk_score", 0)) >= 75.0]
-    high_risks = [r for r in risks if r.get("risk_tier") == "high" or (60.0 <= float(r.get("risk_score", 0)) < 75.0)]
+    critical_risks = [
+        r
+        for r in risks
+        if r.get("risk_tier") == "critical" or float(r.get("risk_score", 0)) >= 75.0
+    ]
 
     # 2. Analyze Inventory Shortages
-    critical_shortages = [s for s in shortages if int(s.get("needed_quantity", 0)) > int(s.get("available_quantity", 0))]
+    critical_shortages = [
+        s
+        for s in shortages
+        if int(s.get("needed_quantity", 0)) > int(s.get("available_quantity", 0))
+    ]
 
     # 3. Analyze Technician Routes
     total_assigned_stops = sum(len(r.get("assigned_stops", [])) for r in routes)
@@ -53,11 +60,13 @@ def synthesize_executive_decision(
 
     if critical_shortages and critical_risks:
         escalation_triggers.append(
-            f"{len(critical_shortages)} spare part shortage(s) block urgent maintenance on critical assets"
+            f"{len(critical_shortages)} spare part shortage(s) block urgent maintenance "
+            "on critical assets"
         )
     if cascade_impact.total_affected_assets >= 4 or cascade_impact.cascade_depth >= 3:
         escalation_triggers.append(
-            f"Extensive cascade failure risk: {cascade_impact.total_affected_assets} assets affected across {cascade_impact.cascade_depth} topological tiers"
+            f"Extensive cascade failure risk: {cascade_impact.total_affected_assets} assets "
+            f"affected across {cascade_impact.cascade_depth} topological tiers"
         )
     if any(float(r.get("risk_score", 0)) >= 90.0 for r in risks):
         escalation_triggers.append("Imminent asset breakdown detected (risk score >= 90.0)")
@@ -76,11 +85,13 @@ def synthesize_executive_decision(
         )
     if critical_shortages:
         interventions.append(
-            f"Expedite purchase order fulfillment for {len(critical_shortages)} out-of-stock component SKU(s)"
+            f"Expedite purchase order fulfillment for {len(critical_shortages)} "
+            "out-of-stock component SKU(s)"
         )
     if cascade_impact.downstream_shutoff_asset_ids:
         interventions.append(
-            f"Prepare bypass or isolation protocol for {len(cascade_impact.downstream_shutoff_asset_ids)} dependent downstream assets"
+            "Prepare bypass or isolation protocol for "
+            f"{len(cascade_impact.downstream_shutoff_asset_ids)} dependent downstream assets"
         )
     if not interventions:
         interventions.append("Proceed with planned preventive maintenance schedule")
@@ -95,13 +106,16 @@ def synthesize_executive_decision(
     impact_desc = (
         f"Failure at root asset {cascade_impact.root_cause_asset_id} threatens "
         f"{cascade_impact.total_affected_assets} total asset(s) with an estimated "
-        f"{cascade_impact.estimated_downtime_hours} hours of facility downtime across {cascade_impact.cascade_depth} cascade levels."
+        f"{cascade_impact.estimated_downtime_hours} hours of facility downtime across "
+        f"{cascade_impact.cascade_depth} cascade levels."
         if cascade_impact.total_affected_assets > 1
-        else f"Evaluated asset {cascade_impact.root_cause_asset_id} is topologically isolated with nominal cascade impact."
+        else f"Evaluated asset {cascade_impact.root_cause_asset_id} is topologically isolated "
+        "with nominal cascade impact."
     )
 
     maint_desc = (
-        f"Maintenance schedule generated {len(tasks)} task(s) dispatched to {tech_count} technician(s) "
+        f"Maintenance schedule generated {len(tasks)} task(s) dispatched to "
+        f"{tech_count} technician(s) "
         f"covering {total_assigned_stops} stop(s)."
         if tasks
         else "No urgent maintenance interventions required."

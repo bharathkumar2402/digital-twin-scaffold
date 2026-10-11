@@ -127,7 +127,7 @@ async def execute_and_record_pipeline(
             trigger=trigger,
             status="failed",
             duration_ms=duration_ms,
-            state_snapshot=initial_state,
+            state_snapshot=dict(initial_state),
             validation_errors=[f"Pipeline unhandled exception: {exc}"],
             decision_report=None,
             confidence=0.0,

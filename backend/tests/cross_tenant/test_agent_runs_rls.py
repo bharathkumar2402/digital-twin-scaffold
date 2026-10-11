@@ -130,7 +130,8 @@ async def _insert_agent_run(
     row = await conn.fetchrow(
         """
         INSERT INTO agent_runs
-        (tenant_id, facility_id, trigger, status, duration_ms, state_snapshot_json, validation_errors_json, decision_report, confidence)
+        (tenant_id, facility_id, trigger, status, duration_ms, state_snapshot_json,
+         validation_errors_json, decision_report, confidence)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
         """,

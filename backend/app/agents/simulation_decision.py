@@ -47,9 +47,17 @@ async def real_simulation_decision_callable(context: dict[str, Any]) -> dict[str
     graph = context.get("graph")
     if not isinstance(graph, nx.DiGraph):
         asset_graph_data = context.get("asset_graph")
-        if isinstance(asset_graph_data, dict) and "graph_data" in asset_graph_data and asset_graph_data["graph_data"]:
+        if (
+            isinstance(asset_graph_data, dict)
+            and "graph_data" in asset_graph_data
+            and asset_graph_data["graph_data"]
+        ):
             graph = nx.node_link_graph(asset_graph_data["graph_data"])
-        elif isinstance(asset_graph_data, dict) and "nodes" in asset_graph_data and "links" in asset_graph_data:
+        elif (
+            isinstance(asset_graph_data, dict)
+            and "nodes" in asset_graph_data
+            and "links" in asset_graph_data
+        ):
             graph = nx.node_link_graph(asset_graph_data)
         elif context.get("assets") is not None or context.get("dependencies") is not None:
             graph, _, _ = build_asset_graph_from_records(
@@ -64,8 +72,18 @@ async def real_simulation_decision_callable(context: dict[str, Any]) -> dict[str
             child_2 = uuid.uuid4()
             mock_assets = [
                 {"id": root_id, "name": "Pump 7", "type": "cooling_pump", "zone": "Zone A Cooling"},
-                {"id": child_1, "name": "Heat Exchanger 2", "type": "heat_exchanger", "zone": "Primary Loop"},
-                {"id": child_2, "name": "Turbine Generator 1", "type": "turbine", "zone": "Generation Block"},
+                {
+                    "id": child_1,
+                    "name": "Heat Exchanger 2",
+                    "type": "heat_exchanger",
+                    "zone": "Primary Loop",
+                },
+                {
+                    "id": child_2,
+                    "name": "Turbine Generator 1",
+                    "type": "turbine",
+                    "zone": "Generation Block",
+                },
             ]
             mock_deps = [
                 {"child_asset_id": root_id, "parent_asset_id": child_1},

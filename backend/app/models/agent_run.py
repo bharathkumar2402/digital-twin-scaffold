@@ -8,10 +8,9 @@ transparency panel and audit logging.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
