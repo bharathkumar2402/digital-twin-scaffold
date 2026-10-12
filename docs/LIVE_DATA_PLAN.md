@@ -124,6 +124,34 @@ Findings that change later tasks (D1-D10 stay as decided unless noted):
   still fits, but L.4 must profile the cause (the 30/90/365-day feature windows are the suspect; unverified) and cap
   the windows, and the "skip when no new readings" rule is mandatory.
 
+## After L.2b (ingest anomaly-baseline fix, 2026-10-12)
+
+Same script, same scratch tenant, re-run on the demo stack (`measure_live_load_after_L2b.json`; the L.0 baseline file is kept):
+
+| Rows stored | Ingest 220 rows, p50 / p95 (was) | Ingest ceiling (was) |
+|---|---|---|
+| 30 k | **119 / 151 ms** (342 / 396) | 1658 rows/s (578) |
+| 1 M | **122 / 178 ms** (2080 / 2342) | 1696 rows/s (103) |
+
+Ingest p95 is now under the 200 ms budget and **no longer grows with stored rows** (30 k -> 1 M: 151 -> 178 ms).
+Read routes under concurrent ingest: p95 16-39 ms. Scoring 44 assets is unchanged by L.2b: 9.2 s at 30 k rows, 13.6-13.8 s at 1 M
+(still over the 10 s budget; that is L.4). How it was done: one batched `unnest` + `LATERAL` statement reading at most
+`BASELINE_MAX_SAMPLES` = 200 newest readings per (asset, sensor) through the new index
+`ix_sensor_readings_asset_sensor_time` (Timescale migration 0003). The cap was chosen by measurement on 1 M rows:
+the baseline statement took ~79 ms at 500, ~37 ms at 200, ~24 ms at 100. Behavior change: with more than 200
+readings in the window the baseline is the newest 200 (about 50 minutes at the demo tick) instead of the whole 7 days;
+shorter histories give identical statistics (tested against the old query).
+
+Two things found while measuring that future tasks must know:
+- **TimescaleDB 2.29 SkipScan + row-level security crash.** With the new index present, any `SELECT DISTINCT` / `DISTINCT ON`
+  over `sensor_readings` run as `app_role` can fail with `unsupported subplan type for SkipScan: Result`. It broke the two
+  scoring queries in `feature_engineering_service.py` (caught while re-measuring, not by the original tests); both were
+  rewritten as `LATERAL ... ORDER BY timestamp DESC LIMIT 1` lookups and a regression test reproduces the crash with the
+  old SQL. **Do not write DISTINCT / DISTINCT ON against `sensor_readings`** (L.3's "last reading time" and anything later)
+  - use a LATERAL newest-row lookup or `max(timestamp)` with GROUP BY.
+- **Cold-cache stalls after a bulk load:** the first batches after loading ~1 M rows can take ~1 s, and one run saw a single
+  11 s stall (not reproduced; probably a checkpoint right after the bulk COPY). It does not occur in steady state.
+
 ## Risks and mitigations
 
 | Risk | Mitigation |

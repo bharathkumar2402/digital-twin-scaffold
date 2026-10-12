@@ -10,6 +10,26 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.2b (ingest anomaly-baseline fix; extra scrutiny: migration on an RLS table): the live z-score baseline
+is now ONE statement per batch (`unnest` + `LATERAL`, newest `BASELINE_MAX_SAMPLES`=200 readings per (asset, sensor)
+inside the 7-day window, strictly before the group's earliest timestamp) served by the new index
+`ix_sensor_readings_asset_sensor_time` (`migrations_timescale/0003`, index only: table, forced RLS policy and grants
+untouched). Result on the demo stack: ingest of a 220-row batch p50/p95 119/151 ms at 30 k rows and 122/178 ms at 1 M
+(was 342/396 and 2080/2342), throughput at 1 M 103 -> 1696 rows/s. Tests (`tests/cross_tenant/test_anomaly_baseline.py`, 22):
+equivalence with the old unbounded query for every history that fits under the cap; exactly the newest N when longer; window
+edges (cutoff row excluded, window-start row included, 7 d + 1 s excluded); earliest-timestamp cutoff per group; another
+tenant's rows with the SAME asset id never enter a baseline; RLS alone still blocks a baseline requested for the wrong
+tenant or with no tenant GUC (so the explicit filter is not the only guard); exactly one baseline statement for a 220-group
+batch (no N+1); 1000-reading and empty batches; the plan uses the new index and does not seq-scan the history; migration
+downgrade/upgrade round-trip leaves RLS, policy text and grants identical and isolation intact. Mutation checks: raising the
+cap fails 2 tests, making the cutoff inclusive fails the window test. **A bug caught by the real-stack re-measurement, not
+the first test run:** with the new index, TimescaleDB 2.29 plans the scoring queries' `DISTINCT ON` as a SkipScan that
+cannot run under an RLS policy ("unsupported subplan type for SkipScan: Result") - scoring on the demo stack was broken
+between applying the migration and the fix. Both queries in `feature_engineering_service.py` became LATERAL newest-row lookups
+and a regression test reproduces the crash with the old SQL (see `docs/LIVE_DATA_PLAN.md`: never use DISTINCT on
+`sensor_readings`). Cap tuned 500 -> 200 after measuring (baseline statement ~79 ms -> ~37 ms on 1 M rows). 106 cross-tenant
+and 50 scoring/feature/anomaly tests pass.
+
 Note on Phase L task L.2 (stateful live simulator): `backend/app/ml/live_machine_sim.py` (pure, seeded model of 44 coherent
 machines, calibrated from the real AI4I file) and `backend/scripts/live_simulator.py` (host process: signs in as
 `simulator@twinlabs.com`, posts all five AI4I sensors of every machine as one 220-row batch per tick through

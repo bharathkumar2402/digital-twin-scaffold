@@ -32,7 +32,9 @@ from app.services.ml.dataset_mapping import (
 ANOMALY_Z_SCORE_THRESHOLD = 2.0
 
 # One CTE-based query per window: `stats` aggregates the window, `latest` finds the
-# most recent reading per sensor_type in the window, `anomalies` re-scans the window
+# most recent reading per sensor_type in the window (a LATERAL "newest row" lookup, NOT
+# DISTINCT ON: with the L.2b index and a row-level-security policy TimescaleDB 2.29 plans
+# DISTINCT ON as a SkipScan it cannot execute and the query fails), `anomalies` re-scans the window
 # using `stats`' own mean/stddev to count outliers. Fully parameterized - no
 # string-interpolated values, only the trusted, hardcoded table/column names.
 _WINDOW_STATS_SQL = text(
@@ -52,12 +54,18 @@ _WINDOW_STATS_SQL = text(
         GROUP BY sensor_type
     ),
     latest AS (
-        SELECT DISTINCT ON (sensor_type) sensor_type, value AS latest_value
-        FROM sensor_readings
-        WHERE tenant_id = :tenant_id
-          AND asset_id = :asset_id
-          AND timestamp >= :window_start
-        ORDER BY sensor_type, timestamp DESC
+        SELECT st.sensor_type, l.value AS latest_value
+        FROM stats st
+        CROSS JOIN LATERAL (
+            SELECT r.value
+            FROM sensor_readings r
+            WHERE r.tenant_id = :tenant_id
+              AND r.asset_id = :asset_id
+              AND r.sensor_type = st.sensor_type
+              AND r.timestamp >= :window_start
+            ORDER BY r.timestamp DESC
+            LIMIT 1
+        ) AS l
     ),
     anomalies AS (
         SELECT r.sensor_type, count(*) AS anomaly_count
@@ -510,12 +518,18 @@ SNAPSHOT_INVALID = "non_finite_value"
 
 _LATEST_READINGS_SQL = text(
     """
-    SELECT DISTINCT ON (asset_id, sensor_type) asset_id, sensor_type, value, timestamp
-    FROM sensor_readings
-    WHERE tenant_id = :tenant_id
-      AND asset_id = ANY(CAST(:asset_ids AS uuid[]))
-      AND sensor_type = ANY(:sensor_types)
-    ORDER BY asset_id, sensor_type, timestamp DESC
+    SELECT a.asset_id, s.sensor_type, l.value, l.timestamp
+    FROM unnest(CAST(:asset_ids AS uuid[])) AS a(asset_id)
+    CROSS JOIN unnest(CAST(:sensor_types AS text[])) AS s(sensor_type)
+    CROSS JOIN LATERAL (
+        SELECT r.value, r.timestamp
+        FROM sensor_readings r
+        WHERE r.tenant_id = :tenant_id
+          AND r.asset_id = a.asset_id
+          AND r.sensor_type = s.sensor_type
+        ORDER BY r.timestamp DESC
+        LIMIT 1
+    ) AS l
     """
 )
 

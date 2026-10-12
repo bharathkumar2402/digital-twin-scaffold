@@ -1,0 +1,198 @@
+{
+  "measured_at": "2026-10-12T02:07:53.620501+00:00",
+  "live_path": {
+    "tiers": [
+      {
+        "rows_stored": 29920,
+        "scoring": {
+          "first_run_s": 8.65,
+          "later_runs_s": [
+            9.28,
+            9.23
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 12.5,
+            "p95_ms": 13.6,
+            "p99_ms": 379.8,
+            "max_ms": 379.8
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 16.3,
+            "p95_ms": 26.8,
+            "p99_ms": 57.8,
+            "max_ms": 57.8
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 14.6,
+            "p95_ms": 16.1,
+            "p99_ms": 20.5,
+            "max_ms": 20.5
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 15.8,
+            "p95_ms": 137.6,
+            "p99_ms": 160.6,
+            "max_ms": 160.6
+          }
+        },
+        "ingest": {
+          "batch_rows": 220,
+          "sequential": {
+            "n": 40,
+            "p50_ms": 118.7,
+            "p95_ms": 151.4,
+            "p99_ms": 162.8,
+            "max_ms": 162.8
+          },
+          "back_to_back": {
+            "n": 40,
+            "p50_ms": 124.0,
+            "p95_ms": 176.4,
+            "p99_ms": 212.4,
+            "max_ms": 212.4
+          },
+          "back_to_back_rows_per_s": 1658.0,
+          "required_rows_per_s_at_15s_tick": 14.7
+        }
+      },
+      {
+        "rows_stored": 299860,
+        "scoring": {
+          "first_run_s": 11.71,
+          "later_runs_s": [
+            10.89,
+            11.08
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 12.5,
+            "p95_ms": 14.0,
+            "p99_ms": 268.5,
+            "max_ms": 268.5
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 23.1,
+            "p95_ms": 48.5,
+            "p99_ms": 134.6,
+            "max_ms": 134.6
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 16.1,
+            "p95_ms": 17.9,
+            "p99_ms": 21.2,
+            "max_ms": 21.2
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 15.7,
+            "p95_ms": 31.6,
+            "p99_ms": 85.9,
+            "max_ms": 85.9
+          }
+        }
+      },
+      {
+        "rows_stored": 999900,
+        "scoring": {
+          "first_run_s": 14.64,
+          "later_runs_s": [
+            13.56,
+            13.81
+          ],
+          "assets_scored": 44
+        },
+        "routes_idle": {
+          "assets": {
+            "n": 30,
+            "p50_ms": 13.1,
+            "p95_ms": 46.3,
+            "p99_ms": 277.2,
+            "max_ms": 277.2
+          },
+          "risk_scores": {
+            "n": 30,
+            "p50_ms": 24.7,
+            "p95_ms": 27.9,
+            "p99_ms": 28.1,
+            "max_ms": 28.1
+          },
+          "risk_history": {
+            "n": 30,
+            "p50_ms": 19.7,
+            "p95_ms": 41.8,
+            "p99_ms": 83.3,
+            "max_ms": 83.3
+          },
+          "telemetry": {
+            "n": 30,
+            "p50_ms": 14.8,
+            "p95_ms": 16.1,
+            "p99_ms": 17.7,
+            "max_ms": 17.7
+          }
+        }
+      }
+    ],
+    "routes_under_ingest": {
+      "assets": {
+        "n": 30,
+        "p50_ms": 12.1,
+        "p95_ms": 16.1,
+        "p99_ms": 18.2,
+        "max_ms": 18.2
+      },
+      "risk_scores": {
+        "n": 30,
+        "p50_ms": 29.0,
+        "p95_ms": 39.3,
+        "p99_ms": 94.1,
+        "max_ms": 94.1
+      },
+      "risk_history": {
+        "n": 30,
+        "p50_ms": 18.1,
+        "p95_ms": 22.4,
+        "p99_ms": 22.9,
+        "max_ms": 22.9
+      },
+      "telemetry": {
+        "n": 30,
+        "p50_ms": 15.3,
+        "p95_ms": 19.5,
+        "p99_ms": 19.7,
+        "max_ms": 19.7
+      }
+    },
+    "ingest_at_largest_tier": {
+      "batch_rows": 220,
+      "sequential": {
+        "n": 40,
+        "p50_ms": 121.9,
+        "p95_ms": 177.9,
+        "p99_ms": 224.4,
+        "max_ms": 224.4
+      },
+      "back_to_back": {
+        "n": 40,
+        "p50_ms": 123.6,
+        "p95_ms": 139.6,
+        "p99_ms": 250.7,
+        "max_ms": 250.7
+      },
+      "back_to_back_rows_per_s": 1696.0,
+      "required_rows_per_s_at_15s_tick": 14.7
+    }
+  }
+}

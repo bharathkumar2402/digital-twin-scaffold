@@ -3,7 +3,7 @@
 Measures, against a SCRATCH tenant (never the demo tenant) on the local demo stack:
 
   1. ingest   - POST /telemetry, 220-row batches (44 machines x 5 AI4I sensors): rows/s, p50/p95
-  2. scoring  - score_facility() for 44 assets with the scratch tenant holding 30k / 300k / 1M (opt-in 3M) rows
+  2. scoring  - score_facility() for 44 assets, scratch tenant at 30k / 300k / 1M (3M opt-in) rows
   3. api      - read-route latency idle vs. while ingest runs
   4. compress - can TimescaleDB compress a hypertable with (forced) RLS, and is RLS still enforced
                 afterwards? Runs in a scratch DATABASE; the demo's sensor_readings is never altered.
@@ -564,6 +564,9 @@ async def _isolation(table: str, t_a: uuid.UUID, t_b: uuid.UUID) -> dict[str, An
 
 
 async def main_async(args: argparse.Namespace) -> None:
+    global OUT_JSON
+    if args.out is not None:
+        OUT_JSON = args.out
     results: dict[str, Any] = {"measured_at": datetime.now(UTC).isoformat()}
     skip = set(args.skip)
     if "compress" not in skip:
@@ -592,6 +595,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--ingest-batches", type=int, default=40)
     p.add_argument("--score-runs", type=int, default=3)
+    p.add_argument(
+        "--out", type=Path, default=None, help="results file (default: the L.0 baseline)"
+    )
     p.add_argument("--skip", nargs="*", default=[], choices=["compress", "live"])
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
