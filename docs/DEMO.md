@@ -42,10 +42,18 @@ Wipe everything with `docker compose -p twin-demo -f docker-compose.demo.yml dow
 ```powershell
 # API
 python -m uvicorn app.main:app --port 8000
-# Celery worker (only needed for the "recompute risk scores" button/endpoint)
+# Celery worker (the "recompute risk scores" button, and the scheduled scoring below)
 python -m celery -A app.core.celery_app worker --loglevel=info -P solo -Q celery,sandbox-results
 # Frontend
 cd ..\frontend; npm install; npm run dev
+```
+
+Optional, for live scores (Phase L task L.4): in a fourth terminal run Celery beat. Every 60 s it scores each facility
+that has received new readings since its last score (so it does nothing until the live simulator below is running), never
+two runs at once, and pushes a `scores_updated` event on the tenant's WebSocket channel.
+
+```powershell
+python -m celery -A app.core.celery_app beat --loglevel=info
 ```
 
 Open **http://localhost:5173** and click **Use demo account** - one click signs in and lands on the

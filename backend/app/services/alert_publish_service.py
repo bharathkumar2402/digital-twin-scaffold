@@ -3,6 +3,7 @@ import uuid
 from redis.asyncio import Redis
 
 from app.schemas.ml.alert_notification import AlertNotification
+from app.schemas.ml.scores_updated import ScoresUpdated
 
 # Mirrors alert_debounce_service's "namespace every key/channel by tenant_id, not just
 # asset_id" convention (see that module's cross-tenant test) - a WebSocket subscribed
@@ -31,3 +32,12 @@ async def publish_alert(
     by `evaluate_anomaly_batch` before this call.
     """
     await redis.publish(alert_channel(tenant_id), notification.model_dump_json())
+
+
+async def publish_scores_updated(
+    redis: Redis, *, tenant_id: uuid.UUID, event: ScoresUpdated
+) -> None:
+    """Publishes one already-validated `ScoresUpdated` to the tenant's channel (L.4). Same
+    channel and same structural isolation as `publish_alert`; clients tell the two apart by the
+    event's `type` field."""
+    await redis.publish(alert_channel(tenant_id), event.model_dump_json())

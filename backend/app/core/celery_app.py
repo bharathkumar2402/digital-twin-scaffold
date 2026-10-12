@@ -14,7 +14,17 @@ celery_app.conf.task_routes = {
     "record_sandbox_result": {"queue": "sandbox-results"},
 }
 
-# Import so `record_sandbox_result`/`compute_facility_risk_scores` register on this
-# app when the worker starts (`celery -A app.core.celery_app worker`, per
+# Scheduled scoring (Phase L task L.4): `celery -A app.core.celery_app beat` runs one pass over
+# every facility each interval. The task skips facilities with no new readings and locks per
+# facility, so a run that outlasts the interval cannot overlap the next one.
+celery_app.conf.beat_schedule = {
+    "score-all-facilities": {
+        "task": "score_all_facilities",
+        "schedule": settings.scoring_interval_seconds,
+    },
+}
+
+# Import so `record_sandbox_result`/`compute_facility_risk_scores`/`score_all_facilities` register
+# on this app when the worker starts (`celery -A app.core.celery_app worker`, per
 # infra/docker/docker-compose.yml).
-from app.workers import callback_tasks, risk_tasks  # noqa: E402,F401
+from app.workers import callback_tasks, risk_tasks, scheduled_scoring  # noqa: E402,F401

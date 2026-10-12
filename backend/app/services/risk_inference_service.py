@@ -224,18 +224,18 @@ async def get_latest_risk_scores(
     """The most recent `RiskScore` row per asset in a facility, read-only."""
     await _get_facility_or_404(session, tenant_id=tenant_id, facility_id=facility_id)
 
+    # DISTINCT ON in the database (index ix_risk_scores_facility_asset_computed, migration 0013):
+    # scoring every minute makes history grow, so the newest row per asset must not be picked in
+    # Python from every row. Ties on computed_at are broken by id, so the answer is repeatable.
+    # (The SkipScan crash that forbids DISTINCT on sensor_readings is a TimescaleDB-only problem;
+    # risk_scores lives in plain Postgres.)
     result = await session.execute(
         select(RiskScore)
         .where(RiskScore.tenant_id == tenant_id, RiskScore.facility_id == facility_id)
-        .order_by(RiskScore.asset_id, RiskScore.computed_at.desc())
+        .distinct(RiskScore.asset_id)
+        .order_by(RiskScore.asset_id, RiskScore.computed_at.desc(), RiskScore.id.desc())
     )
-    rows = result.scalars().all()
-
-    latest_by_asset: dict[uuid.UUID, RiskScore] = {}
-    for row in rows:
-        if row.asset_id not in latest_by_asset:
-            latest_by_asset[row.asset_id] = row
-    return list(latest_by_asset.values())
+    return list(result.scalars().all())
 
 
 async def get_risk_history(

@@ -10,6 +10,22 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.4 (scheduled scoring; extra scrutiny: loops over every tenant, 2026-10-12): Celery beat runs
+`score_all_facilities` (`app/workers/scheduled_scoring.py`, logic in `app/services/scheduled_scoring_service.py`) every
+`SCORING_INTERVAL_SECONDS` (60). Per facility: Redis lock `score-lock:{tenant}:{facility}` (SET NX EX 120, released only by
+its own token), skip unless some asset has a reading newer than the later of the newest `risk_scores.computed_at` and a Redis
+"last attempt" marker (the marker stops a facility whose assets cannot be scored from being retried every minute), then the
+unchanged `score_facility`, then a `ScoresUpdated` event (`type`, facility id, count, time; no scores) on `alerts:{tenant}`.
+Each facility gets its own RLS-scoped session pair; a failing facility or tenant is counted and never stops the others.
+`get_latest_risk_scores` is now `DISTINCT ON` in SQL with index migration 0013 (index only, policy untouched; the SkipScan
+ban is about sensor_readings, not this plain-Postgres table). `useAlertsSocket` now ignores typed frames (an alert has no
+`type`), so the push cannot make a toast; real typed handling is L.6. Bug found only by running the task for real: it calls
+`asyncio.run` every tick (new event loop) while `app.core.db`'s engines keep connections bound to the previous loop, so the
+second run crashed; the task now builds NullPool engines per run (regression test runs the entry point three times in a
+process). Known limits: freshness is judged by reading TIMESTAMPS, so a device that delivers an old-stamped reading late is not
+noticed until a newer one arrives; scoring 44 assets every minute adds ~63k `risk_scores` rows/day (L.5 downsamples reads, L.8
+bounds retention). To run: worker plus `celery -A app.core.celery_app beat` (see DEMO.md).
+
 Note on Phase L task L.3 (stale-data awareness, 2026-10-12): `GET /facilities/{id}/telemetry-freshness` returns
 `{as_of, assets:[{asset_id, last_reading_at}]}`: asset list from the main DB (foreign facility = 404), newest reading per
 asset from `sensor_readings` with a LATERAL `ORDER BY timestamp DESC LIMIT 1` (never DISTINCT, see L.2b), tenant filter on top

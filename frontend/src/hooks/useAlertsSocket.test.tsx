@@ -62,6 +62,35 @@ describe("useAlertsSocket", () => {
     expect(result.current.alerts[0]?.asset_id).toBe("asset-1");
   });
 
+  it("ignores typed events that share the channel, such as scores_updated, and keeps working", async () => {
+    const { result } = renderHook(() => useAlertsSocket());
+    const socket = FakeWebSocket.instances[0]!;
+
+    act(() => {
+      socket.emitMessage({
+        type: "scores_updated",
+        facility_id: "f1",
+        scored: 44,
+        computed_at: "2026-01-01T00:00:00Z",
+      });
+      socket.emitMessage(null);
+      socket.emitMessage("just a string");
+      socket.emitMessage({ type: "something_new", asset_id: "asset-9" });
+    });
+    expect(result.current.alerts).toHaveLength(0);
+
+    act(() => {
+      socket.emitMessage({
+        asset_id: "asset-1",
+        sensor_type: "vibration",
+        value: 1,
+        z_score: 4,
+        triggered_at: "2026-01-01T00:00:01Z",
+      });
+    });
+    await waitFor(() => expect(result.current.alerts).toHaveLength(1));
+  });
+
   it("dismiss removes the alert by id", async () => {
     const { result } = renderHook(() => useAlertsSocket());
     const socket = FakeWebSocket.instances[0]!;

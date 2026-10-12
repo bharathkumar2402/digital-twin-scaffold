@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     # the primary, single-operating-condition model; FD002-FD004 are separate experiments.
     rul_model_subset: str = "FD001"
 
+    # Scheduled scoring (Phase L task L.4): how often Celery beat runs `score_all_facilities`, and
+    # how long one facility's overlap lock lives if its run dies without releasing it. The lock
+    # must outlast a slow run (L.0 measured 9-14 s for 44 assets) but not block later minutes.
+    scoring_interval_seconds: float = 60.0
+    scoring_lock_ttl_seconds: int = 120
+
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
     # Real-world size of one floor-plan pixel (at the maximum tile zoom), used to turn map

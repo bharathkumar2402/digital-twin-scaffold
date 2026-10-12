@@ -53,7 +53,13 @@ export function useAlertsSocket(): UseAlertsSocketResult {
 
       socket.onmessage = (event: MessageEvent<string>) => {
         try {
-          const notification = JSON.parse(event.data) as AlertNotification;
+          const frame = JSON.parse(event.data) as Record<string, unknown> | null;
+          // The channel also carries typed events (e.g. "scores_updated", Phase L). Alert frames
+          // carry no `type`; anything else is not a toast. Typed handling arrives with L.6.
+          if (frame === null || typeof frame !== "object") return;
+          if ("type" in frame && frame.type !== "alert") return;
+          if (typeof frame.asset_id !== "string") return;
+          const notification = frame as unknown as AlertNotification;
           setAlerts((current) => [
             ...current,
             { ...notification, id: `${notification.asset_id}-${notification.triggered_at}` },
