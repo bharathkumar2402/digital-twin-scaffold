@@ -34,3 +34,8 @@ NASA dataset/
 
 # IMS bearing raw data (~6 GB); re-create with `python -m scripts.acquire_ims`
 backend/data/raw/ims/
+
+# Celery beat schedule state (runtime files, created where beat is started)
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
