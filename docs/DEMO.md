@@ -60,8 +60,8 @@ Options: `-Storyline off|once|loop`, `-StoryDelayMin`, `-StoryMinutes`, `-NoSimu
 `-ApiPort`. A short storyline for a quick look: `.\scripts\demo_up.ps1 -StoryDelayMin 0.5 -StoryMinutes 3`.
 Logs: `.demo-logspi.log`, `worker.log`, `beat.log`, `simulator.log`, `frontend.log` (each with an `.err.log`).
 The script refuses to start if the demo is already running or the API port is taken, and it never touches the
-managed databases in `infra/docker/.env`. The automatic analysis needs the LLM key like any manual run; without it the
-run is still recorded, as `failed`.
+managed databases in `infra/docker/.env`. The automatic analysis needs no API key (the agents are deterministic tools,
+no LLM calls); a run that fails for any other reason is still recorded, as `failed`.
 
 The same flow as a browser test, against the real stack (skipped unless `E2E_LIVE=1`; takes about 10 minutes):
 
@@ -93,7 +93,7 @@ Automatic analysis (Phase L task L.7): with beat and the worker running, a scori
 high risk (score >= 67, previously below), or a facility with no analysis yet, queues one agent run on the worker. At most
 one run per facility per 10 minutes (`AUTO_ANALYSIS_MIN_INTERVAL_SECONDS`), never overlapping, and a failed run is
 recorded and not retried inside the window. These runs show in the Analysis tab's run list with trigger `auto_high_risk`
-or `auto_startup`. It needs the LLM key like any manual run.
+or `auto_startup`. No API key is needed.
 
 Open **http://localhost:5173** and click **Use demo account** - one click signs in and lands on the
 facility picker, so there is no tenant id or URL to copy. The demo's tenant, facility and map ids are
