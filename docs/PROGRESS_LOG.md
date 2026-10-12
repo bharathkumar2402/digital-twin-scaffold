@@ -10,6 +10,21 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.3 (stale-data awareness, 2026-10-12): `GET /facilities/{id}/telemetry-freshness` returns
+`{as_of, assets:[{asset_id, last_reading_at}]}`: asset list from the main DB (foreign facility = 404), newest reading per
+asset from `sensor_readings` with a LATERAL `ORDER BY timestamp DESC LIMIT 1` (never DISTINCT, see L.2b), tenant filter on top
+of RLS, `as_of` is the server clock so a wrong browser clock cannot fake freshness. Frontend: `lib/assetHealth.ts`
+(`STALE_AFTER_MS` = 5 min, `isStale`, `readingAgeMs` on each row), `lib/assetStatus.ts` (new status `stale` = "No recent data",
+ranked between warning and unknown), `useTelemetryFreshness` (30 s poll) feeding Overview, Assets, Needs attention, the KPI
+note, map markers (slate colour) and a Work-tab notice. Decisions: (1) a failing machine stays "Failing soon" and only gains a
+"no sensor reading for N ago" reason; (2) an asset that NEVER reported is not stale (no feed to lose; it keeps its score-based
+status); (3) until the lookup answers, nothing is claimed stale; (4) stale assets count as "Needs attention".
+Consequence to know: the demo's backfilled telemetry is hours old, so without `scripts.live_simulator` running most demo
+machines show "No recent data" (correct, and it is what L.9's live demo relies on). `e2e/smoke.spec.ts` therefore pins every
+asset as just-reported; `e2e/stale.spec.ts` covers the quiet case. Two smoke assertions (AC-1 first in Needs attention, 3 rows
+on the ground floor) fail on this machine only because the persistent demo volume still holds an earlier simulator run that
+degraded AC-2 (risk 99.4); wiping the stack (`down -v`, `demo_setup`) restores them. Not caused by L.3.
+
 Note on Phase L task L.2b (ingest anomaly-baseline fix; extra scrutiny: migration on an RLS table): the live z-score baseline
 is now ONE statement per batch (`unnest` + `LATERAL`, newest `BASELINE_MAX_SAMPLES`=200 readings per (asset, sensor)
 inside the 7-day window, strictly before the group's earliest timestamp) served by the new index

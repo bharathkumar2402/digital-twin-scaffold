@@ -24,7 +24,9 @@ import { useFacilities } from "../hooks/useFacilities";
 import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
+import { useTelemetryFreshness } from "../hooks/useTelemetryFreshness";
 import { buildHealthRows } from "../lib/assetHealth";
+import { assetStatus } from "../lib/assetStatus";
 import { assetBounds } from "../lib/fitAssets";
 import { assetsOnFloor, floorBadges, floorOfUpload } from "../lib/floors";
 import { pixelToLngLat } from "../lib/mapCoords";
@@ -115,6 +117,7 @@ export function FacilityMapPage(): React.JSX.Element {
 
   const riskScoresQuery = useRiskScores(facilityId ?? "");
   const riskHistory = useRiskHistory(facilityId ?? "");
+  const freshnessQuery = useTelemetryFreshness(facilityId ?? "");
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -153,8 +156,14 @@ export function FacilityMapPage(): React.JSX.Element {
     return new Map(scores.map((riskScore) => [riskScore.asset_id, riskScore.score]));
   }, [riskScoresQuery.data]);
   const healthRows = useMemo(
-    () => buildHealthRows(allAssets, riskScoresQuery.data ?? []),
-    [allAssets, riskScoresQuery.data]
+    () => buildHealthRows(allAssets, riskScoresQuery.data ?? [], freshnessQuery.data),
+    [allAssets, riskScoresQuery.data, freshnessQuery.data]
+  );
+  // Markers of assets that went quiet are drawn in their own slate colour instead of a risk colour
+  // (a failing-soon asset keeps its red: assetStatus says "critical" before "stale").
+  const staleAssetIds = useMemo(
+    () => new Set(healthRows.filter((row) => assetStatus(row).key === "stale").map((r) => r.asset.id)),
+    [healthRows]
   );
   const badges = useMemo(() => floorBadges(floors, healthRows), [floors, healthRows]);
   const selectedRow = healthRows.find((row) => row.asset.id === selectedAssetId) ?? null;
@@ -250,6 +259,7 @@ export function FacilityMapPage(): React.JSX.Element {
           map={map}
           assets={assets}
           riskScores={riskScoresByAssetId}
+          staleAssetIds={staleAssetIds}
           addMode={addMode}
           onSelectAsset={(assetId) => {
             if (linkMode) {

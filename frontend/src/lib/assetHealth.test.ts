@@ -160,6 +160,7 @@ describe("summarizeHealth", () => {
       unscored: 1,
       highRisk: 1,
       vibrationAlarms: 1,
+      stale: 0,
       shortestRul: { assetName: "Aged", cycles: 3.6 },
     });
   });

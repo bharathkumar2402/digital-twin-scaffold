@@ -8,13 +8,13 @@ export interface Attention {
   total: number;
 }
 
-// Which assets to look at first. Only failing or warning assets qualify - never healthy or
-// unscored ones. Order: status urgency, then higher risk, then shorter remaining life, then name
+// Which assets to look at first. Only failing, warning or silent (no recent data) assets qualify -
+// never healthy or unscored ones. Order: status urgency, then higher risk, then shorter remaining life, then name
 // (so the list is stable between renders).
 export function topAttention(rows: AssetHealthRow[], limit = 5): Attention {
   const needing = rows
     .map((row) => ({ row, status: assetStatus(row) }))
-    .filter(({ status }) => status.key === "critical" || status.key === "warning");
+    .filter(({ status }) => status.key === "critical" || status.key === "warning" || status.key === "stale");
 
   needing.sort((a, b) => {
     if (a.status.rank !== b.status.rank) return a.status.rank - b.status.rank;

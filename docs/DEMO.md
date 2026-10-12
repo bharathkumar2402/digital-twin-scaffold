@@ -92,7 +92,8 @@ foreach ($e in "viewer","technician") {
 
 ### Live simulator (Phase L task L.2)
 
-Without it the demo is a static snapshot. The simulator makes it behave like a running plant: every 15 s it posts
+Without it the demo is a static snapshot, and since L.3 the snapshot's backfilled readings age past 5 minutes, so most machines show
+**No recent data** (a machine that stopped reporting is never shown as Healthy). Start the simulator to see them live. The simulator makes it behave like a running plant: every 15 s it posts
 the five coherent AI4I sensors of all 44 machines to `POST /telemetry`, signed in as `simulator@twinlabs.com`
 (a technician; see the accounts table above). Start it in its own terminal with the demo env loaded and the API running:
 

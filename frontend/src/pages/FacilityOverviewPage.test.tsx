@@ -7,11 +7,15 @@ import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
+import { useTelemetryFreshness } from "../hooks/useTelemetryFreshness";
 import type { Asset, RiskScore } from "../types/api";
 import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityOverviewPage } from "./FacilityOverviewPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
+vi.mock("../hooks/useTelemetryFreshness", () => ({
+  useTelemetryFreshness: vi.fn(() => ({ data: undefined })),
+}));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 vi.mock("../hooks/useRiskHistory", () => ({ useRiskHistory: vi.fn() }));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
@@ -58,6 +62,9 @@ function renderPage() {
 
 describe("FacilityOverviewPage", () => {
   beforeEach(() => {
+    vi.mocked(useTelemetryFreshness).mockReturnValue({ data: undefined } as unknown as ReturnType<
+      typeof useTelemetryFreshness
+    >);
     vi.mocked(useAuth).mockReturnValue({ role: "facility_manager", logout: vi.fn() } as unknown as ReturnType<
       typeof useAuth
     >);
@@ -98,6 +105,26 @@ describe("FacilityOverviewPage", () => {
     expect(within(kpis).getByText("Aged Engine")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Agent analysis" })).not.toBeInTheDocument();
+  });
+
+  it("shows a healthy-scored machine that stopped reporting as No recent data, never as healthy", () => {
+    vi.mocked(useTelemetryFreshness).mockReturnValue({
+      data: {
+        as_of: "2026-10-12T12:00:00Z",
+        assets: [
+          { asset_id: "a", last_reading_at: "2026-10-12T11:59:50Z" },
+          { asset_id: "b", last_reading_at: "2026-10-12T11:30:00Z" }, // New Engine, risk 0.4
+          { asset_id: "c", last_reading_at: "2026-10-12T11:59:50Z" },
+        ],
+      },
+    } as unknown as ReturnType<typeof useTelemetryFreshness>);
+    renderPage();
+    const section = screen.getByRole("region", { name: "Needs attention" });
+    const quiet = within(section).getByRole("listitem", { name: "New Engine" });
+    expect(quiet).toHaveTextContent("No recent data");
+    expect(quiet).not.toHaveTextContent("Healthy");
+    expect(quiet).toHaveTextContent(/no sensor reading for 30 min ago/);
+    expect(screen.getByRole("group", { name: "Facility summary" })).toHaveTextContent("1 no recent data");
   });
 
   it("lists the machines needing attention, worst first, and leaves out healthy ones", () => {

@@ -9,7 +9,31 @@ import { expect, test, type Page } from "@playwright/test";
 
 const require = createRequire(import.meta.url);
 
+// The demo's backfilled telemetry is hours old unless the live simulator is running, which would turn
+// every machine into "No recent data". These walkthroughs are about everything else, so every asset is
+// reported as having just sent a reading; e2e/stale.spec.ts covers the quiet case.
+async function reportEveryAssetAsLive(page: Page): Promise<void> {
+  await page.route("**/telemetry-freshness", async (route) => {
+    try {
+      const real = (await (await route.fetch()).json()) as {
+        as_of: string;
+        assets: { asset_id: string }[];
+      };
+      const justNow = new Date(Date.parse(real.as_of) - 5000).toISOString();
+      await route.fulfill({
+        json: {
+          as_of: real.as_of,
+          assets: real.assets.map((a) => ({ asset_id: a.asset_id, last_reading_at: justNow })),
+        },
+      });
+    } catch {
+      // The test ended while a 30 s poll was in flight: nothing left to answer.
+    }
+  });
+}
+
 async function signInAsDemoManager(page: Page): Promise<void> {
+  await reportEveryAssetAsLive(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Use demo account" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Your facilities" })).toBeVisible();

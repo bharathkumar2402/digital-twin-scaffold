@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, status
 from redis.asyncio import Redis
@@ -9,21 +10,26 @@ from app.core.redis_client import get_redis
 from app.core.tenant_context import (
     TenantContext,
     get_tenant_context,
+    get_tenant_scoped_session,
     get_timescale_scoped_session,
 )
 from app.models.user import Role
 from app.schemas.ml.alert_notification import AlertNotification
 from app.schemas.requests.telemetry import (
+    AssetFreshness,
+    TelemetryFreshnessResponse,
     TelemetryIngestRequest,
     TelemetryIngestResponse,
     TelemetryReadingResponse,
 )
 from app.services.alert_debounce_service import evaluate_anomaly_batch
 from app.services.alert_publish_service import publish_alert
+from app.services.asset_service import list_assets
 from app.services.telemetry_service import (
     DEFAULT_TELEMETRY_LIMIT,
     MAX_TELEMETRY_LIMIT,
     get_asset_telemetry,
+    get_last_reading_times,
     ingest_readings,
 )
 
@@ -104,3 +110,31 @@ async def get_facility_asset_telemetry(
         limit=limit,
     )
     return [TelemetryReadingResponse.model_validate(reading) for reading in readings]
+
+
+@router.get(
+    "/facilities/{facility_id}/telemetry-freshness",
+    response_model=TelemetryFreshnessResponse,
+)
+async def get_facility_telemetry_freshness(
+    facility_id: uuid.UUID,
+    context: TenantContext = Depends(get_tenant_context),
+    main_session: AsyncSession = Depends(get_tenant_scoped_session),
+    session: AsyncSession = Depends(get_timescale_scoped_session),
+) -> TelemetryFreshnessResponse:
+    """When each of the facility's assets last reported, for the "No recent data" status.
+
+    The asset list comes from the main database (404 for a facility that is not the caller's
+    tenant's); the readings live on the separate TimescaleDB, so the ids are passed across.
+    Open to any authenticated tenant member, like the other read-only routes.
+    """
+    assets = await list_assets(main_session, tenant_id=context.tenant_id, facility_id=facility_id)
+    as_of, last = await get_last_reading_times(
+        session, tenant_id=context.tenant_id, asset_ids=[a.id for a in assets]
+    )
+    if as_of is None:  # no assets: nothing was queried, so take the clock here
+        as_of = datetime.now(UTC)
+    return TelemetryFreshnessResponse(
+        as_of=as_of,
+        assets=[AssetFreshness(asset_id=a.id, last_reading_at=last.get(a.id)) for a in assets],
+    )

@@ -42,3 +42,16 @@ class TelemetryReadingResponse(BaseModel):
     value: float
     unit: str
     timestamp: datetime
+
+
+class AssetFreshness(BaseModel):
+    asset_id: uuid.UUID
+    # Newest reading of any sensor; null = this asset has never reported.
+    last_reading_at: datetime | None
+
+
+class TelemetryFreshnessResponse(BaseModel):
+    # The server's clock when the lookup ran, so the UI measures reading age against it and a
+    # skewed browser clock cannot make a live asset look stale (or a dead one look fresh).
+    as_of: datetime
+    assets: list[AssetFreshness]

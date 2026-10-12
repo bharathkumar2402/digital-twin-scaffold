@@ -1,6 +1,8 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import insert, select
+from sqlalchemy import bindparam, insert, select, text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sensor_reading import SensorReading
@@ -75,3 +77,38 @@ async def get_asset_telemetry(
 
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+# Newest reading time per asset. LATERAL ... ORDER BY timestamp DESC LIMIT 1 per asset (served by
+# ix_sensor_readings_asset_sensor_time's leading (asset_id, ...) columns), never DISTINCT /
+# DISTINCT ON over sensor_readings: TimescaleDB SkipScan crashes under RLS (L.2b).
+_LAST_READING_SQL = text(
+    """
+    SELECT g.asset_id, l.ts, now() AS as_of
+    FROM unnest(:asset_ids) AS g(asset_id)
+    LEFT JOIN LATERAL (
+        SELECT r.timestamp AS ts
+        FROM sensor_readings r
+        WHERE r.tenant_id = :tenant_id AND r.asset_id = g.asset_id
+        ORDER BY r.timestamp DESC
+        LIMIT 1
+    ) AS l ON true
+    """
+).bindparams(bindparam("asset_ids", type_=ARRAY(UUID(as_uuid=True))))
+
+
+async def get_last_reading_times(
+    session: AsyncSession, *, tenant_id: uuid.UUID, asset_ids: list[uuid.UUID]
+) -> tuple[datetime | None, dict[uuid.UUID, datetime | None]]:
+    """(server now, {asset_id: newest reading time or None}) for the given assets.
+
+    The asset ids come from the caller's own tenant-checked asset list; `tenant_id` is filtered
+    explicitly on top of RLS (repo rule 2), so an id from another tenant yields None.
+    """
+    if not asset_ids:
+        return None, {}
+    result = await session.execute(
+        _LAST_READING_SQL, {"asset_ids": asset_ids, "tenant_id": tenant_id}
+    )
+    rows = result.all()
+    return rows[0].as_of, {row.asset_id: row.ts for row in rows}

@@ -39,7 +39,14 @@ export function KpiTiles({
       <Tile
         label="Assets monitored"
         value={String(summary.monitored)}
-        note={summary.unscored > 0 ? `${summary.unscored} not scored` : "all scored"}
+        note={
+          [
+            summary.unscored > 0 ? `${summary.unscored} not scored` : "all scored",
+            summary.stale > 0 ? `${summary.stale} no recent data` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        }
         tone="neutral"
       />
       <Tile

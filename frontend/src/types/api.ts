@@ -101,6 +101,18 @@ export interface AlertNotification {
 // Mirrors backend/app/schemas/requests/risk_scores.py's RiskScoreResponse. `score` is
 // 0-100 (see backend/app/services/risk_inference_service.py's score_facility, which
 // clamps model.predict_proba's [0,1] output into that range).
+export interface AssetFreshness {
+  asset_id: string;
+  // Newest reading of any sensor; null = the asset has never reported.
+  last_reading_at: string | null;
+}
+
+export interface TelemetryFreshness {
+  // The server's clock when the lookup ran: reading age is measured against it, not the browser's.
+  as_of: string;
+  assets: AssetFreshness[];
+}
+
 export interface RiskScore {
   id: string;
   facility_id: string;

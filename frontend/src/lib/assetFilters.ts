@@ -20,7 +20,7 @@ export function applyQuickFilter(rows: AssetHealthRow[], filter: QuickFilter): A
     case "attention":
       return rows.filter((row) => {
         const key = assetStatus(row).key;
-        return key === "critical" || key === "warning";
+        return key === "critical" || key === "warning" || key === "stale";
       });
     case "alarms":
       return rows.filter((row) => row.vibration?.alarm === true);

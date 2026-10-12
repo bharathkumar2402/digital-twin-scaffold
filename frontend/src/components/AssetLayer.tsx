@@ -1,4 +1,9 @@
-import type { GeoJSONSource, MapLayerMouseEvent, MapMouseEvent } from "maplibre-gl";
+import type {
+  ExpressionSpecification,
+  GeoJSONSource,
+  MapLayerMouseEvent,
+  MapMouseEvent,
+} from "maplibre-gl";
 import { useEffect, useRef } from "react";
 
 import { lngLatToPixel, pixelToLngLat } from "../lib/mapCoords";
@@ -43,8 +48,35 @@ const RISK_COLOR_UNSCORED = "#9e9e9e";
 // a `step` expression cleanly, so this stands in for "no data" and is matched first,
 // below the real [0, 100] range.
 const UNSCORED_SENTINEL = -1;
+// An asset that was reporting and went quiet ("No recent data"): neither a risk colour nor the
+// unscored grey, so it cannot be mistaken for Healthy or for never-scored.
+const COLOR_STALE = "#455a64";
 
-function toFeatureCollection(assets: Asset[], riskScores: Map<string, number>) {
+const NO_STALE: ReadonlySet<string> = new Set();
+
+// Stale first, then the risk bands (unscored below 0).
+const MARKER_COLOR: ExpressionSpecification = [
+  "case",
+  ["==", ["get", "stale"], 1],
+  COLOR_STALE,
+  [
+    "step",
+    ["get", "risk_score"],
+    RISK_COLOR_UNSCORED,
+    0,
+    RISK_COLOR_LOW,
+    34,
+    RISK_COLOR_MEDIUM,
+    67,
+    RISK_COLOR_HIGH,
+  ],
+];
+
+function toFeatureCollection(
+  assets: Asset[],
+  riskScores: Map<string, number>,
+  staleAssetIds: ReadonlySet<string>
+) {
   return {
     type: "FeatureCollection" as const,
     features: assets.map((asset) => ({
@@ -56,6 +88,7 @@ function toFeatureCollection(assets: Asset[], riskScores: Map<string, number>) {
         type: asset.type,
         status: asset.status,
         risk_score: riskScores.get(asset.id) ?? UNSCORED_SENTINEL,
+        stale: staleAssetIds.has(asset.id) ? 1 : 0,
       },
     })),
   };
@@ -67,6 +100,8 @@ interface AssetLayerProps {
   // Latest risk score (0-100) per asset id, from useRiskScores - an asset absent from
   // this map has never been scored yet.
   riskScores: Map<string, number>;
+  // Assets drawn as "No recent data" instead of by risk colour.
+  staleAssetIds?: ReadonlySet<string>;
   addMode: boolean;
   onSelectAsset: (assetId: string) => void;
   onMoveAsset: (assetId: string, x: number, y: number) => void;
@@ -77,6 +112,7 @@ export function AssetLayer({
   map,
   assets,
   riskScores,
+  staleAssetIds = NO_STALE,
   addMode,
   onSelectAsset,
   onMoveAsset,
@@ -110,6 +146,8 @@ export function AssetLayer({
   // below rather than closed over directly.
   const riskScoresRef = useRef(riskScores);
   riskScoresRef.current = riskScores;
+  const staleRef = useRef(staleAssetIds);
+  staleRef.current = staleAssetIds;
 
   useEffect(() => {
     if (!map) {
@@ -117,24 +155,17 @@ export function AssetLayer({
     }
 
     if (!map.getSource(SOURCE_ID)) {
-      map.addSource(SOURCE_ID, { type: "geojson", data: toFeatureCollection([], new Map()) });
+      map.addSource(SOURCE_ID, {
+        type: "geojson",
+        data: toFeatureCollection([], new Map(), NO_STALE),
+      });
       map.addLayer({
         id: CIRCLE_LAYER_ID,
         type: "circle",
         source: SOURCE_ID,
         paint: {
           "circle-radius": 11,
-          "circle-color": [
-            "step",
-            ["get", "risk_score"],
-            RISK_COLOR_UNSCORED,
-            0,
-            RISK_COLOR_LOW,
-            34,
-            RISK_COLOR_MEDIUM,
-            67,
-            RISK_COLOR_HIGH,
-          ],
+          "circle-color": MARKER_COLOR,
           "circle-stroke-width": 3,
           "circle-stroke-color": "#ffffff",
         },
@@ -150,17 +181,7 @@ export function AssetLayer({
             "circle-radius": 24,
             "circle-opacity": 0.22,
             "circle-blur": 0.5,
-            "circle-color": [
-              "step",
-              ["get", "risk_score"],
-              RISK_COLOR_UNSCORED,
-              0,
-              RISK_COLOR_LOW,
-              34,
-              RISK_COLOR_MEDIUM,
-              67,
-              RISK_COLOR_HIGH,
-            ],
+            "circle-color": MARKER_COLOR,
           },
         },
         CIRCLE_LAYER_ID
@@ -213,7 +234,7 @@ export function AssetLayer({
       const updated = assetsRef.current.map((asset) =>
         asset.id === draggingAssetId ? { ...asset, ...pixelFromLngLat(event) } : asset
       );
-      source.setData(toFeatureCollection(updated, riskScoresRef.current));
+      source.setData(toFeatureCollection(updated, riskScoresRef.current, staleRef.current));
     };
 
     const handleMouseUp = (event: MapMouseEvent) => {
@@ -286,9 +307,9 @@ export function AssetLayer({
     }
     const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
     if (source && !draggingAssetIdRef.current) {
-      source.setData(toFeatureCollection(assets, riskScores));
+      source.setData(toFeatureCollection(assets, riskScores, staleAssetIds));
     }
-  }, [map, assets, riskScores]);
+  }, [map, assets, riskScores, staleAssetIds]);
 
   return null;
 }

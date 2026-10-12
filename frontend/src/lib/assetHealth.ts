@@ -1,6 +1,6 @@
 // View-model for the Results page's asset health table: joins assets with their latest risk
 // score and unpacks the RUL / vibration verdict that scoring stores in `factors_json`.
-import type { Asset, RiskScore } from "../types/api";
+import type { Asset, RiskScore, TelemetryFreshness } from "../types/api";
 
 export type RiskBand = "low" | "medium" | "high";
 
@@ -26,6 +26,10 @@ export const RISK_BAND_TEXT_COLOR: Record<RiskBand, string> = {
   high: "#c62828",
 };
 
+// No reading for this long = "No recent data". Five simulator ticks (15 s each) would be 75 s; five
+// minutes tolerates a slow network or a restarted gateway without crying wolf.
+export const STALE_AFTER_MS = 5 * 60 * 1000;
+
 export interface VibrationVerdict {
   alarm: boolean;
   alarmChannels: number | null;
@@ -49,6 +53,17 @@ export interface AssetHealthRow {
   vibrationUnavailableReason: string | null;
   riskModelVersion: string | null;
   scoredAt: string | null;
+  // Newest sensor reading of any kind (null = never reported or not looked up yet).
+  lastReadingAt: string | null;
+  // How old that reading was by the server's clock when it was looked up. undefined = unknown (the
+  // lookup has not answered, so nothing is claimed); null = the asset has never reported.
+  readingAgeMs: number | null | undefined;
+}
+
+// Reporting before and not any more. An asset that never reported at all has no live feed to lose
+// (typically a demo or snapshot-scored asset), so it is not "stale"; it keeps its score-based status.
+export function isStale(row: Pick<AssetHealthRow, "readingAgeMs">): boolean {
+  return typeof row.readingAgeMs === "number" && row.readingAgeMs >= STALE_AFTER_MS;
 }
 
 function num(value: number | string | null | undefined): number | null {
@@ -72,7 +87,13 @@ function vibrationFrom(factors: RiskScore["factors_json"]): VibrationVerdict | n
   };
 }
 
-export function buildHealthRows(assets: Asset[], scores: RiskScore[]): AssetHealthRow[] {
+export function buildHealthRows(
+  assets: Asset[],
+  scores: RiskScore[],
+  freshness?: TelemetryFreshness
+): AssetHealthRow[] {
+  const asOfMs = freshness ? Date.parse(freshness.as_of) : NaN;
+  const lastById = new Map((freshness?.assets ?? []).map((f) => [f.asset_id, f.last_reading_at]));
   // The API returns the latest row per asset, but be defensive: keep the newest if repeated.
   const latest = new Map<string, RiskScore>();
   for (const score of scores) {
@@ -83,6 +104,12 @@ export function buildHealthRows(assets: Asset[], scores: RiskScore[]): AssetHeal
   const rows = assets.map((asset): AssetHealthRow => {
     const score = latest.get(asset.id) ?? null;
     const factors = score?.factors_json ?? {};
+    const reported = lastById.get(asset.id);
+    const lastMs = reported ? Date.parse(reported) : NaN;
+    let readingAgeMs: number | null | undefined;
+    if (reported === undefined || Number.isNaN(asOfMs)) readingAgeMs = undefined;
+    else if (reported === null || Number.isNaN(lastMs)) readingAgeMs = null;
+    else readingAgeMs = Math.max(0, asOfMs - lastMs);
     return {
       asset,
       risk: score ? score.score : null,
@@ -93,6 +120,8 @@ export function buildHealthRows(assets: Asset[], scores: RiskScore[]): AssetHeal
       vibrationUnavailableReason: str(factors.vibration_unavailable_reason),
       riskModelVersion: score ? score.model_version : null,
       scoredAt: score ? score.computed_at : null,
+      lastReadingAt: reported ?? null,
+      readingAgeMs,
     };
   });
 
@@ -119,6 +148,8 @@ export interface HealthSummary {
   // Risk in the map's "high" band (>= 67).
   highRisk: number;
   vibrationAlarms: number;
+  // Assets that were reporting and went quiet (see isStale).
+  stale: number;
   // The asset closest to failure among those that have an RUL, or null if none do.
   shortestRul: { assetName: string; cycles: number } | null;
 }
@@ -136,6 +167,7 @@ export function summarizeHealth(rows: AssetHealthRow[]): HealthSummary {
     unscored: rows.filter((r) => r.risk === null).length,
     highRisk: rows.filter((r) => r.risk !== null && riskBand(r.risk) === "high").length,
     vibrationAlarms: rows.filter((r) => r.vibration?.alarm === true).length,
+    stale: rows.filter(isStale).length,
     shortestRul: shortest,
   };
 }

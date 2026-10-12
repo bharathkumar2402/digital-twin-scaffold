@@ -114,8 +114,10 @@ describe("AssetLayer", () => {
     );
 
     const layerCall = addLayer.mock.calls[0][0] as { paint: { "circle-color": unknown[] } };
-    const [, , unscoredColor] = layerCall.paint["circle-color"];
-    expect(unscoredColor).toBe("#9e9e9e");
+    // ["case", <stale?>, <stale colour>, ["step", risk_score, <unscored>, 0, low, ...]]
+    const [, , staleColor, step] = layerCall.paint["circle-color"] as [string, unknown, string, unknown[]];
+    expect(staleColor).toBe("#455a64");
+    expect(step[2]).toBe("#9e9e9e");
 
     const sourceCall = addSource.mock.calls[0][1] as {
       data: { features: { properties: { risk_score: number } }[] };
@@ -143,6 +145,30 @@ describe("AssetLayer", () => {
         features: [expect.objectContaining({ properties: expect.objectContaining({ risk_score: 80 }) })],
       })
     );
+  });
+
+  it("marks only the stale assets on their features so the marker can be drawn as No recent data", () => {
+    const other = { ...asset, id: "a2", name: "Other" };
+    render(
+      <AssetLayer
+        map={fakeMap}
+        assets={[asset, other]}
+        riskScores={new Map([["a1", 10]])}
+        staleAssetIds={new Set(["a1"])}
+        addMode={false}
+        onSelectAsset={vi.fn()}
+        onMoveAsset={vi.fn()}
+        onPlaceNewAsset={vi.fn()}
+      />
+    );
+
+    const call = setData.mock.calls.at(-1)?.[0] as {
+      features: { properties: { id: string; stale: number; risk_score: number } }[];
+    };
+    const byId = Object.fromEntries(call.features.map((f) => [f.properties.id, f.properties]));
+    expect(byId.a1.stale).toBe(1);
+    expect(byId.a1.risk_score).toBe(10); // the score is kept; stale only changes the colour
+    expect(byId.a2.stale).toBe(0);
   });
 
   it("selects an asset when its feature is clicked, without also placing a new asset", () => {

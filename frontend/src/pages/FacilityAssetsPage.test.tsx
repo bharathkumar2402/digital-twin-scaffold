@@ -14,6 +14,9 @@ import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityAssetsPage } from "./FacilityAssetsPage";
 
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
+vi.mock("../hooks/useTelemetryFreshness", () => ({
+  useTelemetryFreshness: vi.fn(() => ({ data: undefined })),
+}));
 vi.mock("../hooks/useAssetDependencies", () => ({ useAssetDependencies: vi.fn() }));
 vi.mock("../hooks/useRiskScores", () => ({ useRiskScores: vi.fn() }));
 vi.mock("../hooks/useRiskHistory", () => ({ useRiskHistory: vi.fn() }));

@@ -648,6 +648,12 @@ textarea {
   border-color: #bbf7d0;
 }
 
+.pill-stale {
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px dashed #64748b;
+}
+
 .pill-neutral {
   color: var(--color-text-muted);
   background: var(--color-surface-alt);
@@ -1340,6 +1346,10 @@ textarea {
   border-left-color: #f59e0b;
 }
 
+.attention-stale {
+  border-left: 4px dashed #64748b;
+}
+
 .attention-head {
   display: flex;
   flex-wrap: wrap;
@@ -1726,4 +1736,14 @@ input:focus-visible,
 
 .app-main:focus {
   outline: none;
+}
+
+.notice {
+  border: 1px dashed #64748b;
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
 }

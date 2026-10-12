@@ -6,12 +6,16 @@ import { useAgentRun, useAgentRuns } from "../hooks/useAgentRuns";
 import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { useTelemetryFreshness } from "../hooks/useTelemetryFreshness";
 import type { AgentRunDetail, AgentRunState, Asset } from "../types/api";
 import { a11yViolations, headingLevels, outlineProblems } from "../test/a11y";
 import { FacilityWorkPage } from "./FacilityWorkPage";
 
 vi.mock("../hooks/useAgentRuns", () => ({ useAgentRuns: vi.fn(), useAgentRun: vi.fn() }));
 vi.mock("../hooks/useAssets", () => ({ useAssets: vi.fn() }));
+vi.mock("../hooks/useTelemetryFreshness", () => ({
+  useTelemetryFreshness: vi.fn(() => ({ data: undefined })),
+}));
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../hooks/useFacilities", () => ({ useFacilities: vi.fn() }));
 
@@ -117,6 +121,9 @@ function renderPage() {
 
 describe("FacilityWorkPage", () => {
   beforeEach(() => {
+    vi.mocked(useTelemetryFreshness).mockReturnValue({ data: undefined } as unknown as ReturnType<
+      typeof useTelemetryFreshness
+    >);
     vi.mocked(useAuth).mockReturnValue({ role: "technician", logout: vi.fn() } as unknown as ReturnType<
       typeof useAuth
     >);
@@ -147,6 +154,27 @@ describe("FacilityWorkPage", () => {
     vi.mocked(useAgentRun).mockReturnValue(
       q<ReturnType<typeof useAgentRun>>({ data: detail("good", recent(), goodState) })
     );
+  });
+
+  it("warns when a machine with a stop has stopped reporting, and only that machine", () => {
+    vi.mocked(useTelemetryFreshness).mockReturnValue({
+      data: {
+        as_of: "2026-10-12T12:00:00Z",
+        assets: [
+          { asset_id: "a1", last_reading_at: "2026-10-12T11:00:00Z" },
+          { asset_id: "a2", last_reading_at: "2026-10-12T11:59:55Z" },
+        ],
+      },
+    } as unknown as ReturnType<typeof useTelemetryFreshness>);
+    renderPage();
+    const note = screen.getByText(/No recent data/);
+    expect(note.parentElement).toHaveTextContent("Feed Pump");
+    expect(note.parentElement).not.toHaveTextContent("Press B");
+  });
+
+  it("shows no data warning while the freshness lookup has not answered", () => {
+    renderPage();
+    expect(screen.queryByText(/No recent data/)).not.toBeInTheDocument();
   });
 
   it("asks for the newest completed run's detail, skipping a newer failed one", () => {

@@ -10,6 +10,8 @@ import { useAssets } from "../hooks/useAssets";
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
 import { useLatestPlan } from "../hooks/useLatestPlan";
+import { useTelemetryFreshness } from "../hooks/useTelemetryFreshness";
+import { buildHealthRows, isStale } from "../lib/assetHealth";
 import { canRunAnalyses } from "../lib/roles";
 import { buildWorkPlan, formatDay, formatMinutes, groupLaterByDay, planAge } from "../lib/work";
 
@@ -23,6 +25,7 @@ export function FacilityWorkPage(): React.JSX.Element {
   const floors = facilities.data?.find((f) => f.id === facilityId)?.floors ?? [];
   const assetsQuery = useAssets(facilityId);
   const plan = useLatestPlan(facilityId);
+  const freshness = useTelemetryFreshness(facilityId);
 
   const assetsById = useMemo(
     () => new Map((assetsQuery.data ?? []).map((asset) => [asset.id, asset])),
@@ -33,6 +36,22 @@ export function FacilityWorkPage(): React.JSX.Element {
     [plan.run, assetsById]
   );
   const age = plan.run ? planAge(plan.run.created_at) : null;
+  // Machines with a stop whose sensors have gone quiet: the plan was made from readings that may be old.
+  const quietStops = useMemo(() => {
+    if (work === null || freshness.data === undefined) return [];
+    const staleIds = new Set(
+      buildHealthRows(assetsQuery.data ?? [], [], freshness.data)
+        .filter(isStale)
+        .map((row) => row.asset.id)
+    );
+    const names = new Set<string>();
+    for (const tech of work.technicians) {
+      for (const stop of tech.stops) {
+        if (staleIds.has(stop.assetId) && stop.asset) names.add(stop.asset.name);
+      }
+    }
+    return [...names].sort();
+  }, [work, freshness.data, assetsQuery.data]);
 
   function content(): React.ReactNode {
     if (plan.isError || assetsQuery.isError) {
@@ -80,6 +99,12 @@ export function FacilityWorkPage(): React.JSX.Element {
     }
     return (
       <>
+        {quietStops.length > 0 && (
+          <div className="notice" role="status">
+            <strong>No recent data</strong> from {quietStops.join(", ")}. This plan may rest on old
+            readings: check the sensor before the visit.
+          </div>
+        )}
         {work.technicians.map((tech) => (
           <Section key={tech.technicianId} title={tech.name}>
             <p className="scope-note">
