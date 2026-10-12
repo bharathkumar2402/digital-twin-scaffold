@@ -10,6 +10,23 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.6 (live UI, 2026-10-12): one shared push connection for the whole signed-in app
+(`hooks/useLive.tsx` `LiveProvider`, mounted in `main.tsx` inside `AuthProvider`; the old per-map-page `useAlertsSocket` is gone).
+Frames are validated by `lib/liveMessages.ts` (`alert` has no `type`, `scores_updated` is typed; anything else is dropped).
+A `scores_updated` for facility F refreshes `risk-scores`, `risk-history` and `telemetry-freshness` for F only, debounced 500 ms
+so a burst is one refetch, plus one all-facility catch-up after a RECONNECT (pushes sent while down are lost). While the socket
+is down `risk-scores` and `risk-history` poll every 60 s (`useFallbackInterval`); while it is up they do not.
+`telemetry-freshness` polls every 30 s regardless (a quiet sensor sends nothing, so a push can never reveal it; this differs
+from the plan's wording, which put it under the fallback). The open asset's telemetry chart refetches every 15 s while its panel
+is mounted (React Query does not poll hidden tabs). `UpdatedAgo` shows "Updated N min ago" and Live / "Reconnecting, refreshing
+every minute" on Overview, Assets and the map sidebar, measured on the server clock (`as_of` of the freshness answer), not the
+browser's. Alert toasts moved from the map into `AppShell`, so an anomaly pops up on every tab. No backend change. The 24 h / 7 d
+trend toggle is still not built (`useRiskHistory` accepts `bucket`). Known limit: the socket authenticates with the access token
+in the URL at connect time (as before), so after a token refresh it keeps the old connection until it drops.
+`e2e/live.spec.ts` plays the WebSocket itself (`page.routeWebSocket`), so pushes, hostile frames and dropped connections are
+exact. `e2e/smoke.spec.ts` "spot the problem machine" still fails here only on the Work tab's "Not assigned" region, which
+depends on the analysis run stored in this long-lived demo database (not touched by L.6); rebuild the stack to restore it.
+
 Note on Phase L task L.5 (history downsampling; extra scrutiny: new aggregation over an RLS table, 2026-10-12):
 `GET /facilities/{id}/risk-history?bucket=hour|day` returns the NEWEST score of each UTC hour or day (never an average, so a
 spike is not smoothed away); the point keeps its real `computed_at` and its RUL. In bucket mode `limit_per_asset` (still 1-50)

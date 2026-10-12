@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import type { AlertToastItem } from "../hooks/useAlertsSocket";
+import type { AlertToastItem } from "../hooks/useLiveState";
 
 const AUTO_DISMISS_MS = 8000;
 
@@ -9,15 +9,15 @@ interface AlertToastProps {
   onDismiss: (id: string) => void;
 }
 
-// Stacked top-right, over the map - the DoD (PHASE_PLAN.md Phase 3) is "a manually
+// Stacked top-right over whatever tab is open (the app shell renders it) - the DoD (PHASE_PLAN.md Phase 3) is "a manually
 // injected anomaly produces a browser alert in under 2 seconds", so this renders
 // unconditionally as soon as useAlertsSocket's WebSocket message arrives, no polling.
 export function AlertToast({ alerts, onDismiss }: AlertToastProps): React.JSX.Element {
   return (
     <div
       style={{
-        position: "absolute",
-        top: 12,
+        position: "fixed",
+        top: 64,
         right: 12,
         display: "flex",
         flexDirection: "column",

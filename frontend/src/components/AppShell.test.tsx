@@ -102,3 +102,44 @@ describe("AppShell tabs", () => {
     expect(screen.queryByRole("navigation", { name: "Facility" })).not.toBeInTheDocument();
   });
 });
+
+describe("AppShell live alerts", () => {
+  it("shows an anomaly alert on any tab, not just the map, and dismisses it", async () => {
+    const { LiveContext, NO_LIVE } = await import("../hooks/useLiveState");
+    const { fireEvent } = await import("@testing-library/react");
+    setFacility("u9");
+    vi.mocked(useAuth).mockReturnValue({ role: "technician", logout: vi.fn() } as unknown as ReturnType<
+      typeof useAuth
+    >);
+    const dismiss = vi.fn();
+    render(
+      <MemoryRouter initialEntries={["/facilities/f1/work"]}>
+        <LiveContext.Provider
+          value={{
+            ...NO_LIVE,
+            connected: true,
+            dismiss,
+            alerts: [
+              {
+                id: "x",
+                asset_id: "a1",
+                sensor_type: "vibration",
+                value: 99,
+                z_score: 8,
+                triggered_at: "2026-10-12T12:00:00Z",
+              },
+            ],
+          }}
+        >
+          <AppShell facilityId="f1">
+            <p>work tab</p>
+          </AppShell>
+        </LiveContext.Provider>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("vibration");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss alert" }));
+    expect(dismiss).toHaveBeenCalledWith("x");
+  });
+});

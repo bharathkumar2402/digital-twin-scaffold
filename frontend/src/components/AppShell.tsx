@@ -3,7 +3,9 @@ import { Link, NavLink } from "react-router-dom";
 
 import { useAuth } from "../hooks/useAuth";
 import { useFacilities } from "../hooks/useFacilities";
+import { useLive } from "../hooks/useLiveState";
 import { TAB_LABEL, tabsForRole, type TabKey } from "../lib/navigation";
+import { AlertToast } from "./AlertToast";
 
 interface AppShellProps {
   // Set on facility pages; shows the facility name and the tabs this role may see.
@@ -40,11 +42,13 @@ function tabLink(tab: TabKey, facilityId: string, mapUploadId: string | null): R
 export function AppShell({ facilityId, children }: AppShellProps): React.JSX.Element {
   const { logout, role } = useAuth();
   const facilities = useFacilities();
+  const { alerts, dismiss } = useLive();
   const facility = facilityId ? facilities.data?.find((f) => f.id === facilityId) : undefined;
   const mapUploadId = facility?.latest_map_upload_id ?? null;
 
   return (
     <div className="app-shell">
+      <AlertToast alerts={alerts} onDismiss={dismiss} />
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>

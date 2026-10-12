@@ -7,6 +7,7 @@ import { FloorOverview } from "../components/FloorOverview";
 import { HealthGate } from "../components/HealthGate";
 import { KpiTiles } from "../components/KpiTiles";
 import { Section } from "../components/Section";
+import { UpdatedAgo } from "../components/UpdatedAgo";
 import { useFacilityHealth } from "../hooks/useFacilityHealth";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { summarizeHealth } from "../lib/assetHealth";
@@ -27,6 +28,7 @@ export function FacilityOverviewPage(): React.JSX.Element {
         <div className="page-head">
           <h1>Overview</h1>
           <p>How the facility is doing right now, and where to look first.</p>
+          <UpdatedAgo scoredAt={lastScoredAt} clock={health.serverClock} />
         </div>
 
         <HealthGate health={health} facilityId={facilityId}>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { buildHealthRows, floorOptions, summarizeByFloor } from "../lib/assetHealth";
+import type { ServerClock } from "../lib/updatedAgo";
 import { useAssets } from "./useAssets";
 import { useFacilities } from "./useFacilities";
 import { useRiskScores } from "./useRiskScores";
@@ -32,6 +33,17 @@ export function useFacilityHealth(facilityId: string) {
     [assetsQuery.data]
   );
 
+  // The server's clock as of the last freshness answer, so "updated N min ago" is not at the mercy of
+  // the browser's clock.
+  const asOf = freshnessQuery.data?.as_of;
+  const serverClock = useMemo<ServerClock | null>(
+    () =>
+      asOf !== undefined && freshnessQuery.dataUpdatedAt
+        ? { asOfMs: Date.parse(asOf), fetchedAtMs: freshnessQuery.dataUpdatedAt }
+        : null,
+    [asOf, freshnessQuery.dataUpdatedAt]
+  );
+
   const failed: LoadFailure[] = [];
   if (assetsQuery.isError) failed.push({ what: "assets", retry: () => void assetsQuery.refetch() });
   if (scoresQuery.isError) failed.push({ what: "risk scores", retry: () => void scoresQuery.refetch() });
@@ -43,6 +55,7 @@ export function useFacilityHealth(facilityId: string) {
     floorHealth,
     assetsById,
     failed,
+    serverClock,
     // Both queries have answered successfully.
     loaded: assetsQuery.data !== undefined && scoresQuery.data !== undefined,
     scoreCount: scoresQuery.data?.length ?? 0,

@@ -2,7 +2,6 @@ import type maplibregl from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { AlertToast } from "../components/AlertToast";
 import { AppShell } from "../components/AppShell";
 import { AssetBrowser } from "../components/AssetBrowser";
 import { AssetPanel } from "../components/AssetPanel";
@@ -17,7 +16,6 @@ import {
   useCreateAssetDependency,
   useDeleteAssetDependency,
 } from "../hooks/useAssetDependencies";
-import { useAlertsSocket } from "../hooks/useAlertsSocket";
 import { useAuth } from "../hooks/useAuth";
 import { useAssets, useCreateAsset, useDeleteAsset, useUpdateAsset } from "../hooks/useAssets";
 import { useFacilities } from "../hooks/useFacilities";
@@ -25,7 +23,10 @@ import { useFacilityMapUpload } from "../hooks/useFacilityMapUpload";
 import { useRiskHistory } from "../hooks/useRiskHistory";
 import { useRiskScores } from "../hooks/useRiskScores";
 import { useTelemetryFreshness } from "../hooks/useTelemetryFreshness";
+import { UpdatedAgo } from "../components/UpdatedAgo";
 import { buildHealthRows } from "../lib/assetHealth";
+import { latestScoredAt } from "../lib/attention";
+import type { ServerClock } from "../lib/updatedAgo";
 import { assetStatus } from "../lib/assetStatus";
 import { assetBounds } from "../lib/fitAssets";
 import { assetsOnFloor, floorBadges, floorOfUpload } from "../lib/floors";
@@ -89,7 +90,6 @@ export function FacilityMapPage(): React.JSX.Element {
   const { data, isPending, isError, error } = useFacilityMapUpload(facilityId ?? "", uploadId ?? "");
   const { role } = useAuth();
   const canEdit = role !== null && WRITE_ROLES.has(role);
-  const { alerts, dismiss } = useAlertsSocket();
 
   // Each floor is its own map instance, destroyed when the floor changes. A map is only handed to
   // the layers while the upload it was built for is still the one on screen - otherwise they would
@@ -164,6 +164,14 @@ export function FacilityMapPage(): React.JSX.Element {
   const staleAssetIds = useMemo(
     () => new Set(healthRows.filter((row) => assetStatus(row).key === "stale").map((r) => r.asset.id)),
     [healthRows]
+  );
+  const freshnessAsOf = freshnessQuery.data?.as_of;
+  const freshnessClock = useMemo<ServerClock | null>(
+    () =>
+      freshnessAsOf !== undefined && freshnessQuery.dataUpdatedAt
+        ? { asOfMs: Date.parse(freshnessAsOf), fetchedAtMs: freshnessQuery.dataUpdatedAt }
+        : null,
+    [freshnessAsOf, freshnessQuery.dataUpdatedAt]
   );
   const badges = useMemo(() => floorBadges(floors, healthRows), [floors, healthRows]);
   const selectedRow = healthRows.find((row) => row.asset.id === selectedAssetId) ?? null;
@@ -249,7 +257,6 @@ export function FacilityMapPage(): React.JSX.Element {
     <div className="map-layout">
       <h1 className="sr-only">Floor map</h1>
       <div className="map-stage">
-        <AlertToast alerts={alerts} onDismiss={dismiss} />
         <FacilityMap tileUrlTemplate={data.tile_url_template} onMapLoad={handleMapLoad} />
         <DependencyLayer map={map} assets={assets} dependencies={dependencies} />
         <SelectionLayer map={map} asset={selectedAsset} />
@@ -339,6 +346,7 @@ export function FacilityMapPage(): React.JSX.Element {
       </div>
 
       <div className="scrollbar-thin map-sidebar">
+        <UpdatedAgo scoredAt={latestScoredAt(healthRows)} clock={freshnessClock} />
         {newAssetDraft && canEdit && (
           <NewAssetForm
             draft={newAssetDraft}

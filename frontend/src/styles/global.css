@@ -1747,3 +1747,27 @@ input:focus-visible,
   margin-bottom: 14px;
   font-size: 13px;
 }
+
+.updated-ago {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.live-on {
+  background: #2e7d32;
+}
+
+.live-off {
+  background: #9e9e9e;
+}

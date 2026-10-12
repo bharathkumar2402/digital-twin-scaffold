@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { apiFetch } from "../lib/apiClient";
 import type { RiskHistoryPoint, RiskHistorySeries } from "../types/api";
+import { useFallbackInterval } from "./useLiveState";
 
 // Each asset's last few scores, oldest first, keyed by asset id. Trends are an extra: if this fails
 // or is still loading, `byAsset` is just empty and the screens show everything else as normal.
@@ -21,6 +22,7 @@ export function useRiskHistory(facilityId: string, limitPerAsset = 20, bucket?: 
           (bucket ? `&bucket=${bucket}` : "")
       ),
     enabled: Boolean(facilityId),
+    refetchInterval: useFallbackInterval(),
   });
   const byAsset = useMemo(
     () => new Map<string, RiskHistoryPoint[]>((query.data ?? []).map((s) => [s.asset_id, s.points])),

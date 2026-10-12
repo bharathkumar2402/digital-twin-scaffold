@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { FloorFilter } from "../components/FloorFilter";
 import { HealthGate } from "../components/HealthGate";
 import { Section } from "../components/Section";
+import { UpdatedAgo } from "../components/UpdatedAgo";
 import { useAssetDependencies } from "../hooks/useAssetDependencies";
 import { useFacilityHealth } from "../hooks/useFacilityHealth";
 import { useRiskHistory } from "../hooks/useRiskHistory";
@@ -19,6 +20,7 @@ import {
   QUICK_FILTERS,
   searchRows,
 } from "../lib/assetFilters";
+import { latestScoredAt } from "../lib/attention";
 import { assetMapHref } from "../lib/mapLinks";
 import type { Asset } from "../types/api";
 
@@ -111,6 +113,7 @@ export function FacilityAssetsPage(): React.JSX.Element {
         <div className="page-head">
           <h1>Assets</h1>
           <p>Every machine with a plain-language verdict. Click one for its details.</p>
+          <UpdatedAgo scoredAt={latestScoredAt(health.allRows)} clock={health.serverClock} />
         </div>
 
         <Section title="Asset health">
