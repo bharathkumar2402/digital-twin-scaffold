@@ -39,3 +39,6 @@ backend/data/raw/ims/
 celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
+
+# Live demo logs and pid file (scripts/demo_up.ps1)
+.demo-logs/

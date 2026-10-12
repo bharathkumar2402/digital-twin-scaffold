@@ -43,7 +43,7 @@ describe("polling follows the live connection", () => {
   it.each([
     ["risk scores", "risk-scores", () => useRiskScores("f1")],
     ["risk history", "risk-history", () => useRiskHistory("f1")],
-  ])("%s poll once a minute while the socket is down", async (_name, fragment, hook) => {
+  ])("%s poll once a minute while the socket is down", async (_name, fragment, hook: () => unknown) => {
     renderHook(hook, { wrapper: wrapperFor(false) });
     await advance(0);
     expect(callsTo(fragment)).toBe(1);
@@ -59,7 +59,7 @@ describe("polling follows the live connection", () => {
   it.each([
     ["risk scores", "risk-scores", () => useRiskScores("f1")],
     ["risk history", "risk-history", () => useRiskHistory("f1")],
-  ])("%s do not poll while the socket is open: a push refreshes them", async (_name, fragment, hook) => {
+  ])("%s do not poll while the socket is open: a push refreshes them", async (_name, fragment, hook: () => unknown) => {
     renderHook(hook, { wrapper: wrapperFor(true) });
     await advance(0);
     await advance(FALLBACK_POLL_MS * 5);

@@ -10,6 +10,54 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.9 (one-command live demo, live e2e, final Phase L audit, 2026-10-13): `scripts/demo_up.ps1` starts the
+API, Celery worker, beat, live simulator and Vite in the background (logs and `pids.json` in git-ignored `.demo-logs/`);
+`scripts/demo_down.ps1` stops exactly those pids (`taskkill /T`) and leaves Docker up. It refuses to start twice or on a taken
+port, waits for `/openapi.json` (there is no `/health` route), and only ever uses the local demo containers. Found by running it:
+`Start-Process` does not quote arguments and this repo path contains spaces, so beat died on its `-s` schedule path ("Unable to
+parse extra configuration"); every argument with whitespace is now quoted. `frontend/e2e/live-stack.spec.ts` drives the REAL stack
+(env-gated by `E2E_LIVE=1`, about 8-10 min): measured on 2026-10-13 with `-StoryDelayMin 0.5 -StoryMinutes 3`, AC-2 appeared in
+Needs attention after 155 s with no reload, an anomaly toast fired, and exactly one `auto_high_risk` run was recorded
+(`completed`); PB-1 with `sensor_dropout` showed "No recent data" after 315 s and recovered 26 s after `clear`. Also fixed: `npm
+run build` had been failing since L.6 (`tsc -b` rejected the types in `useLive.test.tsx` and `livePolling.test.tsx`; type-only
+changes, tests unchanged).
+
+Phase L Definition-of-Done audit (against repo state, 2026-10-13):
+1. No-click loop - PARTIAL. Verified live: AC-2 enters Needs attention, toast, automatic analysis recorded. Covered only by L.6
+   unit/e2e tests (scripted socket), not by the live spec: the open chart extending, "Updated N min ago" advancing, and the Work tab
+   refreshing itself after the automatic analysis (the run is stored and `completed`; the screen update was not asserted live).
+2. Stale and recovery - PARTIAL. One machine (PB-1) verified live (315 s, recovery 26 s). "Stop the whole simulator, every asset
+   goes quiet" was not run live; the mechanism is identical and `stale.spec.ts` covers the all-assets case with mocked ages.
+3. Burst -> one alert per cooldown, <= 1 analysis per 10 min - MET at test level (alert debounce tests; L.7: 50 triggers -> 1
+   run, overlap -> 1, failed run not retried in the window). A real injected burst was not run end to end.
+4. Viewer cannot ingest; cross-tenant green - MET (`test_telemetry_authz.py`; cross-tenant suite 185 passed after L.8).
+5. All suites green - PARTIAL. ruff, mypy (app), eslint, Vitest (544), backend unit (634), integration (150) and cross-tenant (185) pass; `npm run
+   build` now passes. `npm run e2e` (default): 13 passed, 2 failed - the two smoke assertions that pin a freshly seeded demo
+   (AC-1 first in Needs attention; 3 rows on the ground floor) fail because this stack's persistent volume holds a degraded AC-2
+   from simulator runs (same cause as the L.3 note). Not re-verified on a wiped stack (needs `down -v` + `demo_setup`).
+6. Performance budget - PARTIAL, see below.
+
+Performance record (budget -> measured): ingest 220 rows p95 < 200 ms -> 178 ms at 1 M rows (L.2b, MET); scoring 44 assets
+< 10 s -> 10.5 s and 13.1 s per pass in the live worker (NOT MET, slightly over, on a small table); agent run off the API request
+and <= 1 / 10 min -> MET (worker task, tests); stale detection -> 315 s, MET; score -> screen < 2 s -> NOT MEASURED live (L.6 tests
+use fake timers); DB growth <= 150 MB/day -> NOT MEASURED after retention. KNOWN GAP: L.8 bounds only `sensor_readings`; `risk_scores`
+(about 63 k rows/day at one pass per minute) and `agent_runs` have no retention, so the main database still grows without bound.
+
+Note on Phase L task L.8 (data hygiene; extra scrutiny: migration on an RLS table, 2026-10-13): Timescale migration 0004 registers
+`add_retention_policy('sensor_readings', 14 days)`; nothing else about the table changes (forced RLS, the one policy, `app_role`
+SELECT+INSERT only, which is why cleanup is a database job and not an app DELETE). Chunks are 7 days, so readings really live
+14-21 days, and the 90/365-day feature windows can only see what is retained. Found by the full suite going flaky: TimescaleDB runs a
+new policy's first job at once, and it dropped `test_anomaly_baseline.py`'s fixed June-2026 rows mid-test; the first run is now
+scheduled one hour after the migration (also the safer deploy behaviour) and a test pins it. The scheduler firing by itself on its
+schedule is not tested (policy registration, scheduling and `run_job` behaviour are).
+
+Note on Phase L task L.7 (automatic analysis in the worker; extra scrutiny: rules 4 and 1, 2026-10-12): the scoring pass compares each
+asset's previous and new score and enqueues the Celery task `run_scheduled_analysis` when one newly crosses 67, or when a facility has
+no `agent_runs` row. The task (never an API request) takes a per-facility lock and a `SET NX EX 600` floor, runs the unchanged
+validated pipeline and records the reason in `agent_runs.trigger` (`auto_high_risk`, `auto_startup`) while the agents still see a plain
+`scheduled` run (`recorded_trigger` parameter). A failing run is recorded `failed`, releases the lock and is not retried inside the
+window. No migration, no new table. Verified by mutation (removing `nx`, removing the busy check each fail the matching tests).
+
 Note on Phase L task L.6 (live UI, 2026-10-12): one shared push connection for the whole signed-in app
 (`hooks/useLive.tsx` `LiveProvider`, mounted in `main.tsx` inside `AuthProvider`; the old per-map-page `useAlertsSocket` is gone).
 Frames are validated by `lib/liveMessages.ts` (`alert` has no `type`, `scores_updated` is typed; anything else is dropped).

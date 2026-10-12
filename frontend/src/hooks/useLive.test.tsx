@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, renderHook, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 import { setAccessToken } from "../lib/apiClient";
 import { useAuth } from "./useAuth";
@@ -65,7 +65,7 @@ const anomaly = {
 };
 
 let queryClient: QueryClient;
-let invalidate: ReturnType<typeof vi.spyOn>;
+let invalidate: MockInstance<QueryClient["invalidateQueries"]>;
 
 function wrapper({ children }: { children: ReactNode }) {
   return (

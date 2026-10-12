@@ -37,7 +37,40 @@ and the map URL at the end. Flags: `--skip-migrate`, `--skip-models`, `--no-pipe
 Wipe everything with `docker compose -p twin-demo -f docker-compose.demo.yml down -v`. Do not use
 `--skip-models` on a freshly wiped stack (the models would not exist yet).
 
-## 2. Start the app (3 terminals, each with the env loaded as above)
+## 2a. Live mode: one command (Phase L task L.9)
+
+After the one-time setup, this starts the API, Celery worker, Celery beat, the live simulator and the frontend, each
+in the background with its own log in `.demo-logs\` (git-ignored):
+
+```powershell
+.\scripts\demo_up.ps1                 # add -Setup on a fresh stack (runs demo_setup first)
+.\scripts\demo_down.ps1               # stops exactly those processes; Docker keeps running
+```
+
+Open http://localhost:5173 and click **Use demo account**. What to expect, with no clicks and no reloads:
+
+| When | What you see |
+|---|---|
+| right away | the **Live** indicator, "Updated N min ago" advancing, the chart of an open machine extending every 15 s |
+| about 3 min | the Air Compressor **AC-2** starts degrading (`-StoryDelayMin`, default 3) |
+| about 15 min more | AC-2 climbs into high risk (`-StoryMinutes`, default 15): it enters **Needs attention**, an anomaly toast appears, and one automatic analysis runs on the worker (Analysis tab, trigger `auto_high_risk`) |
+| any time | `python -m scripts.live_simulator inject PB-1 sensor_dropout`: after 5 min of silence PB-1 shows **No recent data**; `clear PB-1` and it recovers |
+
+Options: `-Storyline off|once|loop`, `-StoryDelayMin`, `-StoryMinutes`, `-NoSimulator` (run it yourself), `-NoFrontend`,
+`-ApiPort`. A short storyline for a quick look: `.\scripts\demo_up.ps1 -StoryDelayMin 0.5 -StoryMinutes 3`.
+Logs: `.demo-logspi.log`, `worker.log`, `beat.log`, `simulator.log`, `frontend.log` (each with an `.err.log`).
+The script refuses to start if the demo is already running or the API port is taken, and it never touches the
+managed databases in `infra/docker/.env`. The automatic analysis needs the LLM key like any manual run; without it the
+run is still recorded, as `failed`.
+
+The same flow as a browser test, against the real stack (skipped unless `E2E_LIVE=1`; takes about 10 minutes):
+
+```powershell
+.\scripts\demo_up.ps1 -StoryDelayMin 0.5 -StoryMinutes 3
+cd frontend; $env:E2E_LIVE = "1"; npx playwright test live-stack
+```
+
+## 2b. Start the app by hand (3 terminals, each with the env loaded as above)
 
 ```powershell
 # API
