@@ -12,7 +12,8 @@ Risk Assessment agent will wrap this same function as one of its tools.
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -238,14 +239,28 @@ async def get_latest_risk_scores(
     return list(result.scalars().all())
 
 
+# How `get_risk_history` can group scores into one point per UTC hour or day.
+HistoryBucket = Literal["hour", "day"]
+
+
 async def get_risk_history(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     facility_id: uuid.UUID,
     limit_per_asset: int,
+    bucket: HistoryBucket | None = None,
+    now: datetime | None = None,
 ) -> dict[uuid.UUID, list[tuple[datetime, float, float | None]]]:
     """The last `limit_per_asset` scores of every asset in a facility, oldest first.
+
+    With `bucket` ("hour" or "day", UTC), scores are first reduced to the NEWEST score of each
+    bucket (Phase L task L.5), and `limit_per_asset` then counts calendar buckets ending with the
+    current one ("the last 24 hours", "the last 7 days"): scoring every minute makes the last 50 raw
+    scores span under an hour, so multi-day trends need one point per hour or day. Only that window
+    is read, so the cost does not grow with the length of the history. A bucket with no score has
+    no point. The point keeps its real `computed_at`. The newest score is kept rather than an
+    average, so a spike is never smoothed away. `now` exists for tests.
 
     One bounded query: a window function ranks each asset's rows newest-first and keeps the top N,
     so history that grows over time is never loaded in full (unlike `get_latest_risk_scores`).
@@ -255,25 +270,60 @@ async def get_risk_history(
     """
     await _get_facility_or_404(session, tenant_id=tenant_id, facility_id=facility_id)
 
+    base = select(
+        RiskScore.id.label("id"),
+        RiskScore.asset_id.label("asset_id"),
+        RiskScore.computed_at.label("computed_at"),
+        RiskScore.score.label("score"),
+        RiskScore.rul_cycles.label("rul_cycles"),
+    ).where(RiskScore.tenant_id == tenant_id, RiskScore.facility_id == facility_id)
+
+    if bucket is not None:
+        if bucket not in ("hour", "day"):  # the route validates; this guards direct callers
+            raise ValueError(f"unsupported history bucket: {bucket!r}")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        step = timedelta(hours=1) if bucket == "hour" else timedelta(days=1)
+        current_start = (
+            current.replace(minute=0, second=0, microsecond=0)
+            if bucket == "hour"
+            else current.replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+        base = base.where(RiskScore.computed_at >= current_start - step * (limit_per_asset - 1))
+        # Newest score per (asset, UTC bucket). `bucket` is one of two literals, never user text.
+        bucket_start = func.date_trunc(bucket, RiskScore.computed_at, "UTC")
+        in_bucket = (
+            func.row_number()
+            .over(
+                partition_by=(RiskScore.asset_id, bucket_start),
+                order_by=(RiskScore.computed_at.desc(), RiskScore.id.desc()),
+            )
+            .label("in_bucket")
+        )
+        per_bucket = base.add_columns(in_bucket).subquery()
+        base = select(
+            per_bucket.c.id,
+            per_bucket.c.asset_id,
+            per_bucket.c.computed_at,
+            per_bucket.c.score,
+            per_bucket.c.rul_cycles,
+        ).where(per_bucket.c.in_bucket == 1)
+
+    candidates = base.subquery()
     rank = (
         func.row_number()
         .over(
-            partition_by=RiskScore.asset_id,
-            order_by=(RiskScore.computed_at.desc(), RiskScore.id.desc()),
+            partition_by=candidates.c.asset_id,
+            order_by=(candidates.c.computed_at.desc(), candidates.c.id.desc()),
         )
         .label("rank")
     )
-    ranked = (
-        select(
-            RiskScore.asset_id.label("asset_id"),
-            RiskScore.computed_at.label("computed_at"),
-            RiskScore.score.label("score"),
-            RiskScore.rul_cycles.label("rul_cycles"),
-            rank,
-        )
-        .where(RiskScore.tenant_id == tenant_id, RiskScore.facility_id == facility_id)
-        .subquery()
-    )
+    ranked = select(
+        candidates.c.asset_id.label("asset_id"),
+        candidates.c.computed_at.label("computed_at"),
+        candidates.c.score.label("score"),
+        candidates.c.rul_cycles.label("rul_cycles"),
+        rank,
+    ).subquery()
     result = await session.execute(
         select(ranked.c.asset_id, ranked.c.computed_at, ranked.c.score, ranked.c.rul_cycles)
         .where(ranked.c.rank <= limit_per_asset)

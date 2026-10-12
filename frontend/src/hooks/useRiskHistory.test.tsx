@@ -39,6 +39,22 @@ describe("useRiskHistory", () => {
     expect(result.current.byAsset.get("a2")?.[0].score).toBe(5);
   });
 
+  it("asks for one point per hour or day when a bucket is given, and not otherwise", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(series);
+    const hourly = renderHook(() => useRiskHistory("f1", 24, "hour"), { wrapper });
+    await waitFor(() => expect(hourly.result.current.byAsset.size).toBe(2));
+    expect(apiFetch).toHaveBeenLastCalledWith("/facilities/f1/risk-history?limit_per_asset=24&bucket=hour");
+
+    const daily = renderHook(() => useRiskHistory("f1", 7, "day"), { wrapper });
+    await waitFor(() => expect(daily.result.current.byAsset.size).toBe(2));
+    expect(apiFetch).toHaveBeenLastCalledWith("/facilities/f1/risk-history?limit_per_asset=7&bucket=day");
+
+    renderHook(() => useRiskHistory("f1", 7), { wrapper });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenLastCalledWith("/facilities/f1/risk-history?limit_per_asset=7")
+    );
+  });
+
   it("defaults to twenty scores per asset", async () => {
     vi.mocked(apiFetch).mockResolvedValue([]);
     renderHook(() => useRiskHistory("f1"), { wrapper });

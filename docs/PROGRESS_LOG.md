@@ -10,6 +10,16 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.5 (history downsampling; extra scrutiny: new aggregation over an RLS table, 2026-10-12):
+`GET /facilities/{id}/risk-history?bucket=hour|day` returns the NEWEST score of each UTC hour or day (never an average, so a
+spike is not smoothed away); the point keeps its real `computed_at` and its RUL. In bucket mode `limit_per_asset` (still 1-50)
+counts calendar buckets ending with the current one ("last 24 hours", "last 7 days") and only that window is read, so the cost
+does not grow with history; a bucket with no score has no point and an asset silent for the whole window is absent. Without
+`bucket` the route is unchanged. `date_trunc(bucket, computed_at, 'UTC')` is explicit, so the session time zone cannot move a
+boundary. Anything but `hour`/`day` is a 422 (a closed Literal, never interpolated). Frontend: `useRiskHistory(facility, limit,
+bucket?)` only; a 24 h / 7 d toggle on the trend chart is left for L.6's live UI. Day = UTC day, not facility-local midnight.
+Mutation-checked: oldest-instead-of-newest, session time zone, and no window filter are each caught by a test.
+
 Note on Phase L task L.4 (scheduled scoring; extra scrutiny: loops over every tenant, 2026-10-12): Celery beat runs
 `score_all_facilities` (`app/workers/scheduled_scoring.py`, logic in `app/services/scheduled_scoring_service.py`) every
 `SCORING_INTERVAL_SECONDS` (60). Per facility: Redis lock `score-lock:{tenant}:{facility}` (SET NX EX 120, released only by

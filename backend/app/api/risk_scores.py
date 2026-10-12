@@ -12,7 +12,11 @@ from app.schemas.requests.risk_scores import (
     RiskScoreComputeAcceptedResponse,
     RiskScoreResponse,
 )
-from app.services.risk_inference_service import get_latest_risk_scores, get_risk_history
+from app.services.risk_inference_service import (
+    HistoryBucket,
+    get_latest_risk_scores,
+    get_risk_history,
+)
 from app.workers.risk_tasks import compute_facility_risk_scores
 
 router = APIRouter(tags=["risk-scores"])
@@ -58,18 +62,23 @@ async def list_facility_risk_scores(
 async def list_facility_risk_history(
     facility_id: uuid.UUID,
     limit_per_asset: int = Query(default=10, ge=1, le=50),
+    bucket: HistoryBucket | None = Query(default=None),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_scoped_session),
 ) -> list[RiskHistorySeries]:
     """Each asset's last `limit_per_asset` scores (oldest first) for trend lines and
     "changed since the previous score" badges. Read-only and bounded (1-50 per asset); open to
     any tenant member like the latest-scores list. The tenant comes from the JWT, never from
-    the request."""
+    the request.
+
+    `bucket=hour|day` (UTC) returns the newest score of each hour or day instead, and then
+    `limit_per_asset` counts buckets, so a multi-day trend survives scoring every minute."""
     history = await get_risk_history(
         session,
         tenant_id=context.tenant_id,
         facility_id=facility_id,
         limit_per_asset=limit_per_asset,
+        bucket=bucket,
     )
     return [
         RiskHistorySeries(
