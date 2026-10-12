@@ -90,6 +90,34 @@ foreach ($e in "viewer","technician") {
 
 (The API process must be restarted to pick up the L.1 code. The probe row is harmless; delete it afterwards.)
 
+### Live simulator (Phase L task L.2)
+
+Without it the demo is a static snapshot. The simulator makes it behave like a running plant: every 15 s it posts
+the five coherent AI4I sensors of all 44 machines to `POST /telemetry`, signed in as `simulator@twinlabs.com`
+(a technician; see the accounts table above). Start it in its own terminal with the demo env loaded and the API running:
+
+```powershell
+cd backend
+$env:MINIO_ENDPOINT = "127.0.0.1:9000"   # only if localhost:9000 stalls on your machine
+python -m scripts.live_simulator                      # storyline "once": AC-2 degrades after 3 min over 15 min
+python -m scripts.live_simulator --storyline off      # steady state only
+python -m scripts.live_simulator --seed 7 --tick-seconds 5
+```
+
+While it runs, from another terminal (takes effect on the next tick):
+
+```powershell
+python -m scripts.live_simulator inject AC-2 overstrain    # or tool_wear | overheat | power
+python -m scripts.live_simulator inject PB-1 sensor_dropout # the machine goes silent (for "No recent data")
+python -m scripts.live_simulator clear PB-1
+```
+
+Stop with Ctrl+C (it finishes the current post and exits). If the API goes down it backs off (15, 30, 60 s) and
+carries on when the API returns; a rejected login or a 403/422 stops it with a clear message. It never touches the
+databases. Scores update when scoring runs (Recompute risk scores today; every minute once Phase L task L.4 lands).
+It restarts every machine from its demo starting record, so restarting it also restores AC-2 to healthy.
+Parameters and what is and is not calibrated from the real dataset: `docs/DATASETS.md` "Live simulator calibration".
+
 ## 3. Demo script (about 10 minutes)
 
 | # | Show | Say |

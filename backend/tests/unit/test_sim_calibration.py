@@ -217,7 +217,7 @@ def test_generator_degradation_is_opt_in_and_emits_complete_snapshots() -> None:
 
 SIM_MODULES = {
     "sim_calibration", "vibration_sim", "engine_sim", "degradation_sim", "iot_data_generator",
-    "ai4i_replay",
+    "ai4i_replay", "live_machine_sim", "live_simulator",
 }  # fmt: skip
 
 
@@ -238,7 +238,10 @@ def test_no_training_code_imports_the_simulator() -> None:
         p
         for p in (BACKEND / "app" / "ml").glob("*.py")
         if p.stem
-        not in {"sim_calibration", "vibration_sim", "engine_sim", "degradation_sim", "ai4i_replay"}
+        not in {
+            "sim_calibration", "vibration_sim", "engine_sim", "degradation_sim", "ai4i_replay",
+            "live_machine_sim",
+        }  # fmt: skip
     ] + list((BACKEND / "scripts").glob("train_*.py"))
     assert trainers, "expected to find training modules to scan"
     offenders = {p.name: _imports(p) & SIM_MODULES for p in trainers if _imports(p) & SIM_MODULES}
@@ -247,7 +250,7 @@ def test_no_training_code_imports_the_simulator() -> None:
 
 def test_simulator_modules_do_not_import_training_or_inference_models() -> None:
     forbidden = {"train", "rul_train", "vibration_train", "xgboost", "sklearn"}
-    for stem in ("vibration_sim", "engine_sim", "degradation_sim"):
+    for stem in ("vibration_sim", "engine_sim", "degradation_sim", "live_machine_sim"):
         assert _imports(BACKEND / "app" / "ml" / f"{stem}.py") & forbidden == set(), stem
 
 

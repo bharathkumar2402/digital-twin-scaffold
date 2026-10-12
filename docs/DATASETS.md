@@ -440,6 +440,29 @@ Check: held-out ROC-AUC computed through the serving path is 0.9738 (stored test
 `app/ml/ai4i_replay.py` replays the held-out rows (the exact split `train_risk_model` uses) as live
 snapshots for demos and end-to-end tests; it is demo-feed code and never an input to training.
 
+### Live simulator calibration (Phase L, task L.2)
+
+`backend/app/ml/live_machine_sim.py` (pure model) and `backend/scripts/live_simulator.py` (posts to the API)
+feed the live demo. Like the other simulators it is calibrated from the real AI4I 2020 file and is never an
+input to training (import-scan tests enforce both directions). Where each parameter comes from:
+
+| Parameter | Source |
+|---|---|
+| Value ranges of the five sensors, and of process minus air temperature (7.6-12.1 K) | min / max of the 10,000 real rows; every simulated value is clipped to them |
+| Torque -> speed relation (slope -15.74 rpm per Nm, residual std 86.8 rpm) | least-squares fit on the real rows, so the strong negative torque/speed correlation is kept |
+| Within-machine persistence of air temperature and temperature difference | lag-1 autocorrelation in file order (0.9994 and 0.9975), **capped at 0.7** (see below) |
+| Failure targets of injected faults | the dataset's published rules (Matzka 2020): OSF wear x torque > 11000 (L variant), TWF wear 200-240 min, HDF difference < 8.6 K with speed < 1380 rpm, PWF power > 9000 W |
+| Each machine's starting point | the same real held-out AI4I record the demo already assigns it (`app/ml/ai4i_replay.py`) |
+
+Three parameters **cannot be identified from AI4I** (it is cross-sectional: one row per machine, no
+machine observed over time) and are therefore demo parameters, not data-derived numbers:
+- `WITHIN_MACHINE_FRACTION = 0.05`: how much of the dataset's spread a single machine shows over time. Picked by measuring the real risk model's stability: at 0.25 six machines crossed the 50-point line within 150 ticks (healthy ones jumping from ~1 to ~97), at 0.05 only the two machines the demo deliberately places at ~58-59 (CT-2, CNC-2) still flicker.
+- Tool-wear rate, default 1 min of wear per real hour (`--wear-min-per-hour`), chosen so healthy machines do not drift to failure during a demo.
+- `MAX_PERSISTENCE = 0.7` and noise clipped at 2.0 sigma: at one record per 15 s tick the dataset's 0.9994 persistence is a drift so slow that the live anomaly check (z-score against recent history) flags the drift itself, and unclipped Gaussian noise would raise a toast about every 25 s. Measured with the capped model: about one false alert per 35 simulated minutes across 44 machines
+  (`tests/unit/test_live_machine_sim.py`, which replays the live check's rule over 24 simulated hours).
+
+Time is real, not compressed; only the AC-2 degradation storyline is time-compressed (`STORY_MINUTES`).
+
 ## What NOT to do
 
 - Don't hand-invent failure rates, sensor ranges, or noise levels for the simulated IoT

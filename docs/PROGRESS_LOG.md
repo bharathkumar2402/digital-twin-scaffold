@@ -10,6 +10,23 @@ why, and how it was verified.
 **Status:** Phase 1 (Foundation), Phase 2 (Map & Asset System), Phase 3 (ML & Risk Engine,
 all tasks 3.1–3.10), and Phase 4 (5-Agent LangGraph Pipeline, tasks 4.1–4.10) are fully closed. Phase 5 next.
 
+Note on Phase L task L.2 (stateful live simulator): `backend/app/ml/live_machine_sim.py` (pure, seeded model of 44 coherent
+machines, calibrated from the real AI4I file) and `backend/scripts/live_simulator.py` (host process: signs in as
+`simulator@twinlabs.com`, posts all five AI4I sensors of every machine as one 220-row batch per tick through
+`POST /telemetry`, `--storyline off|once|loop`, `inject|clear` commands via a control-file directory, backoff + re-login,
+clean Ctrl+C). Tests: 34 model + 27 runner cases (see the files); 628 unit tests pass. Verified live against the demo
+stack: AC-2 degraded and scored 99.4 with the real model, AC-1 stayed 95.8, an injected `sensor_dropout` silenced PB-1,
+and killing the API for ~45 s cost 3 posts (backoff 5/10/20 s) before it carried on by itself. Things found while
+building that changed the design: (1) the dataset's own 0.9994 air-temperature persistence makes a machine drift so
+slowly that the live z-score check flags the drift - capped at 0.7 and noise clipped at 2.0 sigma (about one false alert
+per 35 simulated minutes fleet-wide, tested by replaying the live rule over 24 h); (2) with a 0.25 within-machine spread
+six machines flipped across the 50-point line, healthy ones jumping ~1 -> ~97 - measured against the real model and cut
+to 0.05 (only CT-2 and CNC-2, which the demo places at ~58-59 on purpose, still flicker). Not data-calibrated, because
+AI4I is cross-sectional: that spread, the wear rate and the persistence cap (documented in `docs/DATASETS.md`). Side
+effect to know: the verification runs wrote ~34k simulator rows and four extra scoring rounds into the demo DB, and the
+latest AC-2 snapshot is the failing one until the simulator is restarted (it restarts every machine from its demo
+record). The ingest baseline-query fix found in L.0 is deliberately NOT in this task; it is the follow-up task L.2b.
+
 Note on Phase L task L.1 (ingest authorization + demo accounts; extra-scrutiny auth task): `POST /telemetry` now
 requires technician, facility_manager, tenant_admin or superadmin (`INGEST_ROLES` in `app/api/telemetry.py`, reusing
 `require_roles`); a viewer gets 403. Reason found while planning: `/register` creates viewers, so before this anyone

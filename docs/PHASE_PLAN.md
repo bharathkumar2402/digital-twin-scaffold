@@ -234,6 +234,14 @@ stretch task L.10.
    Tests: tool wear never decreases, `process_temp - air_temp` stays in the dataset range, values stay in the
    dataset's ranges, same seed -> same stream, storyline phases happen in order and only once, batch size < 1000,
    API-down recovery, never imports training code.
+2b. **L.2b Ingest anomaly-baseline fix** *(extra scrutiny: migration on an RLS table)* — added after L.0 measured
+   ingest p50 342 ms at 30 k stored rows and 2080 ms at 1 M (budget 200 ms p95): `check_readings_for_anomalies` runs
+   one baseline query per (asset, sensor) group, each averaging up to 7 days (~40 k rows per group at a 15 s tick).
+   Replace with one grouped query over a bounded recent window or sample cap, plus the index it needs on
+   `sensor_readings` (Timescale migration; policies unchanged). Keep the z-score rule (3.0, >= 10 samples) and results
+   equal to the old query on the same data. Tests: old-vs-new equivalence, still one baseline per group excluding the
+   batch's own rows, RLS still enforced after the migration (cross-tenant), ingest p95 at 1 M rows re-measured with
+   `scripts/measure_live_load.py` and recorded in `docs/LIVE_DATA_PLAN.md`.
 3. **L.3 Stale-data awareness** — expose each asset's last reading time (cheapest correct source, decide in the
    plan step) and add a **"No recent data"** status (stale = no reading for 5 min) to `lib/assetStatus.ts`, the
    Overview/Assets/Map/Work screens and the e2e suite. Tests: boundary at exactly 5 min, never shown as Healthy,
