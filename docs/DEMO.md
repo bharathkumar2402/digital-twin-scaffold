@@ -249,6 +249,11 @@ These specs are not part of `npm test`, which needs no services.
 
 ## Known limits
 
+- Sensor readings are kept for 14 days (Phase L task L.8): TimescaleDB drops a 7-day chunk once all of it is older than
+  14 days, so readings really live 14-21 days. The 90- and 365-day feature windows therefore only see what is retained.
+  Compression is not used (it cannot be enabled on a table with row-level security). The policy is migration `0004` in
+  `migrations_timescale/`; list it with `SELECT * FROM timescaledb_information.jobs WHERE proc_name='policy_retention';`.
+
 - A manual analysis ("Run analysis") runs in the API process (`POST /facilities/{id}/agent-runs`, about 10 s); only
   the automatic ones run in the worker. The compose file's old `agent-runner` service pointed at a module that never existed and was removed.
 - Floor plans are generated drawings; filler map tiles only cover zoom 0-5.
