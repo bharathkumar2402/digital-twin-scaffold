@@ -100,8 +100,8 @@ test.describe("live loop on the real stack", () => {
       `[live] AC-2 in Needs attention after ${listedAfter}s; automatic runs: ` +
         autoRuns.map((r) => `${r.trigger}=${r.status}`).join(", ")
     );
-    // A run is recorded even when the model call fails (no API key); the point is that it happened once,
-    // not that the LLM answered. At most one per 10 minutes per facility (rule 4).
+    // A run is recorded even when the pipeline fails; the point is that it happened once, not what it
+    // concluded. At most one per 10 minutes per facility (rule 4).
     const recent = autoRuns.filter((r) => Date.now() - Date.parse(r.created_at) < 10 * 60_000);
     expect(recent.length).toBeLessThanOrEqual(2); // one start-up run and one high-risk run at most
   });
