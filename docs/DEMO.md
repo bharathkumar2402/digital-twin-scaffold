@@ -56,6 +56,12 @@ two runs at once, and pushes a `scores_updated` event on the tenant's WebSocket 
 python -m celery -A app.core.celery_app beat --loglevel=info
 ```
 
+Automatic analysis (Phase L task L.7): with beat and the worker running, a scoring pass that finds a machine newly at
+high risk (score >= 67, previously below), or a facility with no analysis yet, queues one agent run on the worker. At most
+one run per facility per 10 minutes (`AUTO_ANALYSIS_MIN_INTERVAL_SECONDS`), never overlapping, and a failed run is
+recorded and not retried inside the window. These runs show in the Analysis tab's run list with trigger `auto_high_risk`
+or `auto_startup`. It needs the LLM key like any manual run.
+
 Open **http://localhost:5173** and click **Use demo account** - one click signs in and lands on the
 facility picker, so there is no tenant id or URL to copy. The demo's tenant, facility and map ids are
 fixed (tenant `...0001`, facility `...0002`, floor maps `...0003`/`...0004`/`...0005` for ground/first/roof, all prefixed `d3500000-0000-4000-8000-00000000`), so bookmarks and the login keep working after you
@@ -243,8 +249,8 @@ These specs are not part of `npm test`, which needs no services.
 
 ## Known limits
 
-- Analyses run in the API process (`POST /facilities/{id}/agent-runs`, about 10 s), not in a background worker.
-  The compose file's old `agent-runner` service pointed at a module that never existed and was removed.
+- A manual analysis ("Run analysis") runs in the API process (`POST /facilities/{id}/agent-runs`, about 10 s); only
+  the automatic ones run in the worker. The compose file's old `agent-runner` service pointed at a module that never existed and was removed.
 - Floor plans are generated drawings; filler map tiles only cover zoom 0-5.
 - The technician roster is a single built-in technician and downtime is a heuristic.
 - The "why" text is rule-based, and the model cards are static copies of `docs/DATASETS.md`.

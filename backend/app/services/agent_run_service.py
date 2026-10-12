@@ -105,8 +105,15 @@ async def execute_and_record_pipeline(
     trigger: str = "scheduled",
     user_query: str | None = None,
     config: RunnableConfig | None = None,
+    recorded_trigger: str | None = None,
 ) -> tuple[FacilityTwinState, AgentRun]:
-    """Executes the full 5-agent pipeline and persists the outcome to agent_runs."""
+    """Executes the full 5-agent pipeline and persists the outcome to agent_runs.
+
+    `recorded_trigger` is what `agent_runs.trigger` stores when it should say more than the
+    pipeline's own three trigger kinds (Phase L: `auto_high_risk`, `auto_startup`); the agents
+    themselves still see `trigger`.
+    """
+    row_trigger = recorded_trigger or trigger
     initial_state = create_initial_state(
         tenant_id=str(tenant_id),
         facility_id=str(facility_id),
@@ -124,7 +131,7 @@ async def execute_and_record_pipeline(
             session,
             tenant_id=tenant_id,
             facility_id=facility_id,
-            trigger=trigger,
+            trigger=row_trigger,
             status="failed",
             duration_ms=duration_ms,
             state_snapshot=dict(initial_state),
@@ -150,7 +157,7 @@ async def execute_and_record_pipeline(
         session,
         tenant_id=tenant_id,
         facility_id=facility_id,
-        trigger=trigger,
+        trigger=row_trigger,
         status=status,
         duration_ms=duration_ms,
         state_snapshot=dict(final_state),
@@ -169,6 +176,7 @@ async def run_pipeline_for_facility(
     facility_id: uuid.UUID,
     trigger: str = "scheduled",
     user_query: str | None = None,
+    recorded_trigger: str | None = None,
 ) -> tuple[FacilityTwinState, AgentRun]:
     """The production entry point: run the pipeline on the facility's REAL assets and record it.
 
@@ -186,4 +194,5 @@ async def run_pipeline_for_facility(
             trigger=trigger,
             user_query=user_query,
             config=config,
+            recorded_trigger=recorded_trigger,
         )

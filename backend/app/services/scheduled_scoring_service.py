@@ -19,24 +19,25 @@ threshold-triggered pipeline run.
 import logging
 import secrets
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 from redis.exceptions import WatchError
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.core.tenant_context import scope_session_to_tenant
+from app.models.agent_run import AgentRun
 from app.models.asset import Asset
 from app.models.facility import Facility
 from app.models.risk_score import RiskScore
 from app.models.tenant import Tenant
 from app.schemas.ml.scores_updated import ScoresUpdated
 from app.services.alert_publish_service import publish_scores_updated
-from app.services.risk_inference_service import score_facility
+from app.services.risk_inference_service import get_latest_risk_scores, score_facility
 from app.services.telemetry_service import get_last_reading_times
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,9 @@ _LAST_ATTEMPT_KEY = "score-last:{tenant_id}:{facility_id}"
 _LAST_ATTEMPT_TTL_SECONDS = 30 * 24 * 3600
 
 ScoreFn = Callable[..., Awaitable[list[RiskScore]]]
+# Called as (tenant_id, facility_id, reason) when a scoring pass finds something worth analysing
+# (Phase L task L.7). It only ENQUEUES; the analysis itself runs in its own Celery task.
+EnqueueAnalysisFn = Callable[[uuid.UUID, uuid.UUID, str], None]
 
 
 @dataclass
@@ -70,23 +74,33 @@ class ScoringRunSummary:
 
 
 async def acquire_lock(
-    redis: Redis, *, tenant_id: uuid.UUID, facility_id: uuid.UUID, ttl_seconds: int
+    redis: Redis,
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    ttl_seconds: int,
+    key_template: str = _LOCK_KEY,
 ) -> str | None:
     """`SET key token NX EX ttl`: the token if this caller now holds the lock, None if another run
     does. The lock expires on its own, so a run that dies cannot block the facility for good."""
     token = secrets.token_hex(16)
-    key = _LOCK_KEY.format(tenant_id=tenant_id, facility_id=facility_id)
+    key = key_template.format(tenant_id=tenant_id, facility_id=facility_id)
     got = await redis.set(key, token, nx=True, ex=ttl_seconds)
     return token if got else None
 
 
 async def release_lock(
-    redis: Redis, *, tenant_id: uuid.UUID, facility_id: uuid.UUID, token: str
+    redis: Redis,
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    token: str,
+    key_template: str = _LOCK_KEY,
 ) -> bool:
     """Deletes the lock only if it still holds `token`. A run that outlived its TTL must not
     delete the lock a newer run took over. Optimistic WATCH/MULTI rather than a Lua script, so it
     behaves the same on a real Redis and on the in-memory fake the tests use."""
-    key = _LOCK_KEY.format(tenant_id=tenant_id, facility_id=facility_id)
+    key = key_template.format(tenant_id=tenant_id, facility_id=facility_id)
     async with redis.pipeline() as pipe:
         try:
             await pipe.watch(key)
@@ -158,6 +172,64 @@ async def facility_has_new_readings(
     return reference is None or newest_reading > reference
 
 
+def newly_high_risk_assets(
+    previous: dict[uuid.UUID, float], new_scores: Iterable[RiskScore], *, threshold: float
+) -> list[uuid.UUID]:
+    """Assets whose NEW score is at or above `threshold` while their previous score was below it
+    (or they had none). A machine that stays high, or is first seen low, is not "newly" anything."""
+    return [
+        row.asset_id
+        for row in new_scores
+        if row.score >= threshold and previous.get(row.asset_id, 0.0) < threshold
+    ]
+
+
+async def facility_has_agent_run(
+    session: AsyncSession, *, tenant_id: uuid.UUID, facility_id: uuid.UUID
+) -> bool:
+    return bool(
+        (
+            await session.execute(
+                select(
+                    exists().where(
+                        AgentRun.tenant_id == tenant_id, AgentRun.facility_id == facility_id
+                    )
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def _maybe_enqueue_analysis(
+    main_factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID,
+    facility_id: uuid.UUID,
+    previous: dict[uuid.UUID, float],
+    saved: list[RiskScore],
+    enqueue_analysis: EnqueueAnalysisFn,
+) -> None:
+    """Enqueues at most one analysis for this pass: a machine newly high risk, else the facility's
+    very first analysis. Enqueue only - the 10-minute floor and the lock are enforced by the task,
+    so a flood of enqueues still yields one run. A broker or DB problem here must never fail the
+    scoring pass that already succeeded."""
+    try:
+        reason: str | None = None
+        if newly_high_risk_assets(previous, saved, threshold=settings.high_risk_threshold):
+            reason = "auto_high_risk"
+        else:
+            async with main_factory() as session:
+                await scope_session_to_tenant(session, tenant_id)
+                if not await facility_has_agent_run(
+                    session, tenant_id=tenant_id, facility_id=facility_id
+                ):
+                    reason = "auto_startup"
+        if reason is not None:
+            enqueue_analysis(tenant_id, facility_id, reason)
+    except Exception:
+        logger.exception("could not enqueue automatic analysis for facility %s", facility_id)
+
+
 async def _score_one_facility(
     *,
     main_factory: async_sessionmaker[AsyncSession],
@@ -167,6 +239,7 @@ async def _score_one_facility(
     facility_id: uuid.UUID,
     score: ScoreFn,
     summary: ScoringRunSummary,
+    enqueue_analysis: EnqueueAnalysisFn | None = None,
 ) -> None:
     token = await acquire_lock(
         redis,
@@ -190,6 +263,12 @@ async def _score_one_facility(
                 return
 
             now = datetime.now(UTC)
+            previous = {
+                row.asset_id: row.score
+                for row in await get_latest_risk_scores(
+                    main_session, tenant_id=tenant_id, facility_id=facility_id
+                )
+            }
             saved = await score(
                 main_session,
                 timescale_session,
@@ -203,6 +282,15 @@ async def _score_one_facility(
             ex=_LAST_ATTEMPT_TTL_SECONDS,
         )
         summary.scored += 1
+        if enqueue_analysis is not None and saved:
+            await _maybe_enqueue_analysis(
+                main_factory,
+                tenant_id=tenant_id,
+                facility_id=facility_id,
+                previous=previous,
+                saved=saved,
+                enqueue_analysis=enqueue_analysis,
+            )
         if saved:
             try:
                 await publish_scores_updated(
@@ -228,6 +316,7 @@ async def score_all_facilities(
     timescale_factory: async_sessionmaker[AsyncSession],
     redis: Redis,
     score: ScoreFn = score_facility,
+    enqueue_analysis: EnqueueAnalysisFn | None = None,
 ) -> ScoringRunSummary:
     """One scheduled pass over every tenant's facilities. Never raises for a single bad tenant or
     facility; the summary says what happened."""
@@ -260,5 +349,6 @@ async def score_all_facilities(
                 facility_id=facility_id,
                 score=score,
                 summary=summary,
+                enqueue_analysis=enqueue_analysis,
             )
     return summary

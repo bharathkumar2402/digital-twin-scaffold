@@ -11,6 +11,7 @@ run of a job that fires every minute.
 """
 
 import asyncio
+import uuid
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -23,6 +24,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.redis_client import get_redis_client
 from app.services.scheduled_scoring_service import score_all_facilities
+from app.workers.auto_analysis import run_scheduled_analysis
 
 TASK_NAME = "score_all_facilities"
 
@@ -40,6 +42,11 @@ def _build_engines() -> tuple[AsyncEngine, AsyncEngine]:
     )
 
 
+def _enqueue_analysis(tenant_id: uuid.UUID, facility_id: uuid.UUID, reason: str) -> None:
+    """Hands the analysis to its own task; the scoring pass never runs the pipeline itself."""
+    run_scheduled_analysis.delay(str(tenant_id), str(facility_id), reason)
+
+
 async def _run() -> dict[str, int]:
     main_engine, timescale_engine = _build_engines()
     redis = get_redis_client()
@@ -48,6 +55,7 @@ async def _run() -> dict[str, int]:
             main_factory=async_sessionmaker(main_engine, expire_on_commit=False),
             timescale_factory=async_sessionmaker(timescale_engine, expire_on_commit=False),
             redis=redis,
+            enqueue_analysis=_enqueue_analysis,
         )
     finally:
         await redis.aclose()

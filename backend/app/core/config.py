@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     scoring_interval_seconds: float = 60.0
     scoring_lock_ttl_seconds: int = 120
 
+    # Automatic analysis (Phase L task L.7, CLAUDE.md rule 4): at most one pipeline run per
+    # facility per window, and one lock so runs never overlap. The lock TTL must outlast a
+    # pipeline run (about 30 s with the LLM) but not block the facility if a worker dies.
+    auto_analysis_min_interval_seconds: int = 600
+    auto_analysis_lock_ttl_seconds: int = 300
+    high_risk_threshold: float = 67.0
+
     max_map_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
 
     # Real-world size of one floor-plan pixel (at the maximum tile zoom), used to turn map
